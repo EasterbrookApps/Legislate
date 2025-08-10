@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meal Planner & Pantry</title>
+  <meta name="theme-color" content="#0b0f14"/>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="appbar">
+    <h1>Meal Planner & Pantry</h1>
+    <nav class="tabs">
+      <button data-tab="inventory" class="active">Inventory</button>
+      <button data-tab="recipes">Recipes</button>
+      <button data-tab="planner">Planner</button>
+      <button data-tab="shopping">Shopping List</button>
+      <button data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Inventory -->
+    <section id="inventory" class="tab active">
+      <div class="toolbar">
+        <div class="group">
+          <input id="invSearch" type="search" placeholder="Search name or tag…"/>
+          <select id="invLocFilter">
+            <option value="">All locations</option>
+            <option>Fridge</option>
+            <option>Freezer</option>
+            <option>Cupboard</option>
+          </select>
+          <select id="invExpiryFilter">
+            <option value="">Any expiry</option>
+            <option value="expired">Expired</option>
+            <option value="week">≤ 7 days</option>
+            <option value="month">≤ 30 days</option>
+          </select>
+        </div>
+        <button id="addItemBtn">+ Add item</button>
+      </div>
+      <div id="inventoryList" class="cards"></div>
+    </section>
+
+    <!-- Recipes -->
+    <section id="recipes" class="tab">
+      <div class="toolbar">
+        <input id="recSearch" type="search" placeholder="Search recipes…"/>
+        <button id="addRecipeBtn">+ New recipe</button>
+      </div>
+      <div id="recipeList" class="cards"></div>
+    </section>
+
+    <!-- Planner -->
+    <section id="planner" class="tab">
+      <div class="toolbar">
+        <button id="prevWeek">← Prev</button>
+        <div class="weekLabel"></div>
+        <button id="nextWeek">Next →</button>
+        <button id="planFromRecipes">Add recipe</button>
+        <button id="clearWeek">Clear week</button>
+      </div>
+      <div id="plannerGrid" class="planner-grid"></div>
+      <p class="hint">Tip: click a cell to add a recipe or custom note. Planned ingredients will reserve stock.</p>
+    </section>
+
+    <!-- Shopping List -->
+    <section id="shopping" class="tab">
+      <div class="toolbar">
+        <button id="regenList">Regenerate from plan</button>
+        <button id="clearChecked">Clear checked</button>
+        <button id="exportList">Export</button>
+      </div>
+      <ul id="shoppingList" class="checklist"></ul>
+    </section>
+
+    <!-- Settings -->
+    <section id="settings" class="tab">
+      <div class="cards">
+        <article class="card">
+          <h3>Data</h3>
+          <div class="row">
+            <button id="exportData">Export JSON</button>
+            <label class="file">
+              <input id="importData" type="file" accept="application/json" />
+              <span>Import JSON…</span>
+            </label>
+          </div>
+          <p class="muted">Your data is stored locally in this browser. Export before switching devices.</p>
+        </article>
+        <article class="card">
+          <h3>Appearance</h3>
+          <div class="row">
+            <button id="toggleTheme">Toggle light/dark</button>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <!-- Dialogs -->
+  <dialog id="itemDialog">
+    <form method="dialog" id="itemForm">
+      <h3 id="itemDialogTitle">Add Item</h3>
+      <div class="grid2">
+        <label>Name<input name="name" required /></label>
+        <label>Location
+          <select name="location" required>
+            <option>Fridge</option>
+            <option>Freezer</option>
+            <option>Cabinet</option>
+            <option>Pantry</option>
+            <option>Drawer</option>
+            <option selected>Cu pboard</option>
+          </select>
+        </label>
+        <label>Quantity<input name="quantity" type="number" step="0.01" min="0" value="1"/></label>
+        <label>Unit<input name="unit" placeholder="g, ml, pcs" /></label>
+        <label>Expires<input name="expires" type="date" /></label>
+        <label>Tags<input name="tags" placeholder="comma,separated" /></label>
+      </div>
+      <menu>
+        <button value="cancel" class="muted">Cancel</button>
+        <button value="save" class="primary">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="recipeDialog">
+    <form method="dialog" id="recipeForm">
+      <h3 id="recipeDialogTitle">New Recipe</h3>
+      <label>Title<input name="title" required /></label>
+      <label>Notes<textarea name="notes" rows="3" placeholder="Method, link, tips…"></textarea></label>
+      <h4>Ingredients</h4>
+      <div id="ingList"></div>
+      <div class="row">
+        <input id="ingName" placeholder="Ingredient" />
+        <input id="ingQty" type="number" step="0.01" min="0" placeholder="Qty" />
+        <input id="ingUnit" placeholder="Unit" />
+        <button id="addIng" type="button">+ Add</button>
+      </div>
+      <menu>
+        <button value="cancel" class="muted">Cancel</button>
+        <button value="save" class="primary">Save</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <dialog id="planDialog">
+    <form method="dialog" id="planForm">
+      <h3>Add to plan</h3>
+      <input id="planSearch" placeholder="Search recipes or type custom…" />
+      <div id="planRecipeResults" class="list"></div>
+      <menu>
+        <button value="cancel" class="muted">Close</button>
+      </menu>
+    </form>
+  </dialog>
+
+  <template id="cardTemplate">
+    <article class="card"></article>
+  </template>
+
+  <script src="app.js" defer></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>
