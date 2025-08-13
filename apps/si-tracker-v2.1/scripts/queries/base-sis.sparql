@@ -1,72 +1,63 @@
-# base-sis.sparql — Parliament-aligned laid-step query with Lords + Commons, since-filtered
-# Uses UK Parliament Procedure Ontology:
-# https://ukparliament.github.io/ontologies/procedure/procedure-ontology.html
-#
-# Matches StatutoryInstrumentPaper -> WorkPackage -> BusinessItem with laid step in either House:
-#   - id:cspzmb6w  = "Laid before the House of Commons"
-#   - id:WkH5enjt  = "Laid before the House of Lords"
-#
-# Date filter:
-#   Prefer laid date (?laidDate). If absent, fall back to made date (?madeDate).
-#   The builder injects ?since from environment variable SI_SINCE as xsd:date.
-#
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
-PREFIX :     <https://id.parliament.uk/schema/>
-PREFIX id:   <https://id.parliament.uk/>
+# base-sis.sparql (refined): robust laid since ?since, both Houses, human-readable procedure fields
+PREFIX :    <https://id.parliament.uk/schema/>
+PREFIX rdfs:<http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX id:  <https://id.parliament.uk/>
 
 SELECT DISTINCT
-  ?workPackage
-  ?SI
-  ?title
-  ?laidDate
-  ?madeDate
-  ?comesIntoForceDate
-  ?comesIntoForceNote
-  ?link
-  ?procedureKind
-  ?procedureScrutiny
+  ?workPackage ?SI ?title ?laidDate ?madeDate ?comesIntoForceDate ?comesIntoForceNote ?legislationURI
+  ?procedureKind ?procedureKindLabel ?procedureScrutiny ?procedureScrutinyLabel
   ?departmentLabel
 WHERE {
+  # SI as StatutoryInstrumentPaper, linked to WorkPackage
   ?SI a :StatutoryInstrumentPaper ;
-      rdfs:label ?title ;
       :workPackagedThingHasWorkPackage ?workPackage .
 
-  OPTIONAL { ?SI :workPackagedThingHasWorkPackagedThingWebLink ?link . }
-  OPTIONAL { ?SI :statutoryInstrumentPaperMadeDate ?madeDate . }
-  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceDate ?comesIntoForceDate . }
-  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceNote ?comesIntoForceNote . }
+  OPTIONAL { ?SI rdfs:label ?title . }
 
+  # Procedure and scrutiny from the work package
   OPTIONAL {
     ?workPackage :workPackageHasProcedure ?proc .
     OPTIONAL { ?proc :procedureKind ?procedureKind . }
     OPTIONAL { ?proc :procedureRouteScrutiny ?procedureScrutiny . }
+    OPTIONAL { ?procedureKind rdfs:label ?procedureKindLabel . }
+    OPTIONAL { ?procedureScrutiny rdfs:label ?procedureScrutinyLabel . }
   }
 
-  # Laying body (department) from the laying step
+  # Department
   OPTIONAL {
-    ?workPackage :workPackageHasBusinessItem ?procStepDept .
-    ?procStepDept :businessItemHasProcedureStep ?laidStepDept ;
-                  :layingHasLayingBody/:name ?departmentLabel .
-    FILTER (?laidStepDept IN (id:cspzmb6w, id:WkH5enjt))
+    ?SI :layingBody ?dept .
+    OPTIONAL { ?dept :preferredLabel ?departmentLabel . }
+    OPTIONAL { ?dept :name ?departmentLabel . }
   }
 
-  # Laid date from either House laid step
-  OPTIONAL {
-    { 
-      ?workPackage :workPackageHasBusinessItem ?procStepC .
-      ?procStepC :businessItemHasProcedureStep id:cspzmb6w ;
-                 :businessItemDate ?laidDate .
-    } UNION {
-      ?workPackage :workPackageHasBusinessItem ?procStepL .
-      ?procStepL :businessItemHasProcedureStep id:WkH5enjt ;
-                 :businessItemDate ?laidDate .
+  # Links and dates on the paper
+  OPTIONAL { ?SI :workPackagedThingHasWorkPackagedThingWebLink ?legislationURI . }
+  OPTIONAL { ?SI :statutoryInstrumentPaperMadeDate ?madeDate . }
+  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceDate ?comesIntoForceDate . }
+  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceNote ?comesIntoForceNote . }
+
+  # Determine laid date using explicit laid steps for both Houses.
+  {
+    SELECT ?SI (MIN(?d) AS ?laidDate)
+    WHERE {
+      ?SI :workPackagedThingHasWorkPackage ?wp .
+      ?wp :workPackageHasBusinessItem ?bi .
+      ?bi :businessItemDate ?d ;
+          :businessItemHasProcedureStep ?step .
+      # Prefer fixed step IDs; fall back to label contains if IDs ever change.
+      FILTER (
+        ?step = id:cspzmb6w ||           # Laid before the House of Commons
+        ?step = id:WkH5enjt ||           # Laid before the House of Lords
+        CONTAINS(LCASE(STR(?step)), "cspzmb6w") ||
+        CONTAINS(LCASE(STR(?step)), "wkh5enjt") ||
+        CONTAINS(LCASE(?stepLabel), "laid before the house of commons") ||
+        CONTAINS(LCASE(?stepLabel), "laid before the house of lords")
+      )
+      OPTIONAL { ?step rdfs:label ?stepLabel . }
+      FILTER (?d >= ?since)
     }
+    GROUP BY ?SI
   }
-
-  FILTER (
-    (BOUND(?laidDate) && ?laidDate >= ?since) ||
-    (!BOUND(?laidDate) && BOUND(?madeDate) && ?madeDate >= ?since)
-  )
 }
-ORDER BY DESC(COALESCE(?laidDate, ?madeDate))
+ORDER BY DESC(?laidDate) DESC(?madeDate)

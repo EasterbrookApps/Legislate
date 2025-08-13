@@ -1,28 +1,20 @@
-# procedure-steps-all.sparql — all BusinessItems + ProcedureSteps for SIs laid since ?since
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX :   <https://id.parliament.uk/schema/>
-PREFIX id: <https://id.parliament.uk/>
+# procedure-steps-all.sparql: get timeline steps for all WPs since ?since
+PREFIX :    <https://id.parliament.uk/schema/>
+PREFIX rdfs:<http://www.w3.org/2000/01/rdf-schema#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX id:  <https://id.parliament.uk/>
 
-SELECT DISTINCT
-  ?workPackage ?stepURI ?stepLabel ?date ?houseLabel ?layingBodyName
+SELECT DISTINCT ?workPackage ?step ?stepLabel ?date ?houseLabel
 WHERE {
-  # Find SIs laid in/after ?since in either House (Commons/Lords laid steps)
   ?si a :StatutoryInstrumentPaper ;
       :workPackagedThingHasWorkPackage ?workPackage .
 
   ?workPackage :workPackageHasBusinessItem ?bi .
-  ?bi :businessItemDate ?laidDate ;
-      :businessItemHasProcedureStep ?laidStep .
-  VALUES ?laidStep { id:cspzmb6w id:WkH5enjt }  # Commons laid / Lords laid
-  FILTER ( ?laidDate >= ?since )
+  ?bi :businessItemDate ?date ;
+      :businessItemHasProcedureStep ?step .
+  OPTIONAL { ?step rdfs:label ?stepLabel . }
+  OPTIONAL { ?bi :businessItemHasHouse ?house . ?house :preferredLabel ?houseLabel . }
 
-  # For each work package, return ALL business items/steps with their dates (timeline)
-  ?workPackage :workPackageHasBusinessItem ?anyBi .
-  ?anyBi :businessItemHasProcedureStep ?stepURI ;
-         :businessItemDate ?date .
-  OPTIONAL { ?stepURI rdfs:label ?stepLabel . }
-  OPTIONAL { ?anyBi :businessItemHasHouse ?house . ?house :preferredLabel ?houseLabel . }
-  OPTIONAL { ?anyBi :layingHasLayingBody/:name ?layingBodyName . }
+  FILTER (?date >= ?since)
 }
 ORDER BY ?workPackage ?date
