@@ -1,9 +1,6 @@
 {
-  "when": "2025-08-13T12:38:46.006Z",
-  "count": 0,
-  "schema": "v2.1-backend-fix",
-  "since": "2024-07-04",
-  "debug": {
-    "note": "No items after laid+procedure filter"
-  }
+  "when": "2025-08-13T13:48:55.267Z",
+  "error": "SPARQL 500: Query evaluation error: org.eclipse.rdf4j.repository.http.HTTPQueryEvaluationException: Read timed out",
+  "schema": "v2.1-backend-debug",
+  "since": "2024-07-04"
 }
