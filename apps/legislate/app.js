@@ -1,15 +1,18 @@
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.sh/react@18.3.1/jsx-runtime'
 
+// Legislate calibration patch (58-space)
+// Replaces /apps/legislate/app.js and bakes in your calibration.
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.sh/react@18.3.1/jsx-runtime'
 const { useState, useEffect } = React;
 
-// 58 spaces EXCLUDING start => indices 0..58
 const BOARD_SIZE = 58;
-
-// Local storage keys
 const LS_PATH = 'legislate:path58';
 const LS_STAGES = 'legislate:stages58';
 
-// Stage identifiers and colours (requested mapping)
+// === Your calibrated data ===
+const DEFAULT_PATH = [[13.045454545454547, 87.45454545454545], [21.136363636363637, 73], [27.227272727272727, 64.72727272727272], [36.04545454545455, 65.54545454545455], [47.77272727272727, 67.45454545454545], [42.04545454545455, 73.0909090909091], [43.86363636363637, 79.54545454545455], [38.68181818181819, 90.9090909090909], [48.77272727272727, 91.0909090909091], [59.409090909090914, 84], [60.22727272727273, 92.9090909090909], [69.04545454545455, 95.9090909090909], [71.04545454545455, 88.18181818181819], [65.77272727272727, 79.27272727272727], [86.13636363636363, 84.9090909090909], [79.31818181818183, 74.90909090909092], [79.13636363636364, 70.27272727272728], [75.31818181818181, 65.63636363636364], [63.13636363636363, 58.909090909090914], [72.68181818181819, 49.36363636363637], [78.22727272727272, 51.90909090909091], [82.5909090909091, 57.54545454545455], [89.5909090909091, 66.54545454545455], [91.95454545454545, 54.18181818181819], [89.95454545454545, 49.27272727272727], [92.5, 41.36363636363637], [85.22727272727273, 33.81818181818182], [79.68181818181819, 38.09090909090909], [73.77272727272727, 38.27272727272727], [62.5, 34.18181818181818], [67.86363636363636, 27.636363636363637], [70.5, 19.18181818181818], [75.86363636363636, 22.454545454545453], [85.4090909090909, 26.272727272727277], [89.5, 18.181818181818183], [90.04545454545455, 7.454545454545454], [77.22727272727272, 8.363636363636363], [68.77272727272728, 6.454545454545454], [58.59090909090909, 6.454545454545454], [53.22727272727272, 7.454545454545454], [50.227272727272734, 13.363636363636363], [49.04545454545455, 19], [52.5, 25.636363636363633], [51.68181818181819, 31], [44.95454545454545, 38.63636363636363], [37.86363636363637, 28.72727272727273], [35.86363636363637, 19.545454545454547], [33.59090909090909, 11.363636363636363], [26.77272727272727, 7.363636363636364], [17.31818181818182, 7.727272727272727], [12.136363636363637, 12.909090909090908], [8.409090909090908, 20.272727272727273], [10.681818181818182, 29.454545454545457], [20.31818181818182, 32.81818181818182], [30.954545454545457, 36.36363636363637], [33.59090909090909, 45.09090909090909], [32.22727272727273, 54.63636363636364], [13.681818181818182, 47.090909090909086], [97.80000000000001, 30]];
+const DEFAULT_STAGES = [null, null, "early", null, "early", "early", null, "early", null, "early", null, "early", null, "early", "early", null, "early", null, null, null, "commons", null, "commons", null, "commons", null, null, "commons", null, null, null, "lords", null, "lords", null, "lords", null, null, null, "lords", null, "lords", null, "lords", null, null, "implementation", null, "implementation", null, "implementation", null, "implementation", null, "implementation", null, "implementation", "implementation", null];
+
+// Stage labels/colours
 const STAGE_LABEL = {
   early: 'Early stages',
   commons: 'Commons',
@@ -17,23 +20,24 @@ const STAGE_LABEL = {
   implementation: 'Implementation',
 };
 const STAGE_COLOR = {
-  early: '#ff9f43',           // orange
-  commons: '#18d18c',         // green
-  lords: '#ff6b6b',           // red
-  implementation: '#58a6ff',  // blue
+  early: '#ff9f43',
+  commons: '#18d18c',
+  lords: '#ff6b6b',
+  implementation: '#58a6ff',
 };
-const STAGE_IDS = ['early','commons','lords','implementation'];
 
-// Default path placeholder; calibrate by clicking
-let DEFAULT_PATH = Array.from({length: BOARD_SIZE+1}, (_,i)=>[5+i*1.6, 90 - Math.min(60, i*1.1)]);
+(function seedIfMissing(){
+  try {
+    if(!localStorage.getItem(LS_PATH)) localStorage.setItem(LS_PATH, JSON.stringify(DEFAULT_PATH));
+    if(!localStorage.getItem(LS_STAGES)) localStorage.setItem(LS_STAGES, JSON.stringify(DEFAULT_STAGES));
+  } catch(_) {}
+})();
 
-// Storage helpers
-function loadPath(){ try{ const s = localStorage.getItem(LS_PATH); if(s) return JSON.parse(s); }catch{} return DEFAULT_PATH; }
-function loadStages(){ try{ const s = localStorage.getItem(LS_STAGES); if(s) return JSON.parse(s); }catch{} return Array(BOARD_SIZE+1).fill(null); }
-function savePath(arr){ try{ localStorage.setItem(LS_PATH, JSON.stringify(arr)); }catch{} }
-function saveStages(arr){ try{ localStorage.setItem(LS_STAGES, JSON.stringify(arr)); }catch{} }
+function loadPath(){ try{ const s=localStorage.getItem(LS_PATH); if(s) return JSON.parse(s); }catch{} return DEFAULT_PATH; }
+function loadStages(){ try{ const s=localStorage.getItem(LS_STAGES); if(s) return JSON.parse(s); }catch{} return DEFAULT_STAGES; }
+function savePath(a){ try{ localStorage.setItem(LS_PATH, JSON.stringify(a)); }catch{} }
+function saveStages(a){ try{ localStorage.setItem(LS_STAGES, JSON.stringify(a)); }catch{} }
 
-// Sample decks (stage-themed placeholders)
 const DECKS = {
   early: [
     { title:'Scope rethink', text:'Refocus policy intent.\nMiss a turn.', effect:{ type:'skip_next', count:1 } },
@@ -65,7 +69,7 @@ function createState(players, path = loadPath(), stages = loadStages()){
   return {
     players,
     path,
-    stages, // length 59: 'early'|'commons'|'lords'|'implementation'|null
+    stages,
     turn: 0,
     dice: 0,
     rolling: false,
@@ -111,91 +115,13 @@ function applyEffect(effect, s){
       while(j<=BOARD_SIZE && out.stages[j]!==target) j++;
       if(j<=BOARD_SIZE){
         out.positions[out.turn] = j;
-        out.log = [`Effect: jump to next ${STAGE_LABEL[target]} at ${j}.`, ...out.log];
+        out.log = [`Effect: jump to next ${target} stage at ${j}.`, ...out.log];
       }
       break;
     }
   }
   return out;
 }
-
-function useGame(){
-  const [playerCount, setPlayerCount] = useState(4);
-  const [players, setPlayers] = useState(()=>defaultPlayers(4));
-  const [state, setState] = useState(()=>createState(players));
-
-  useEffect(()=>{ setState(createState(players)); }, [players]);
-
-  function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
-  function reset(){ setState(createState(players)); }
-
-  async function roll(){
-    setState(s=>({...s, rolling:true}));
-    await new Promise(r=>setTimeout(r, 250));
-    const d = randInt(1,6);
-    for(let k=0;k<d;k++){
-      await new Promise(r=>requestAnimationFrame(()=>setTimeout(r, 160)));
-      setState(s=>{
-        if(s.winner) return s;
-        const np = clamp(s.positions[s.turn] + 1, 0, BOARD_SIZE);
-        const positions = [...s.positions]; positions[s.turn] = np;
-        const label = s.players[s.turn].name || `P${s.turn+1}`;
-        const log = [`${label} moved to ${np}.`, ...s.log];
-        return {...s, positions, log};
-      });
-    }
-    setState(s=>{
-      if(s.positions[s.turn]===BOARD_SIZE){
-        const label = (s.players[s.turn].name||`P${s.turn+1}`);
-        return {...s, winner:s.turn, rolling:false, dice:d, log:[`🏆 ${label} has implemented their Act!`, ...s.log]};
-      }
-      let out = {...s, extraRoll:false, lastCard:null, rolling:false, dice:d};
-      const stage = out.stages[out.positions[out.turn]];
-      if(stage){
-        const [card, rest] = drawFrom(out.decks[stage]);
-        out.decks = {...out.decks, [stage]:rest};
-        out.lastCard = { stage, ...card };
-        out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
-        out = applyEffect(card.effect, out);
-        if(out.positions[out.turn]===BOARD_SIZE){
-          const label = (out.players[out.turn].name||`P${out.turn+1}`);
-          return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
-        }
-      }
-      let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
-      if(out.skips[nextTurn] > 0){
-        const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
-        const label = (out.players[nextTurn].name||`P${nextTurn+1}`);
-        out.log = [`${label} skips a turn.`, ...out.log];
-        nextTurn = (nextTurn+1) % out.players.length;
-        return {...out, skips: nextSkips, turn: nextTurn};
-      }
-      return {...out, turn: nextTurn};
-    });
-  }
-
-  // calibration mutations that autosave
-  function setPathPoint(i,x,y){
-    setState(s=>{
-      const path = [...s.path];
-      path[i] = [x,y];
-      savePath(path);
-      return {...s, path};
-    });
-  }
-  function setStageAt(i,stage){
-    setState(s=>{
-      const a = [...s.stages];
-      a[i] = stage;
-      saveStages(a);
-      return {...s, stages:a};
-    });
-  }
-
-  return { playerCount, setPlayerCount, players, setPlayers, state, setState, start, reset, roll, setPathPoint, setStageAt };
-}
-
-function swatch(stage){ return STAGE_COLOR[stage] || '#ccc'; }
 
 function SetupPanel({playerCount, setPlayerCount, players, setPlayers, onStart}){
   return _jsxs('div', { className:'card', children:[
@@ -218,7 +144,7 @@ function SetupPanel({playerCount, setPlayerCount, players, setPlayers, onStart})
     players.map((p,i)=>_jsxs('div',{className:'setup-row', children:[
       _jsx('span', { className:'color-dot', style:{background:p.color} }),
       _jsx('input', { className:'input', placeholder:`Player ${i+1}`, style:{flex:1}, value:p.name, onChange:e=>{
-        const v = e.target.value; // allow empty
+        const v = e.target.value;
         setPlayers(arr=>arr.map((pp,idx)=> idx===i ? {...pp, name:v} : pp));
       }}),
       _jsx('input', { type:'color', value:p.color, onChange:e=>{
@@ -253,7 +179,7 @@ function PlayerSidebar({state, onRoll, onReset}){
     state.lastCard && _jsxs(_Fragment, { children:[
       _jsx('div', { style:{height:10}}),
       _jsxs('div', { className:'card', style:{background:'#0b1320', border:'1px solid #20304a'}, children:[
-        _jsx('div', { style:{display:'flex', alignItems:'center', gap:8, fontWeight:800}, children:_jsxs('span', { className:'stage-chip', children:[ _jsx('span', { className:'color-dot', style:{background: swatch(state.lastCard.stage)} }), STAGE_LABEL[state.lastCard.stage] ]}) }),
+        _jsx('div', { style:{display:'flex', alignItems:'center', gap:8, fontWeight:800}, children:_jsxs('span', { className:'stage-chip', children:[ _jsx('span', { className:'color-dot', style:{background: STAGE_COLOR[state.lastCard.stage]} }), STAGE_LABEL[state.lastCard.stage] ]}) }),
         _jsx('div', { className:'small', style:{marginTop:6, whiteSpace:'pre-wrap'}, children: state.lastCard.text })
       ]})
     ]}),
@@ -363,20 +289,16 @@ function CalibBar({calib, state, setStageAt}){
   ]});
 }
 
-function App(){
+function useGame(){
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
-  const { setPathPoint, setStageAt } = (()=>{
-    function setPathPoint(i,x,y){ setState(s=>{ const p=[...s.path]; p[i]=[x,y]; savePath(p); return {...s, path:p}; }); }
-    function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; saveStages(a); return {...s, stages:a}; }); }
-    return { setPathPoint, setStageAt };
-  })();
 
-  const calib = useCalibration(state, setState, setPathPoint, setStageAt);
+  useEffect(()=>{ setState(createState(players)); }, [players]);
 
   function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
   function reset(){ setState(createState(players)); }
+
   async function roll(){
     setState(s=>({...s, rolling:true}));
     await new Promise(r=>setTimeout(r, 250));
@@ -422,15 +344,25 @@ function App(){
     });
   }
 
+  return { playerCount, setPlayerCount, players, setPlayers, state, setState, start, reset, roll };
+}
+
+function App(){
+  const g = useGame();
+  const { state, setState } = g;
+  function setPathPoint(i,x,y){ setState(s=>{ const p=[...s.path]; p[i]=[x,y]; savePath(p); return {...s, path:p}; }); }
+  function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; saveStages(a); return {...s, stages:a}; }); }
+  const calib = useCalibration(state, setState, setPathPoint, setStageAt);
+
   return _jsxs('div', { className:'grid', children:[
     state.started
-      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)) })
-      : _jsx(SetupPanel, { playerCount, setPlayerCount, players, setPlayers, onStart: ()=>setState(s=>({...s, started:true})) }),
+      ? _jsx(PlayerSidebar, { state, onRoll: g.roll, onReset: g.reset })
+      : _jsx(SetupPanel, { playerCount:g.playerCount, setPlayerCount:g.setPlayerCount, players:g.players, setPlayers:g.setPlayers, onStart:g.start }),
     _jsxs('div', { className:'card', children:[
       _jsx('h2', { className:'h', children:'Board (58 spaces)' }),
       _jsx(Board, { state, calib }),
       _jsx(CalibBar, { calib, state, setStageAt }),
-      _jsx('div', { className:'small', children:'Click to calibrate PATH (0..58). Tag stages; autosaves locally. Export JSON or code when done.' })
+      _jsx('div', { className:'small', children:'Your provided calibration is baked in. Click to fine-tune. Export JSON or code to back up.' })
     ]})
   ]});
 }
