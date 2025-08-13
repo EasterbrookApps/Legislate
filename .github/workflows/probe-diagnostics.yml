@@ -16,8 +16,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install fetch
-        run: npm install node-fetch@2
       - name: Run diagnostics probe
         run: node apps/si-tracker-v2.1/scripts/diagnostic-probe.mjs
         env:
