@@ -1,8 +1,5 @@
 {
-  "since": "2024-05-26",
-  "status": 403,
+  "status": 405,
   "rows": 0,
-  "sample": [],
-  "url": "https://lda.data.parliament.uk/sparql",
-  "error": "HTTP 403"
+  "sample": []
 }
