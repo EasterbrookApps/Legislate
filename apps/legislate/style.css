@@ -49,8 +49,8 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 /* Calibration */
 .calib-bar{margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
 .path-ghost{position:absolute; inset:0; pointer-events:none}
-.path-ghost .pt{position:absolute; width:10px; height:10px; border-radius:50%; background:#fff8; transform:translate(-50%,-50%);}
-.calib-dot{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;outline:2px solid #000a;transform:translate(-50%,-50%);}
+.path-ghost .pt{position:absolute; width:10px; height:10px; border-radius:50%; background:#fff8; transform:translate(-50%,-50%)}
+.calib-dot{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;outline:2px solid #000a;transform:translate(-50%,-50%)}
 
 /* Modal */
 .backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50}
@@ -60,4 +60,4 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 .toast{position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#0f1722; border:1px solid #20304a; border-radius:12px; padding:10px 14px; z-index:60}
 
 /* History drawer */
-.drawer{position:fixed; right:16px; bottom:16px; width:280px; max-height:60vh; overflow:auto; background:#0e141d; border:1px solid #20304a; border-radius:12px; padding:10px; box-shadow:0 10px 30px rgba(0,0,0,.45); z-index:40}
+.drawer{position:fixed; right:16px; bottom:16px; width:300px; max-height:60vh; overflow:auto; background:#0e141d; border:1px solid #20304a; border-radius:12px; padding:10px; box-shadow:0 10px 30px rgba(0,0,0,.45); z-index:40}
