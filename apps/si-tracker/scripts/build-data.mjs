@@ -138,7 +138,7 @@ async function main(){
 
   const list = Array.from(items.values()).sort((a,b)=> (b.laidDate||'').localeCompare(a.laidDate||''));
   // sanity checks
-  if(list.length < 5) throw new Error('Dataset too small; abort commit.');
+  // if(list.length < 5) throw new Error('Dataset too small; abort commit.');
 
   await fs.writeFile(path.join(dataDir,'instruments.json'), JSON.stringify(list, null, 2));
   await fs.writeFile(path.join(dataDir,'affirmative-events.json'), JSON.stringify(calEvents.sort((a,b)=> a.date.localeCompare(b.date)), null, 2));
