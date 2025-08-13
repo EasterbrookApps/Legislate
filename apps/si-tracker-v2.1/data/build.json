@@ -1,6 +1,9 @@
 {
-  "when": "2025-08-13T12:18:34.021Z",
-  "count": 704,
-  "schema": "v2.1-proc-timeline",
-  "since": "2024-07-04"
+  "when": "2025-08-13T12:38:46.006Z",
+  "count": 0,
+  "schema": "v2.1-backend-fix",
+  "since": "2024-07-04",
+  "debug": {
+    "note": "No items after laid+procedure filter"
+  }
 }
