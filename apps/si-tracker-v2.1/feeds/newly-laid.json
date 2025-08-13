@@ -5,11 +5,12 @@
     "laidDate": "2025-08-06",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/0REJOXlU",
@@ -17,11 +18,12 @@
     "laidDate": "2025-07-22",
     "department": "Ministry of Justice",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/PYVCKOwN",
@@ -29,11 +31,12 @@
     "laidDate": "2025-07-22",
     "department": "Foreign, Commonwealth and Development Office",
     "procedure": {
-      "kind": null,
+      "kind": "Made affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/HB8UfGgb",
@@ -41,11 +44,12 @@
     "laidDate": "2025-07-21",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/gWktzEZq",
@@ -53,11 +57,12 @@
     "laidDate": "2025-07-21",
     "department": "Department for Business and Trade",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/b4LLrJLq",
@@ -65,11 +70,12 @@
     "laidDate": "2025-07-21",
     "department": "Ministry of Housing, Communities and Local Government",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/ci9egFsk",
@@ -77,11 +83,12 @@
     "laidDate": "2025-07-21",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/xk1DbLoo",
@@ -89,11 +96,12 @@
     "laidDate": "2025-07-18",
     "department": "Department for Education",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/KWQLFO6E",
@@ -101,11 +109,12 @@
     "laidDate": "2025-07-18",
     "department": "Ministry of Justice",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/SBu9aIHV",
@@ -113,11 +122,12 @@
     "laidDate": "2025-07-17",
     "department": "Ministry of Housing, Communities and Local Government",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/UjFzWUHL",
@@ -125,11 +135,12 @@
     "laidDate": "2025-07-17",
     "department": "Ministry of Housing, Communities and Local Government",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/r9OXKsGQ",
@@ -137,11 +148,12 @@
     "laidDate": "2025-07-17",
     "department": "Department for Work and Pensions",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/MHj85zJ2",
@@ -149,11 +161,12 @@
     "laidDate": "2025-07-17",
     "department": "Home Office",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/wFdVJPI3",
@@ -161,11 +174,12 @@
     "laidDate": "2025-07-17",
     "department": "Department of Health and Social Care",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/ChdVL541",
@@ -173,11 +187,12 @@
     "laidDate": "2025-07-17",
     "department": "Department for Environment, Food and Rural Affairs",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/JhWqXVmO",
@@ -185,11 +200,12 @@
     "laidDate": "2025-07-17",
     "department": "Department for Business and Trade",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/FoRqR84L",
@@ -197,11 +213,12 @@
     "laidDate": "2025-07-16",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/UDRNW4fD",
@@ -209,11 +226,12 @@
     "laidDate": "2025-07-16",
     "department": "Home Office",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/gSssX9ym",
@@ -221,11 +239,12 @@
     "laidDate": "2025-07-16",
     "department": "Home Office",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/BNP14XVS",
@@ -233,11 +252,12 @@
     "laidDate": "2025-07-16",
     "department": "Privy Council Office",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/ipCCr6fl",
@@ -245,11 +265,12 @@
     "laidDate": "2025-07-16",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/PZgvtq8L",
@@ -257,11 +278,12 @@
     "laidDate": "2025-07-16",
     "department": "Department for Transport",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/AB143gtd",
@@ -269,11 +291,12 @@
     "laidDate": "2025-07-16",
     "department": "Department for Transport",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/Yli7b33M",
@@ -281,11 +304,12 @@
     "laidDate": "2025-07-15",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/JgAuyydr",
@@ -293,11 +317,12 @@
     "laidDate": "2025-07-15",
     "department": "Ministry of Justice",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/fVgjRnPb",
@@ -305,11 +330,12 @@
     "laidDate": "2025-07-15",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/y4UrB5jS",
@@ -317,11 +343,12 @@
     "laidDate": "2025-07-15",
     "department": "Department for Environment, Food and Rural Affairs",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/Kyc9OK0n",
@@ -329,11 +356,12 @@
     "laidDate": "2025-07-15",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/1fXoEKwv",
@@ -341,11 +369,12 @@
     "laidDate": "2025-07-15",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/Fovq3rFC",
@@ -353,11 +382,12 @@
     "laidDate": "2025-07-15",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/ahwo8vWH",
@@ -365,11 +395,12 @@
     "laidDate": "2025-07-15",
     "department": "Ministry of Justice",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/WWuLLdQq",
@@ -377,11 +408,12 @@
     "laidDate": "2025-07-14",
     "department": "Department for Energy Security and Net Zero",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/owhmnUBd",
@@ -389,11 +421,12 @@
     "laidDate": "2025-07-14",
     "department": "Department for Science, Innovation and Technology",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/UgAFJjtm",
@@ -401,11 +434,12 @@
     "laidDate": "2025-07-14",
     "department": "Department for Education",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/DbOt3ebm",
@@ -413,11 +447,12 @@
     "laidDate": "2025-07-11",
     "department": "Department for Culture, Media and Sport",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/5CnoSJw8",
@@ -425,11 +460,12 @@
     "laidDate": "2025-07-11",
     "department": "Ministry of Housing, Communities and Local Government",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/iNKw94QV",
@@ -437,11 +473,12 @@
     "laidDate": "2025-07-11",
     "department": "Department for Culture, Media and Sport",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/CoQDAMHZ",
@@ -449,11 +486,12 @@
     "laidDate": "2025-07-10",
     "department": "Department of Health and Social Care",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/JhlX8c8o",
@@ -461,11 +499,12 @@
     "laidDate": "2025-07-10",
     "department": "HM Treasury",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/h1VnS4N1",
@@ -473,11 +512,12 @@
     "laidDate": "2025-07-10",
     "department": "Ministry of Housing, Communities and Local Government",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/7wwHvtc3",
@@ -485,11 +525,12 @@
     "laidDate": "2025-07-09",
     "department": "Department for Energy Security and Net Zero",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/EjAKg2yD",
@@ -497,11 +538,12 @@
     "laidDate": "2025-07-09",
     "department": "Home Office",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/kFDUwgLX",
@@ -509,11 +551,12 @@
     "laidDate": "2025-07-08",
     "department": "Department for Environment, Food and Rural Affairs",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/8Rmu3eof",
@@ -521,11 +564,12 @@
     "laidDate": "2025-07-07",
     "department": "Department for Transport",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/9JM65nmE",
@@ -533,11 +577,12 @@
     "laidDate": "2025-07-07",
     "department": "Department for Energy Security and Net Zero",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/VwYAhcDA",
@@ -545,11 +590,12 @@
     "laidDate": "2025-07-07",
     "department": "Department for Transport",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/ITW96wPj",
@@ -557,11 +603,12 @@
     "laidDate": "2025-07-07",
     "department": "Home Office",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/t9a428nO",
@@ -569,11 +616,12 @@
     "laidDate": "2025-07-07",
     "department": "HM Revenue and Customs",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/NTPGekf3",
@@ -581,11 +629,12 @@
     "laidDate": "2025-07-07",
     "department": "HM Revenue and Customs",
     "procedure": {
-      "kind": null,
+      "kind": "Draft affirmative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   },
   {
     "id": "https://id.parliament.uk/GX6N6yX5",
@@ -593,10 +642,11 @@
     "laidDate": "2025-07-04",
     "department": "Ministry of Housing, Communities and Local Government",
     "procedure": {
-      "kind": null,
+      "kind": "Made negative",
       "scrutiny": null
     },
     "status": "current",
-    "commonsOnly": false
+    "commonsOnly": false,
+    "breaks21DayRule": null
   }
 ]
