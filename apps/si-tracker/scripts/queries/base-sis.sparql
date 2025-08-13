@@ -1,9 +1,9 @@
-# Broader capture of SIs since the last election (2024-07-04): any 'laid' OR 'made' step date
+# From last General Election (2024-07-04) to today
 PREFIX :   <https://id.parliament.uk/schema/>
 PREFIX id: <https://id.parliament.uk/>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT DISTINCT ?workPackage ?title ?keyDate ?laidDate ?procedureKind ?procedureScrutiny ?legislationURI ?departmentLabel
+SELECT DISTINCT ?workPackage ?title ?laidDate ?procedureKind ?procedureScrutiny ?legislationURI ?departmentLabel
 WHERE {
   ?workPackage a :WorkPackage ;
                :workPackagedThing ?thing .
@@ -11,16 +11,13 @@ WHERE {
 
   OPTIONAL { ?thing :preferredLabel ?title . }
 
-  # Gather any BusinessItem dates that indicate either a laid or made action
   OPTIONAL {
-    ?bi a :BusinessItem ;
-         :workPackagedThing ?thing ;
-         :businessItemHasProcedureStep ?step ;
-         :businessItemDate ?date .
-    ?step :preferredLabel ?stepLabel .
-    FILTER ( CONTAINS(LCASE(?stepLabel), "laid") || CONTAINS(LCASE(?stepLabel), "made") )
-    BIND(?date AS ?laidDate)
-    BIND(?date AS ?keyDate)
+    ?laidBI a :BusinessItem ;
+            :workPackagedThing ?thing ;
+            :businessItemHasProcedureStep ?laidStep ;
+            :businessItemDate ?laidDate .
+    ?laidStep :preferredLabel ?laidLabel .
+    FILTER ( CONTAINS(LCASE(?laidLabel), "laid before the house") )
   }
 
   OPTIONAL {
@@ -36,6 +33,6 @@ WHERE {
 
   OPTIONAL { ?thing :workPackageableThingHasLegislationURL ?legislationURI . }
 
-  FILTER (BOUND(?keyDate) && ?keyDate >= "2024-07-04"^^xsd:date)
+  FILTER (BOUND(?laidDate) && ?laidDate >= "2024-07-04"^^xsd:date)
 }
-ORDER BY DESC(?keyDate)
+ORDER BY DESC(?laidDate)
