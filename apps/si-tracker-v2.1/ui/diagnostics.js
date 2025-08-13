@@ -1,9 +1,5 @@
 async function loadDiagnostics() {
-  const files = [
-    '../data/build.json',
-    '../data/instruments.json',
-    '../data/probe.json'
-  ];
+  const files = ['../data/build.json','../data/instruments.json','../data/probe.json'];
   let html = '';
   for (const file of files) {
     try {

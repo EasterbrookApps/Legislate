@@ -1,4 +1,4 @@
-// build-data.mjs (DEBUG schema) — merges timeline; keeps records even if laid step missing
+// build-data.mjs — fixed date bounds, TZ normalization, sensible link harvesting
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,24 +9,43 @@ const dataDir = path.join(appRoot, 'data');
 const feedsDir = path.join(appRoot, 'feeds');
 const queriesDir = path.join(__dirname, 'queries');
 
-const ENDPOINT = 'https://api.parliament.uk/sparql';
-const SINCE = process.env.SI_SINCE || '2024-07-04'; // last election default
+const ENDPOINT = 'https://lda.data.parliament.uk/sparql';
+const SINCE = process.env.SI_SINCE || '2024-07-04'; // election
+const NOW_ISO = new Date().toISOString().slice(0,10);
+
+const q = (s)=> s
+  .replace(/\?since\b/g, `"${SINCE}"^^<http://www.w3.org/2001/XMLSchema#date>`)
+  .replace(/\?today\b/g, `"${NOW_ISO}"^^<http://www.w3.org/2001/XMLSchema#date>`);
 
 async function sparql(query){
-  const q = query.replace(/\?since\b/g, `\"${SINCE}\"^^<http://www.w3.org/2001/XMLSchema#date>`);
   const res = await fetch(ENDPOINT, {
     method:'POST',
     headers: { 'content-type':'application/sparql-query', 'accept':'application/sparql-results+json' },
-    body: q
+    body: query
   });
   if(!res.ok){
     const txt = await res.text().catch(()=>'');
-    throw new Error(`SPARQL ${res.status}: ${txt.substring(0,200)}`);
+    throw new Error(`SPARQL ${res.status}: ${txt.substring(0,240)}`);
   }
   return await res.json();
 }
+
 const readQ = (rel)=> fs.readFile(path.join(queriesDir, rel), 'utf8');
-const v = (b)=> b?.value ?? null;
+const val = (b)=> b?.value ?? null;
+
+function normDate(d){
+  if(!d) return null;
+  try {
+    const iso = new Date(d).toISOString();
+    return iso.slice(0,10);
+  } catch { return String(d).slice(0,10); }
+}
+
+function withinWindow(d){
+  if(!d) return false;
+  const s = SINCE, t = NOW_ISO;
+  return (d >= s && d <= t);
+}
 
 async function main(){
   await fs.mkdir(dataDir, { recursive: true });
@@ -36,80 +55,77 @@ async function main(){
     readQ('base-sis.sparql'), readQ('procedure-steps-all.sparql')
   ]);
 
-  const [base, steps] = await Promise.all([ sparql(baseQ), sparql(stepsQ) ]);
+  const [base, steps] = await Promise.all([
+    sparql(q(baseQ)), sparql(q(stepsQ))
+  ]);
 
-  // Map timelines by workPackage
-  const timelines = new Map();
-  for(const r of steps.results.bindings){
-    const wp = v(r.workPackage); if(!wp) continue;
-    const arr = timelines.get(wp) || [];
+  const tl = new Map();
+  for(const b of steps.results.bindings){
+    const wp = val(b.workPackage); if(!wp) continue;
+    const arr = tl.get(wp) || [];
     arr.push({
-      date: v(r.biDate)?.slice(0,10) || null,
-      step: v(r.step) || null,
-      stepLabel: v(r.stepLabel) || null,
-      house: v(r.houseLabel) || null
+      date: normDate(val(b.biDate)),
+      stepLabel: val(b.stepLabel) || val(b.step) || 'Step',
+      house: val(b.houseLabel) || null
     });
-    timelines.set(wp, arr);
-  }
-  for(const [wp, arr] of timelines){
-    arr.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+    tl.set(wp, arr);
   }
 
-  // Build item list (loosened filters)
   const items = new Map();
   for(const r of base.results.bindings){
-    const id = v(r.workPackage); if(!id) continue;
-    const laidC = v(r.laidDateCommons);
-    const laidL = v(r.laidDateLords);
-    const laid = (laidC || laidL || null);
-    const procKindLabel = v(r.procedureKindLabel);
-    const procScrLabel = v(r.procedureScrutinyLabel);
-    const dept = v(r.departmentLabel);
-
-    const o = items.get(id) || { id, events: [], committees: {}, status:'current', tags:[] };
-    o.si = v(r.SI) || o.si || null;
-    o.title = v(r.title) || o.title || '';
-    o.laidDate = laid ? laid.slice(0,10) : (v(r.madeDate)?.slice(0,10) || null);
-    o.links = o.links || {};
-    o.links.legislation = v(r.legislationURI) || o.links.legislation || null;
-
-    o.procedure = { kindLabel: procKindLabel || null, scrutinyLabel: procScrLabel || null };
-    o.department = dept || o.department || null;
-
-    // attach timeline (if any)
-    const tl = timelines.get(id);
-    if(tl) o.timeline = tl;
-
-    items.set(id, o);
+    const id = val(r.workPackage); if(!id) continue;
+    const laid = normDate(val(r.laidDate) || val(r.laidDateCommons) || val(r.laidDateLords) || val(r.anyDate));
+    const made = normDate(val(r.madeDate));
+    const obj = {
+      id,
+      si: val(r.SI) || null,
+      title: val(r.SIname) || val(r.title) || '',
+      laidDate: laid || made || null,
+      links: {
+        legislation: val(r.legislationURI) || val(r.link) || null
+      },
+      department: val(r.departmentLabel) || null,
+      procedure: {
+        kindLabel: val(r.procedureKindLabel) || null,
+        scrutinyLabel: val(r.procedureScrutinyLabel) || null
+      },
+      timeline: tl.get(id) || []
+    };
+    if(obj.procedure && (obj.procedure.kindLabel || obj.procedure.scrutinyLabel)){
+      if(obj.laidDate && withinWindow(obj.laidDate)){
+        items.set(id, obj);
+      }
+    }
   }
 
-  // Convert to array
-  const list = Array.from(items.values());
+  const list = Array.from(items.values()).sort((a,b)=> (b.laidDate||'').localeCompare(a.laidDate||''));
 
-  // Debug sample
+  await fs.writeFile(path.join(dataDir, 'instruments.json'), JSON.stringify(list, null, 2));
+  await fs.writeFile(path.join(dataDir, 'affirmative-events.json'), JSON.stringify([], null, 2));
+  await fs.writeFile(path.join(dataDir, 'lunr-index.json'), JSON.stringify({docs: list.map(x=>({id:x.id, content:x.title}))}, null, 2));
+
   const sample = list.slice(0,5).map(x=> ({
-    id: x.id,
-    title: x.title,
-    laidDate: x.laidDate,
-    dept: x.department,
-    proc: x.procedure,
-    hasTimeline: Array.isArray(x.timeline) && x.timeline.length>0
+    id:x.id, laidDate:x.laidDate, dept:x.department, proc:x.procedure, hasTimeline: (x.timeline?.length||0)>0
   }));
 
-  // Write outputs
-  await fs.writeFile(path.join(dataDir, 'instruments.json'), JSON.stringify(list, null, 2));
-  await fs.writeFile(path.join(dataDir, 'affirmative-events.json'), '[]');
-  await fs.writeFile(path.join(dataDir, 'lunr-index.json'), '{"docs":[]}');
-  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), count:list.length, schema:'v2.1-backend-debug', since:SINCE, debug:{sample}}, null, 2));
-
-  console.log('DEBUG build complete. Items:', list.length);
+  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({
+    when: new Date().toISOString(),
+    schema: 'v2.1-build-fixed',
+    count: list.length,
+    since: SINCE,
+    today: NOW_ISO,
+    debug: { sample }
+  }, null, 2));
 }
 
 main().catch(async e=>{
-  console.error('Build failed:', e.message||e);
-  await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(path.join(dataDir,'instruments.json'), '[]');
-  await fs.writeFile(path.join(dataDir,'affirmative-events.json'), '[]');
-  await fs.writeFile(path.join(dataDir,'lunr-index.json'), '{"docs":[]}');
-  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), error:String(e.message||e), schema:'v2.1-backend-debug', since:SINCE}, null, 2));
+  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({
+    when: new Date().toISOString(),
+    schema: 'v2.1-build-fixed',
+    error: String(e.message||e),
+    since: SINCE
+  }, null, 2));
+  await fs.writeFile(path.join(dataDir, 'instruments.json'), '[]');
+  await fs.writeFile(path.join(dataDir, 'affirmative-events.json'), '[]');
+  await fs.writeFile(path.join(dataDir, 'lunr-index.json'), '{"docs":[]}');
 });

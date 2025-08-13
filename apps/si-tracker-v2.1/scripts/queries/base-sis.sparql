@@ -1,59 +1,44 @@
-# base-sis.sparql (DEBUG-LOOSENED) — return SIs with a WorkPackage and modelled procedure since ?since.
-# Attempts to capture laid dates from Commons/Lords laid steps but does NOT filter them out if missing.
+# base-sis.sparql — laid SIs with procedure, within window
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX :    <https://id.parliament.uk/schema/>
-PREFIX id:  <https://id.parliament.uk/>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX :     <https://id.parliament.uk/schema/>
+PREFIX id:   <https://id.parliament.uk/>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
 
 SELECT DISTINCT
-  ?workPackage ?SI ?title
-  ?laidDateCommons ?laidDateLords
-  ?madeDate ?comesIntoForceDate ?comesIntoForceNote
-  ?legislationURI
+  ?workPackage ?SI ?SIname
+  ?laidDateCommons ?laidDateLords ?madeDate ?anyDate
   ?procedureKindLabel ?procedureScrutinyLabel
-  ?departmentLabel
+  ?departmentLabel ?legislationURI ?laidDate
 WHERE {
-  # Official SI entity used by Parliament pages
   ?SI a :StatutoryInstrumentPaper ;
-      :workPackagedThingHasWorkPackage ?workPackage ;
-      rdfs:label ?title .
+      rdfs:label ?SIname ;
+      :workPackagedThingHasWorkPackage ?workPackage .
 
-  # Must have a modelled procedure (keep even if scrutiny missing)
   ?workPackage :workPackageHasProcedure ?procRoute .
   OPTIONAL { ?procRoute rdfs:label ?procedureKindLabel . }
   OPTIONAL { ?procRoute :procedureRouteScrutiny ?scrutiny .
             OPTIONAL { ?scrutiny rdfs:label ?procedureScrutinyLabel . } }
 
-  # Any BusinessItem date since ?since (to scope the session window)
-  # We keep the item even if laid-step join fails
-  ?workPackage :workPackageHasBusinessItem ?anyBI .
-  ?anyBI :businessItemDate ?anyDate .
-  FILTER ( ?anyDate >= ?since )
-
-  # Try to capture laid dates (Commons or Lords)
   OPTIONAL {
-    ?workPackage :workPackageHasBusinessItem ?laidBIc .
-    ?laidBIc :businessItemHasProcedureStep id:cspzmb6w ;  # Laid before the House of Commons
-             :businessItemDate ?laidDateCommons .
+    ?workPackage :workPackageHasBusinessItem ?biC .
+    ?biC :businessItemHasProcedureStep id:cspzmb6w ;
+         :businessItemDate ?laidDateCommons .
   }
   OPTIONAL {
-    ?workPackage :workPackageHasBusinessItem ?laidBIl .
-    ?laidBIl :businessItemHasProcedureStep id:WkH5enjt ;  # Laid before the House of Lords
-             :businessItemDate ?laidDateLords .
+    ?workPackage :workPackageHasBusinessItem ?biL .
+    ?biL :businessItemHasProcedureStep id:WkH5enjt ;
+         :businessItemDate ?laidDateLords .
   }
-
-  # Laying body / department from whichever laid BI we matched
-  OPTIONAL {
-    { ?laidBIc :layingHasLayingBody ?layBody . }
-    UNION
-    { ?laidBIl :layingHasLayingBody ?layBody . }
-    ?layBody :name ?departmentLabel .
-  }
-
-  # Optional metadata (don't exclude if missing)
   OPTIONAL { ?SI :statutoryInstrumentPaperMadeDate ?madeDate . }
-  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceDate ?comesIntoForceDate . }
-  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceNote ?comesIntoForceNote . }
+  OPTIONAL {
+    ?workPackage :workPackageHasBusinessItem ?anyBi .
+    ?anyBi :businessItemDate ?anyDate .
+  }
   OPTIONAL { ?SI :workPackagedThingHasWorkPackagedThingWebLink ?legislationURI . }
+  OPTIONAL { BIND(COALESCE(?laidDateCommons, ?laidDateLords) AS ?laidDate) }
+
+  BIND(COALESCE(?laidDateCommons, ?laidDateLords, ?madeDate, ?anyDate) AS ?pickDate)
+  FILTER ( STR(?pickDate) >= STR(?since) && STR(?pickDate) <= STR(?today) )
+  FILTER (BOUND(?procRoute))
 }
-ORDER BY DESC(COALESCE(?laidDateCommons, ?laidDateLords, ?madeDate, ?anyDate))
+ORDER BY DESC(?pickDate)
