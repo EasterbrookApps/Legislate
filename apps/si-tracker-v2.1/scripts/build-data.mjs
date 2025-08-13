@@ -1,8 +1,9 @@
-// build-data.mjs
+// build-data.mjs — keeps browser-like headers and clears stale outputs
 import fs from 'fs/promises';
+import path from 'path';
 import fetch from 'node-fetch';
 
-const since = "2024-07-04";
+const since = process.env.SI_SINCE || "2024-07-04";
 const today = new Date().toISOString().split("T")[0];
 
 async function fetchData(query) {
@@ -23,13 +24,17 @@ async function fetchData(query) {
 }
 
 async function build() {
-  await fs.writeFile("../data/instruments.json", "[]"); // clear stale
-  const query = `SELECT * WHERE { ?s ?p ?o } LIMIT 10`; // placeholder
+  const dataDir = path.resolve('./apps/si-tracker-v2.1/data');
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.writeFile(path.join(dataDir, "instruments.json"), "[]"); // clear stale
+
+  // placeholder simple query (replace with real once diagnostic passes 200)
+  const query = `SELECT * WHERE { ?s ?p ?o } LIMIT 10`;
   const json = await fetchData(query);
   const items = json?.results?.bindings || [];
-  await fs.writeFile("../data/instruments.json", JSON.stringify(items, null, 2));
-  const buildInfo = { when: new Date().toISOString(), schema: "v2.1-full-browser-headers", count: items.length, since };
-  await fs.writeFile("../data/build.json", JSON.stringify(buildInfo, null, 2));
-}
 
+  await fs.writeFile(path.join(dataDir, "instruments.json"), JSON.stringify(items, null, 2));
+  const buildInfo = { when: new Date().toISOString(), schema: "v2.1-full-browser-headers", count: items.length, since, today };
+  await fs.writeFile(path.join(dataDir, "build.json"), JSON.stringify(buildInfo, null, 2));
+}
 build();
