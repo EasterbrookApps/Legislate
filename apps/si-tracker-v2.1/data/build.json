@@ -1,6 +1,6 @@
 {
-  "when": "2025-08-13T18:25:04.951Z",
-  "schema": "v2.1-diagnostics-fixed",
+  "when": "2025-08-13T18:40:18.154Z",
+  "schema": "v2.1-diagnostics-UA",
   "count": 0,
   "since": "2024-05-26",
   "diagnostics": {
