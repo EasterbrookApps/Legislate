@@ -1,6 +1,11 @@
 {
-  "when": "2025-08-13T10:36:29.712Z",
+  "when": "2025-08-13T10:55:36.330Z",
   "count": 0,
-  "schema": "v2.1",
-  "since": "2024-07-04"
+  "schema": "v2.1-patch",
+  "since": "2024-07-04",
+  "hints": {
+    "since": "2024-07-04",
+    "note": "No results after ontology-based query; check that BusinessItem dates exist for SIs",
+    "sampleChecks": 5
+  }
 }
