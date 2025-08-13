@@ -1,1 +1,60 @@
-<html><body>Diagnostics UI Placeholder</body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SI Tracker – Diagnostics</title>
+<style>
+  :root { --bg:#0b1520; --card:#0e1d2a; --text:#e7f1fb; --muted:#96b3cd; --bad:#ff6b6b; --ok:#51d88a; }
+  *{box-sizing:border-box}
+  body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:var(--text)}
+  header{padding:20px 24px; position:sticky; top:0; background:linear-gradient(180deg, rgba(11,21,32,.95), rgba(11,21,32,.7), rgba(11,21,32,0)); backdrop-filter: blur(6px);}
+  h1{margin:0;font-size:20px}
+  main{padding:24px; display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px;}
+  .card{background:var(--card); border:1px solid rgba(255,255,255,.06); border-radius:14px; box-shadow:0 6px 30px rgba(0,0,0,.22); overflow:hidden}
+  .card header{background:rgba(255,255,255,.04); padding:12px 14px; font-weight:600; display:flex; align-items:center; gap:10px}
+  .pill{font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.15); color:var(--muted)}
+  .pill.ok{border-color:rgba(81,216,138,.45); color:var(--ok)}
+  .pill.bad{border-color:rgba(255,107,107,.45); color:var(--bad)}
+  pre{margin:0; padding:14px; max-height:420px; overflow:auto; white-space:pre-wrap; word-break:break-word}
+  .help{padding: 0 24px 20px; color:var(--muted); font-size:14px}
+  footer{padding:16px 24px; color:var(--muted); font-size:12px}
+  a{color:#7cc4ff}
+  .row{display:flex; gap:8px; align-items:center}
+  button{background:#17344d; color:#e7f1fb; border:1px solid rgba(255,255,255,.12); border-radius:10px; padding:8px 12px; cursor:pointer}
+  button:hover{background:#214863}
+</style>
+</head>
+<body>
+<header class="row">
+  <h1>SI Tracker — Diagnostics</h1>
+  <span class="pill" id="basePath"></span>
+  <button id="refresh">Refresh</button>
+</header>
+
+<div class="help">
+  <p>This page reads the JSON files your Actions write. You should always see three cards below. If any show an error, click the <strong>Refresh</strong> button or run the diagnostics Action again.</p>
+</div>
+
+<main>
+  <section class="card" id="card-build">
+    <header>build.json <span class="pill" id="status-build">…</span></header>
+    <pre id="pre-build">Loading…</pre>
+  </section>
+  <section class="card" id="card-probe">
+    <header>probe.json <span class="pill" id="status-probe">…</span></header>
+    <pre id="pre-probe">Loading…</pre>
+  </section>
+  <section class="card" id="card-instruments">
+    <header>instruments.json <span class="pill" id="status-instruments">…</span></header>
+    <pre id="pre-instruments">Loading…</pre>
+  </section>
+</main>
+
+<footer>
+  Tip: open DevTools → Network to see HTTP status codes. All fetches here add a cache-buster so you never see stale files.
+</footer>
+
+<script src="diagnostics.js"></script>
+</body>
+</html>
