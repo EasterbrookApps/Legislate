@@ -1,44 +1,72 @@
-# base-sis.sparql — Ontology-driven feed of SIs since ?since
-# Strategy:
-# - Find all WorkPackages whose WorkPackagedThing is a StatutoryInstrument
-# - Derive a "laidOrMadeDate" from ANY BusinessItem date attached to that thing
-#   (avoids brittle label matching and picks up motions/laid/made events)
-# - Filter by ?since (injected by the builder as xsd:date)
-# - Return standard fields used by the app
-PREFIX :   <https://id.parliament.uk/schema/>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+# base-sis.sparql — Parliament-aligned laid-step query with Lords + Commons, since-filtered
+# Uses UK Parliament Procedure Ontology:
+# https://ukparliament.github.io/ontologies/procedure/procedure-ontology.html
+#
+# Matches StatutoryInstrumentPaper -> WorkPackage -> BusinessItem with laid step in either House:
+#   - id:cspzmb6w  = "Laid before the House of Commons"
+#   - id:WkH5enjt  = "Laid before the House of Lords"
+#
+# Date filter:
+#   Prefer laid date (?laidDate). If absent, fall back to made date (?madeDate).
+#   The builder injects ?since from environment variable SI_SINCE as xsd:date.
+#
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+PREFIX :     <https://id.parliament.uk/schema/>
+PREFIX id:   <https://id.parliament.uk/>
 
 SELECT DISTINCT
-  ?workPackage ?title ?laidOrMadeDate ?procedureKind ?procedureScrutiny ?legislationURI ?departmentLabel
+  ?workPackage
+  ?SI
+  ?title
+  ?laidDate
+  ?madeDate
+  ?comesIntoForceDate
+  ?comesIntoForceNote
+  ?link
+  ?procedureKind
+  ?procedureScrutiny
+  ?departmentLabel
 WHERE {
-  ?workPackage a :WorkPackage ; :workPackagedThing ?thing .
-  ?thing a :StatutoryInstrument .
+  ?SI a :StatutoryInstrumentPaper ;
+      rdfs:label ?title ;
+      :workPackagedThingHasWorkPackage ?workPackage .
 
-  OPTIONAL { ?thing :preferredLabel ?title . }
-
-  # Robust date derivation: any BusinessItem for this SI (laid, made, motion, etc.)
-  {
-    SELECT ?thing (MIN(?d) AS ?laidOrMadeDate)
-    WHERE {
-      ?bi a :BusinessItem ;
-          :workPackagedThing ?thing ;
-          :businessItemDate ?d .
-      FILTER (?d >= ?since)
-    }
-    GROUP BY ?thing
-  }
+  OPTIONAL { ?SI :workPackagedThingHasWorkPackagedThingWebLink ?link . }
+  OPTIONAL { ?SI :statutoryInstrumentPaperMadeDate ?madeDate . }
+  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceDate ?comesIntoForceDate . }
+  OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceNote ?comesIntoForceNote . }
 
   OPTIONAL {
-    ?workPackage :hasProcedure ?proc .
+    ?workPackage :workPackageHasProcedure ?proc .
     OPTIONAL { ?proc :procedureKind ?procedureKind . }
     OPTIONAL { ?proc :procedureRouteScrutiny ?procedureScrutiny . }
   }
 
+  # Laying body (department) from the laying step
   OPTIONAL {
-    ?thing :layingBody ?dept .
-    ?dept  :preferredLabel ?departmentLabel .
+    ?workPackage :workPackageHasBusinessItem ?procStepDept .
+    ?procStepDept :businessItemHasProcedureStep ?laidStepDept ;
+                  :layingHasLayingBody/:name ?departmentLabel .
+    FILTER (?laidStepDept IN (id:cspzmb6w, id:WkH5enjt))
   }
 
-  OPTIONAL { ?thing :workPackageableThingHasLegislationURL ?legislationURI . }
+  # Laid date from either House laid step
+  OPTIONAL {
+    { 
+      ?workPackage :workPackageHasBusinessItem ?procStepC .
+      ?procStepC :businessItemHasProcedureStep id:cspzmb6w ;
+                 :businessItemDate ?laidDate .
+    } UNION {
+      ?workPackage :workPackageHasBusinessItem ?procStepL .
+      ?procStepL :businessItemHasProcedureStep id:WkH5enjt ;
+                 :businessItemDate ?laidDate .
+    }
+  }
+
+  FILTER (
+    (BOUND(?laidDate) && ?laidDate >= ?since) ||
+    (!BOUND(?laidDate) && BOUND(?madeDate) && ?madeDate >= ?since)
+  )
 }
-ORDER BY DESC(?laidOrMadeDate)
+ORDER BY DESC(COALESCE(?laidDate, ?madeDate))
