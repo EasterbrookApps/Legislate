@@ -2,38 +2,42 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.s
 
 const { useState, useEffect } = React;
 
-// 58 spaces EXCLUDING start => indices 0..58 (59 points total)
 const BOARD_SIZE = 58;
+const LS_KEY = "legislate58_calibration_v1";
 
-// Default path (placeholder). Calibrate by clicking and export.
-let DEFAULT_PATH = Array.from({length: BOARD_SIZE+1}, (_,i)=>[5+i*1.6, 90 - Math.min(60, i*1.1)]); // simple diagonal placeholder
+let DEFAULT_PATH = [[8.0, 92], [13.25, 92], [18.5, 92], [23.75, 92], [29.0, 92], [34.25, 92], [39.5, 92], [44.75, 92], [50.0, 92], [55.25, 92], [60.5, 92], [65.75, 92], [71.0, 92], [76.25, 92], [81.5, 92], [86.75, 92], [92.0, 92], [92, 86.75], [92, 81.5], [92, 76.25], [92, 71.0], [92, 65.75], [92, 60.5], [92, 55.25], [92, 50.0], [92, 44.75], [92, 39.5], [92, 34.25], [92, 29.0], [92, 23.75], [92, 18.5], [92, 13.25], [92, 8.0], [84.36, 26], [76.73, 26], [69.09, 26], [61.45, 26], [53.82, 26], [46.18, 26], [38.55, 26], [30.91, 26], [23.27, 26], [15.64, 26], [8.0, 26], [8, 30.0], [8, 34.0], [8, 38.0], [8, 42.0], [8, 46.0], [8, 50.0], [8, 54.0], [8, 58.0], [8, 62.0], [8, 66.0], [8, 70.0], [8, 74.0], [8, 74.0], [8, 74.0], [8, 74.0]];
 
-// Default special squares (you can overwrite via calibration UI)
-const SPECIALS_DEFAULT = new Map([[6,'red'],[11,'green'],[15,'blue'],[20,'yellow'],[25,'red'],[30,'green'],[35,'blue'],[40,'yellow'],[46,'red'],[52,'blue']]);
+const STAGES = {
+  early: "Early stages",
+  commons: "Commons",
+  lords: "Lords",
+  implementation: "Implementation",
+};
+
+const SPECIALS_DEFAULT = new Map([[6,'early'],[11,'commons'],[15,'lords'],[20,'implementation'],[25,'early'],[30,'commons'],[35,'lords'],[40,'implementation'],[46,'early'],[52,'lords']]);
 
 const DECKS = {
-  red: [
-    { title: "Opposition Day", text: "Parliamentary time is tight.\nGo back 2 spaces.", effect:{ type:"move", delta:-2 } },
-    { title: "Drafting niggle", text: "You spotted an ambiguity early.\nRoll again.", effect:{ type:"extra_roll" } },
-    { title: "Select Committee", text: "Helpful recommendations speed things up.\nMove forward 3.", effect:{ type:"move", delta:3 } },
+  early: [
+    { title: "Stakeholder scoping", text: "Early engagement finds risks. Move forward 1.", effect:{ type:"move", delta:1 } },
+    { title: "Ministerial steer", text: "Scope narrows pending evidence. Go back 1.", effect:{ type:"move", delta:-1 } },
   ],
-  green: [
-    { title: "Policy rethink", text: "Minister changes scope.\nMiss a turn.", effect:{ type:"skip_next", count:1 } },
-    { title: "Stakeholder support", text: "External groups endorse your Bill.\nAdvance 2.", effect:{ type:"move", delta:2 } },
+  commons: [
+    { title: "Opposition Day", text: "Parliamentary time is tight. Go back 2.", effect:{ type:"move", delta:-2 } },
+    { title: "Select Committee", text: "Helpful recommendations. Move forward 3.", effect:{ type:"move", delta:3 } },
   ],
-  blue: [
-    { title: "Devolution check", text: "Liaise with devolved govts.\nGo back 1.", effect:{ type:"move", delta:-1 } },
-    { title: "Drafting complete", text: "Advance to next ❓ space.", effect:{ type:"jump_next_special" } },
+  lords: [
+    { title: "Amendment agreed", text: "Procedural success. Advance to next stage tile.", effect:{ type:"jump_next_special" } },
+    { title: "Devolution check", text: "Consultations take time. Go back 1.", effect:{ type:"move", delta:-1 } },
   ],
-  yellow: [
-    { title: "Commencement regs", text: "Implementation requires SIs.\nGo forward 2.", effect:{ type:"move", delta:2 } },
-    { title: "Judicial review", text: "Proceed with caution.\nGo back 2.", effect:{ type:"move", delta:-2 } },
+  implementation: [
+    { title: "Commencement regs", text: "Prepare SIs. Move forward 2.", effect:{ type:"move", delta:2 } },
+    { title: "Judicial review risk", text: "Proceed with care. Miss a turn.", effect:{ type:"skip_next", count:1 } },
   ],
 };
 
 const COLORS = ['#4bb5ff','#ffd166','#00d68f','#ff6b6b','#c792ea','#50fa7b'];
 
-function defaultPlayers(n){ return Array.from({length:n}, (_,i)=>({ name:`Player ${i+1}`, color: COLORS[i%COLORS.length] })); }
+function defaultPlayers(n){ return Array.from({length:n}, (_,_i)=>({ name:`Player ${_i+1}`, color: COLORS[_i%COLORS.length] })); }
 function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
 function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
 function drawFrom(deck){ const card=deck[0]; const rest=deck.slice(1).concat([card]); return [card,rest]; }
@@ -44,7 +48,27 @@ function specialsFromMap(map, size){
   return arr;
 }
 
-function createState(players, path=DEFAULT_PATH){
+function loadFromLocal(){
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    if(!obj || !Array.isArray(obj.path) || !Array.isArray(obj.specials)) return null;
+    if(obj.path.length !== BOARD_SIZE+1) return null;
+    if(obj.specials.length !== BOARD_SIZE+1) return null;
+    return obj;
+  } catch(e){ return null; }
+}
+
+function saveToLocal(path, specials){
+  const obj = { path, specials };
+  localStorage.setItem(LS_KEY, JSON.stringify(obj));
+}
+
+function createState(players){
+  const saved = loadFromLocal();
+  const path = saved?.path || DEFAULT_PATH;
+  const specials = saved?.specials || specialsFromMap(SPECIALS_DEFAULT, BOARD_SIZE);
   return {
     players,
     path,
@@ -59,7 +83,7 @@ function createState(players, path=DEFAULT_PATH){
     log: [],
     extraRoll:false,
     started:false,
-    specials: specialsFromMap(SPECIALS_DEFAULT, BOARD_SIZE),
+    specials,
   };
 }
 
@@ -97,18 +121,18 @@ function applyEffect(effect, s){
       while(j<=BOARD_SIZE && !out.specials[j]) j++;
       if(j<=BOARD_SIZE){
         out.positions[out.turn] = j;
-        out.log = [`Effect: jump to next ? at ${j}.`, ...out.log];
+        out.log = [`Effect: jump to next stage tile at ${j}.`, ...out.log];
       }
       break;
     }
-    case 'jump_next_color': {
-      const target = effect.color;
+    case 'jump_next_stage': {
+      const target = effect.stage;
       const here = out.positions[out.turn];
       let j = here+1;
       while(j<=BOARD_SIZE && out.specials[j]!==target) j++;
       if(j<=BOARD_SIZE){
         out.positions[out.turn] = j;
-        out.log = [`Effect: jump to next ${target} ? at ${j}.`, ...out.log];
+        out.log = [`Effect: jump to next ${STAGES[target]} tile at ${j}.`, ...out.log];
       }
       break;
     }
@@ -123,6 +147,11 @@ function useGame(){
 
   useEffect(()=>{ setState(createState(players)); }, [players]);
 
+  // Auto-save path/specials changes
+  useEffect(()=>{
+    saveToLocal(state.path, state.specials);
+  }, [state.path, state.specials]);
+
   function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
   function reset(){ setState(createState(players)); }
 
@@ -136,30 +165,34 @@ function useGame(){
         if(s.winner) return s;
         const np = clamp(s.positions[s.turn] + 1, 0, BOARD_SIZE);
         const positions = [...s.positions]; positions[s.turn] = np;
-        const log = [`${(s.players[s.turn].name||`P${s.turn+1}`)} moved to ${np}.`, ...s.log];
+        const label = s.players[s.turn].name || `P${s.turn+1}`;
+        const log = [`${label} moved to ${np}.`, ...s.log];
         return {...s, positions, log};
       });
     }
     setState(s=>{
       if(s.positions[s.turn]===BOARD_SIZE){
-        return {...s, winner:s.turn, rolling:false, dice:d, log:[`🏆 ${(s.players[s.turn].name||`P${s.turn+1}`)} has implemented their Act!`, ...s.log]};
+        const label = s.players[s.turn].name || `P${s.turn+1}`;
+        return {...s, winner:s.turn, rolling:false, dice:d, log:[`🏆 ${label} has implemented their Act!`, ...s.log]};
       }
       let out = {...s, extraRoll:false, lastCard:null, rolling:false, dice:d};
-      const specialColor = out.specials[out.positions[out.turn]];
-      if(specialColor){
-        const [card, rest] = drawFrom(out.decks[specialColor]);
-        out.decks = {...out.decks, [specialColor]:rest};
-        out.lastCard = { color: specialColor, ...card };
-        out.log = [`Drew ${specialColor.toUpperCase()} card: ${card.title}`, ...out.log];
+      const stage = out.specials[out.positions[out.turn]];
+      if(stage){
+        const [card, rest] = drawFrom(out.decks[stage]);
+        out.decks = {...out.decks, [stage]:rest};
+        out.lastCard = { stage, ...card };
+        out.log = [`Drew ${STAGES[stage]} card: ${card.title}`, ...out.log];
         out = applyEffect(card.effect, out);
         if(out.positions[out.turn]===BOARD_SIZE){
-          return {...out, winner: out.turn, log:[`🏆 ${(out.players[out.turn].name||`P${out.turn+1}`)} has implemented their Act!`, ...out.log]};
+          const label = out.players[out.turn].name || `P${out.turn+1}`;
+          return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
         }
       }
       let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
       if(out.skips[nextTurn] > 0){
         const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
-        out.log = [`${(out.players[nextTurn].name||`P${nextTurn+1}`)} skips a turn.`, ...out.log];
+        const label = out.players[nextTurn].name || `P${nextTurn+1}`;
+        out.log = [`${label} skips a turn.`, ...out.log];
         nextTurn = (nextTurn+1) % out.players.length;
         return {...out, skips: nextSkips, turn: nextTurn};
       }
@@ -170,7 +203,9 @@ function useGame(){
   return { playerCount, setPlayerCount, players, setPlayers, state, setState, start, reset, roll };
 }
 
-function swatch(color){ return ({red:'#ff6b6b', green:'#18d18c', blue:'#58a6ff', yellow:'#ffd166'})[color] || '#ccc'; }
+function swatchStage(stage){
+  return ({early:'#d97706', commons:'#16a34a', lords:'#60a5fa', implementation:'#f59e0b'})[stage] || '#ccc';
+}
 
 function SetupPanel({playerCount, setPlayerCount, players, setPlayers, onStart}){
   return _jsxs('div', { className:'card', children:[
@@ -229,7 +264,7 @@ function PlayerSidebar({state, onRoll, onReset}){
       _jsx('div', { style:{height:10}}),
       _jsxs('div', { className:'card', style:{background:'#0b1320', border:'1px solid #20304a'}, children:[
         _jsxs('div', { style:{display:'flex', alignItems:'center', gap:8, fontWeight:800}, children:[
-          _jsx('span', { className:'color-dot', style:{background: swatch(state.lastCard.color)} }),
+          _jsx('span', { className:'color-dot', style:{background: swatchStage(state.lastCard.stage)} }),
           _jsx('div', { children: state.lastCard.title })
         ]}),
         _jsx('div', { className:'small', style:{marginTop:6, whiteSpace:'pre-wrap'}, children: state.lastCard.text })
@@ -263,43 +298,67 @@ function useCalibration(state, setState){
       return {...s, path};
     });
   }
+  function tag(stage){
+    setState(s=>{ const arr=[...s.specials]; arr[idx]=stage; return {...s, specials:arr}; });
+  }
+  function clearTag(){
+    setState(s=>{ const arr=[...s.specials]; arr[idx]=null; return {...s, specials:arr}; });
+  }
   function exportPath(){
     const data = `const PATH_58 = ${JSON.stringify(state.path.map(pt=>[+pt[0].toFixed(2), +pt[1].toFixed(2)]))};`;
     downloadText('path-58.js', data);
   }
   function exportSpecials(){
-    const obj = {};
-    state.specials.forEach((c,i)=>{ if(c) obj[i]=c; });
+    const obj = {}; state.specials.forEach((c,i)=>{ if(c) obj[i]=c; });
     const mapCode = 'const SPECIALS = new Map(' + JSON.stringify(Object.entries(obj)) + ');';
     downloadText('specials-58.js', mapCode);
   }
-  function downloadText(name, text){
-    const blob = new Blob([text], {type:'text/plain'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url);
+  function exportJSON(){
+    const data = JSON.stringify({ path: state.path, specials: state.specials }, null, 2);
+    downloadText('legislate58-calibration.json', data);
   }
-  function resetToDefault(){ setState(s=>({...s, path: DEFAULT_PATH.slice()})); }
-  function tag(color){
-    setState(s=>{
-      const arr = [...s.specials];
-      arr[idx] = color;
-      return {...s, specials: arr};
-    });
+  function importJSON(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const obj = JSON.parse(reader.result);
+        if(Array.isArray(obj.path) && Array.isArray(obj.specials) && obj.path.length===BOARD_SIZE+1 && obj.specials.length===BOARD_SIZE+1){
+          setState(s=>({...s, path: obj.path, specials: obj.specials}));
+        } else alert('Invalid calibration file');
+      } catch(e){ alert('Invalid JSON'); }
+    };
+    reader.readAsText(file);
   }
-  function clearTag(){
-    setState(s=>{
-      const arr = [...s.specials];
-      arr[idx] = null;
-      return {...s, specials: arr};
-    });
+  function saveBrowser(){
+    saveToLocal(state.path, state.specials);
+    alert('Saved to this browser.');
   }
-  return { enabled, setEnabled, idx, setIdx, onClickBoard, exportPath, exportSpecials, resetToDefault, tag, clearTag };
+  function loadBrowser(){
+    const saved = loadFromLocal();
+    if(saved){
+      setState(s=>({...s, path: saved.path, specials: saved.specials}));
+    } else alert('No saved calibration found in this browser.');
+  }
+  function clearBrowser(){
+    localStorage.removeItem(LS_KEY);
+    alert('Cleared saved calibration in this browser.');
+  }
+  function resetToDefault(){
+    setState(s=>({...s, path: DEFAULT_PATH.slice(), specials: specialsFromMap(SPECIALS_DEFAULT, BOARD_SIZE)}));
+  }
+  return { enabled, setEnabled, idx, setIdx, onClickBoard, tag, clearTag, exportPath, exportSpecials, exportJSON, importJSON, saveBrowser, loadBrowser, clearBrowser, resetToDefault };
 }
 
 function Board({state, calib}){
   return _jsxs('div', { className:'board-wrap', onClick: calib.onClickBoard, children:[
     _jsx('div', { className:'board-img' }),
+    _jsx(_Fragment, { children:
+      state.specials.map((stage,i)=>{
+        if(!stage) return null;
+        const [x,y] = state.path[i] || [0,0];
+        return _jsx('div', { className:'stage-q', style:{ left:`${x}%`, top:`${y}%`, position:'absolute', color: swatchStage(stage), fontSize: 20 }, children:'?' }, 'q'+i);
+      })
+    }),
     calib.enabled && _jsx('div', { className:'path-ghost', children:
       state.path.map(([x,y],i)=> _jsx('div', { className:'pt', style:{left:`${x}%`, top:`${y}%`, opacity: i===calib.idx?1:.6 }}, i))
     }),
@@ -318,9 +377,9 @@ function Board({state, calib}){
   ]});
 }
 
-function CalibBar({calib, state}){
-  const colorChips = ['red','green','blue','yellow'].map(c=>
-    _jsxs('button', { className:'secondary', onClick:()=>calib.tag(c), children:[_jsx('span', { className:'color-dot', style:{background: swatch(c)} }), c] }, c)
+function CalibBar({calib, state, setState}){
+  const stageBtns = Object.entries(STAGES).map(([key, label])=>
+    _jsxs('button', { className:'secondary', onClick:()=>calib.tag(key), children:[_jsx('span', { className:'stage-dot', style:{background: swatchStage(key)} }), label] }, key)
   );
   return _jsxs('div', { className:'calib-bar', children:[
     _jsxs('label', { children:[ _jsx('input', { type:'checkbox', checked:calib.enabled, onChange:e=>calib.setEnabled(e.target.checked)}), ' Calibration mode (click to set index 0..58)' ]}),
@@ -328,13 +387,18 @@ function CalibBar({calib, state}){
       _jsxs('div', { className:'badge', children:['Index: ', calib.idx]}),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.max(0,i-1)), children:'◀ Prev' }),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.min(BOARD_SIZE, calib.idx+1)), children:'Next ▶' }),
-      _jsx('button', { className:'secondary', onClick:calib.resetToDefault, children:'Reset PATH' }),
+      _jsx('button', { className:'secondary', onClick:calib.resetToDefault, children:'Reset PATH & stages' }),
       _jsx('button', { className:'cta', onClick:calib.exportPath, children:'Export PATH (path-58.js)' }),
-      _jsx('span', { className:'small', children:'Special square colour at this index:'}),
-      ...colorChips,
-      _jsx('button', { onClick:calib.clearTag, children:'Clear' }),
-      _jsx('span', { className:'small', children: state.specials[calib.idx] ? `Tagged: ${state.specials[calib.idx]}` : 'No tag' }),
-      _jsx('button', { className:'cta', onClick:calib.exportSpecials, children:'Export specials (specials-58.js)' }),
+      _jsx('button', { className:'cta', onClick:calib.exportSpecials, children:'Export stages (specials-58.js)' }),
+      _jsx('button', { onClick:calib.exportJSON, children:'Export JSON' }),
+      _jsx('button', { onClick:()=>{ const el=document.createElement('input'); el.type='file'; el.accept='.json'; el.onchange=(e)=>calib.importJSON(e.target.files[0]); el.click(); }, children:'Import JSON' }),
+      _jsx('button', { onClick:calib.saveBrowser, children:'Save in this browser' }),
+      _jsx('button', { onClick:calib.loadBrowser, children:'Load from this browser' }),
+      _jsx('button', { onClick:calib.clearBrowser, children:'Clear browser save' }),
+      _jsx('span', { className:'small', children:'Tag stage for selected index:'}),
+      ...stageBtns,
+      _jsx('button', { onClick:calib.clearTag, children:'Clear stage' }),
+      _jsx('span', { className:'small', children: state.specials[calib.idx] ? `Tagged: ${STAGES[state.specials[calib.idx]]}` : 'No tag' }),
     ]})
   ]});
 }
@@ -357,30 +421,34 @@ function App(){
         if(s.winner) return s;
         const np = clamp(s.positions[s.turn] + 1, 0, BOARD_SIZE);
         const positions = [...s.positions]; positions[s.turn] = np;
-        const log = [`${(s.players[s.turn].name||`P${s.turn+1}`)} moved to ${np}.`, ...s.log];
+        const label = s.players[s.turn].name || `P${s.turn+1}`;
+        const log = [`${label} moved to ${np}.`, ...s.log];
         return {...s, positions, log};
       });
     }
     setState(s=>{
       if(s.positions[s.turn]===BOARD_SIZE){
-        return {...s, winner:s.turn, rolling:false, dice:d, log:[`🏆 ${(s.players[s.turn].name||`P${s.turn+1}`)} has implemented their Act!`, ...s.log]};
+        const label = s.players[s.turn].name || `P${s.turn+1}`;
+        return {...s, winner:s.turn, rolling:false, dice:d, log:[`🏆 ${label} has implemented their Act!`, ...s.log]};
       }
       let out = {...s, extraRoll:false, lastCard:null, rolling:false, dice:d};
-      const specialColor = out.specials[out.positions[out.turn]];
-      if(specialColor){
-        const [card, rest] = drawFrom(out.decks[specialColor]);
-        out.decks = {...out.decks, [specialColor]:rest};
-        out.lastCard = { color: specialColor, ...card };
-        out.log = [`Drew ${specialColor.toUpperCase()} card: ${card.title}`, ...out.log];
+      const stage = out.specials[out.positions[out.turn]];
+      if(stage){
+        const [card, rest] = drawFrom(out.decks[stage]);
+        out.decks = {...out.decks, [stage]:rest};
+        out.lastCard = { stage, ...card };
+        out.log = [`Drew ${STAGES[stage]} card: ${card.title}`, ...out.log];
         out = applyEffect(card.effect, out);
         if(out.positions[out.turn]===BOARD_SIZE){
-          return {...out, winner: out.turn, log:[`🏆 ${(out.players[out.turn].name||`P${out.turn+1}`)} has implemented their Act!`, ...out.log]};
+          const label = out.players[out.turn].name || `P${out.turn+1}`;
+          return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
         }
       }
       let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
       if(out.skips[nextTurn] > 0){
         const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
-        out.log = [`${(out.players[nextTurn].name||`P${nextTurn+1}`)} skips a turn.`, ...out.log];
+        const label = out.players[nextTurn].name || `P${nextTurn+1}`;
+        out.log = [`${label} skips a turn.`, ...out.log];
         nextTurn = (nextTurn+1) % out.players.length;
         return {...out, skips: nextSkips, turn: nextTurn};
       }
@@ -393,10 +461,10 @@ function App(){
       ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: reset })
       : _jsx(SetupPanel, { playerCount, setPlayerCount, players, setPlayers, onStart: start }),
     _jsxs('div', { className:'card', children:[
-      _jsx('h2', { className:'h', children:'Board (58 spaces)' }),
+      _jsx('h2', { className:'h', children:'Board (58 spaces) — stage-calibrated'}),
       _jsx(Board, { state, calib }),
-      _jsx(CalibBar, { calib, state }),
-      _jsx('div', { className:'small', children:'Calibrate PATH (0..58) by clicking square centres. Tag special squares by colour. Export both when done.' })
+      _jsx(CalibBar, { calib, state, setState }),
+      _jsx('div', { className:'small', children:'Calibrate PATH (0..58) by clicking square centres. Tag stage for each ? square. Export or save to browser.' })
     ]})
   ]});
 }
