@@ -1,0 +1,35 @@
+name: Probe SI data (minimal)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        run: |
+          npm init -y
+          npm install node-fetch@3
+      - name: Run minimal probe
+        env:
+          SI_SINCE: ${{ inputs.SI_SINCE }}
+        run: node apps/si-tracker-v2.1/scripts/build-minimal.mjs
+      - name: Debug listing
+        if: always()
+        run: |
+          echo "== data ==" && ls -la apps/si-tracker-v2.1/data || true
+          echo "== build.json ==" && (cat apps/si-tracker-v2.1/data/build.json || true)
+      - name: Commit probe outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/si-tracker-v2.1/data/*.json || true
+          git commit -m "probe(minimal): write dataset" || exit 0
+          git push
