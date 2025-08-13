@@ -1,0 +1,31 @@
+name: Probe Parliament SPARQL (diagnostics)
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'Start date for SI search (YYYY-MM-DD)'
+        required: false
+        default: '2024-05-26'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install fetch
+        run: npm install node-fetch@2
+      - name: Run diagnostics probe
+        run: node apps/si-tracker-v2.1/scripts/diagnostic-probe.mjs
+        env:
+          SI_SINCE: ${{ github.event.inputs.since }}
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/si-tracker-v2.1/data/build.json apps/si-tracker-v2.1/data/probe.json
+          git commit -m "Diagnostics probe run" || echo "No changes to commit"
+          git push
