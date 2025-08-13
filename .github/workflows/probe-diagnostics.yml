@@ -25,4 +25,4 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "Update diagnostics probe output"
-          file_pattern: "apps/si-tracker-v2.1/data/probe.json"
+          file_pattern: "apps/si-tracker-v2.1/data/probe.json apps/si-tracker-v2.1/data/build.json"
