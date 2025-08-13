@@ -1,8 +1,17 @@
-SI Tracker backend debug patch
+# Minimal SI probe
+This adds a minimal SPARQL + builder to *prove* Parliament's SPARQL returns SIs after SI_SINCE.
 
-Drop these files into your repo, commit to main, and re-run the Action.
+## Files
+- apps/si-tracker-v2.1/scripts/queries/minimal.sparql
+- apps/si-tracker-v2.1/scripts/build-minimal.mjs
+- .github/workflows/probe-minimal.yml
 
-- scripts/queries/base-sis.sparql  (loosened filter; includes laid step attempts)
-- scripts/queries/procedure-steps-all.sparql (timeline for all WPs since SI_SINCE)
-- scripts/build-data.mjs (merges timeline; writes debug.sample in build.json)
-- ui/app.debug.js (optional, logs current SI object on detail pages)
+## Run
+- In GitHub → Actions → "Probe SI data (minimal)" → Run workflow.
+- Optionally set SI_SINCE (default 2024-05-26).
+
+## Check
+- apps/si-tracker-v2.1/data/build.json  → schema v2.1-minimal, count, sample
+- apps/si-tracker-v2.1/data/instruments.json → minimal list with id/title/laidDate
+
+If count > 0 here, the endpoint returns data. We can then re-layer procedure/timeline filters.
