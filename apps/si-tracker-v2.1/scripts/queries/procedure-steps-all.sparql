@@ -1,30 +1,14 @@
-# procedure-steps-all.sparql — full timeline for WPs since ?since
+# procedure-steps-all.sparql — timeline for all work packages since ?since
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX :    <https://id.parliament.uk/schema/>
-PREFIX id:  <https://id.parliament.uk/>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
-SELECT DISTINCT ?workPackage ?bi ?biDate ?step ?stepLabel ?houseLabel
-WHERE {
-  ?si a :StatutoryInstrumentPaper ;
-      :workPackagedThingHasWorkPackage ?workPackage .
-
-  # Only WPs with a laid step since ?since (limit scope)
-  {
-    ?workPackage :workPackageHasBusinessItem ?laidBI .
-    ?laidBI :businessItemHasProcedureStep id:cspzmb6w ; :businessItemDate ?laidDate .
-    FILTER (?laidDate >= ?since)
-  } UNION {
-    ?workPackage :workPackageHasBusinessItem ?laidBI2 .
-    ?laidBI2 :businessItemHasProcedureStep id:WkH5enjt ; :businessItemDate ?laidDate2 .
-    FILTER (?laidDate2 >= ?since)
-  }
-
-  # Now fetch all BusinessItems for those WPs (for the timeline)
+SELECT DISTINCT ?workPackage ?bi ?biDate ?step ?stepLabel ?houseLabel WHERE {
   ?workPackage :workPackageHasBusinessItem ?bi .
   ?bi :businessItemDate ?biDate ;
       :businessItemHasProcedureStep ?step .
   OPTIONAL { ?step rdfs:label ?stepLabel . }
   OPTIONAL { ?bi :businessItemHasHouse ?house . ?house :preferredLabel ?houseLabel . }
+  FILTER ( ?biDate >= ?since )
 }
 ORDER BY ?workPackage ?biDate

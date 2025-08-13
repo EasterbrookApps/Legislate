@@ -1,19 +1,21 @@
-// app.debug.js — logs the current SI object to console on detail pages
+// app.debug.js — logs the full SI object on detail pages
 (function(){
-  function logDetail(){
-    const hash = location.hash || '';
-    if(!hash.startsWith('#/detail/')) return;
-    const id = decodeURIComponent(hash.split('/')[2]||'');
-    fetch('./data/instruments.json')
-      .then(r=>r.json())
-      .then(list=>{
-        const si = list.find(x=> x.id===id);
-        console.log('[SI DEBUG]', { id, si });
-        if(!si){ console.warn('[SI DEBUG] Not found in instruments.json'); }
-      })
-      .catch(err=> console.error('[SI DEBUG] Load error', err));
+  function logCurrent(){
+    try{
+      const hash = location.hash || '';
+      const m = hash.match(/#\/detail\/(.+)$/);
+      if(!m) return;
+      const id = decodeURIComponent(m[1]);
+      fetch('./data/instruments.json')
+        .then(r=>r.json())
+        .then(arr=>{
+          const si = (arr||[]).find(x=> x.id===id);
+          console.log('[SI DEBUG]', { id, si });
+        })
+        .catch(e=> console.warn('[SI DEBUG] load error', e));
+    }catch(e){ console.warn('[SI DEBUG]', e); }
   }
-  window.addEventListener('hashchange', logDetail);
-  window.addEventListener('DOMContentLoaded', logDetail);
-  logDetail();
+  window.addEventListener('hashchange', logCurrent);
+  window.addEventListener('DOMContentLoaded', logCurrent);
+  logCurrent();
 })();
