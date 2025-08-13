@@ -1,0 +1,34 @@
+# Available SIs since date; broader laid/made label matching
+PREFIX :   <https://id.parliament.uk/schema/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT DISTINCT ?workPackage ?title ?laidOrMadeDate ?procedureKind ?procedureScrutiny ?legislationURI ?departmentLabel
+WHERE {
+  ?workPackage a :WorkPackage ; :workPackagedThing ?thing .
+  ?thing a :StatutoryInstrument .
+  OPTIONAL { ?thing :preferredLabel ?title . }
+
+  OPTIONAL {
+    ?bi a :BusinessItem ; :workPackagedThing ?thing ; :businessItemHasProcedureStep ?step ; :businessItemDate ?d .
+    ?step :preferredLabel ?stepLabel .
+    FILTER (
+      CONTAINS(LCASE(?stepLabel), "laid before the house") ||
+      CONTAINS(LCASE(?stepLabel), "laid before parliament") ||
+      CONTAINS(LCASE(?stepLabel), "laid before both houses") ||
+      CONTAINS(LCASE(?stepLabel), "laid in the house") ||
+      CONTAINS(LCASE(?stepLabel), "made")
+    )
+    BIND(?d AS ?laidOrMadeDate)
+  }
+
+  OPTIONAL { ?workPackage :hasProcedure ?proc .
+            OPTIONAL { ?proc :procedureKind ?procedureKind . }
+            OPTIONAL { ?proc :procedureRouteScrutiny ?procedureScrutiny . } }
+
+  OPTIONAL { ?thing :layingBody ?dept . ?dept :preferredLabel ?departmentLabel . }
+
+  OPTIONAL { ?thing :workPackageableThingHasLegislationURL ?legislationURI . }
+
+  FILTER (BOUND(?laidOrMadeDate) && ?laidOrMadeDate >= ?since)
+}
+ORDER BY DESC(?laidOrMadeDate)
