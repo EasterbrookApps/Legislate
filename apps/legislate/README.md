@@ -1,20 +1,22 @@
 # Legislate?! — Web Edition (Unofficial)
 
-This is a tiny, no-build web app that adapts the board game **Legislate?!** (by the Office of the Parliamentary Counsel; digital repo at `alphagov/Legislate`) into a playable browser version.
+A static, GitHub Pages–friendly web adaptation of the OPC training board game **Legislate?!**
 
-> ⚠️ This is an unofficial adaptation for training/educational use. The rules and card texts here are **sample placeholders**. Replace them with the full text from the original cards to match the physical game.
+- Big square board using the official board image from the repo.
+- Clear current player panel with names/colours, large dice, animated movement.
+- No build tools; just open `index.html` or deploy to Pages under `/apps/legislate/`.
 
-## Run it
-Just double-click `index.html` (or serve the folder with any static web server). It uses React from a CDN.
+## Deploy to GitHub Pages (folder site)
+Place this folder in your Pages repo at `/apps/legislate/` and ensure `.nojekyll` exists.
+Access it at `https://<username>.github.io/<repo>/apps/legislate/` (or without `<repo>` if using the special username repo).
 
-## Customize
+## Customise
 - Edit `app.js`:
-  - Replace `sampleDecks` with the full card content (grouped by coloured deck).
-  - Adjust `specialTiles` to match your preferred board layout and number of tiles.
-  - Add new `effect` types if needed; the UI already supports `move`, `skip_next`, `extra_roll`, and `jump_next_special`.
+  - Replace `DECKS` with the official card text grouped by colour.
+  - Tweak `SPECIALS` indices to match where you want `?` squares.
+  - Adjust `PATH` coordinates to fine-tune token locations along the printed path.
+- Update the board background by changing `.board-img` in `style.css` to another image URL or a local file you add to the repo.
 
-## Attribution & Licence
-- Original game concept and content from the **Office of the Parliamentary Counsel**, as published in the repo [`alphagov/Legislate`](https://github.com/alphagov/Legislate), available under the **Open Government Licence v3.0**.
-- This web app's **code** is provided under the **MIT License** (see `LICENSE`).
-- This project is **not** affiliated with HMG or OPC.
-
+## Licences
+- Original game content & board image: Open Government Licence v3.0 (see original authors in `alphagov/Legislate`).
+- This web app code: MIT (see `LICENSE`).
