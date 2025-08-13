@@ -1,0 +1,71 @@
+
+:root{
+  --bg:#0b0f14;
+  --panel:#121923;
+  --ink:#e9eef6;
+  --muted:#a7b3c7;
+  --accent:#4bb5ff;
+  --ok:#00d68f;
+  --warn:#ffd166;
+  --bad:#ff6b6b;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background: radial-gradient(1200px 700px at 20% 10%, #0f1722, #0b0f14 60%);
+  color:var(--ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+}
+#app{padding:24px; max-width:1200px; margin:0 auto;}
+a{color:var(--accent); text-decoration:none}
+a:hover{text-decoration:underline}
+button{
+  appearance:none; border:0; border-radius:14px; padding:10px 14px;
+  background:#1b2636; color:var(--ink); cursor:pointer; font-weight:600;
+  box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 8px 20px rgba(0,0,0,.35);
+  transition: transform .02s ease, background .2s ease, box-shadow .2s ease;
+}
+button:hover{ background:#223148}
+button:active{ transform: translateY(1px) }
+button.secondary{ background:#0f1722; border:1px solid #233046 }
+button.cta{ background:linear-gradient(180deg,#3cc8ff,#2aa0ff); color:#001527 }
+.grid{
+  display:grid; grid-template-columns: 320px 1fr; gap:24px; align-items:start;
+}
+.card{
+  background: linear-gradient(180deg,#111821,#0e141d);
+  border:1px solid #1f2b40; border-radius:18px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.35);
+}
+.h{font-size:20px; font-weight:800; letter-spacing:.3px; margin:0 0 8px}
+.small{color:var(--muted); font-size:13px}
+.stack{display:flex; gap:10px; flex-wrap:wrap}
+.input{background:#0f1722; border:1px solid #223148; color:var(--ink); border-radius:12px; padding:10px 12px}
+.badge{padding:4px 10px; border-radius:999px; background:#0f1722; border:1px solid #223148; font-size:12px; color:var(--muted)}
+hr{border:0; border-top:1px solid #223148; margin:12px 0}
+.notice{font-size:12px; color:#9fb1cc}
+.board{
+  display:grid; grid-template-columns: repeat(10, minmax(24px, 1fr));
+  gap:6px; padding:12px; background:#0a121c; border-radius:16px; border:1px solid #1f2b40;
+}
+.tile{
+  aspect-ratio:1; background:#101826; border:1px solid #1b263a; border-radius:8px;
+  display:flex; align-items:center; justify-content:center; font-size:12px; color:#9bb0ce;
+  position:relative; overflow:hidden;
+}
+.tile .mark{position:absolute; top:4px; left:6px; font-size:11px; opacity:.8}
+.tile.start{background:linear-gradient(180deg,#0f2a1f,#0a1713); border-color:#144439}
+.tile.finish{background:linear-gradient(180deg,#1e1631,#120e1f); border-color:#352758}
+.tile.you{outline:2px solid var(--accent)}
+.dot{width:14px; height:14px; border-radius:50%; display:inline-block; margin-right:6px}
+.dot.red{background:#ff6b6b}
+.dot.green{background:#00d68f}
+.dot.blue{background:#58a6ff}
+.dot.yellow{background:#ffd166; color:#001}
+.cardview{
+  background:#0b1320; border:1px solid #20304a; border-radius:14px; padding:12px;
+}
+.cardtitle{font-weight:800; letter-spacing:.3px; margin:0 0 6px}
+.cardtext{white-space:pre-wrap; font-size:14px; color:#c9d7ee}
+.deckbtn{display:flex; align-items:center; gap:8px}
+.sidebarlist{max-height:60vh; overflow:auto}
