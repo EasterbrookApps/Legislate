@@ -1,14 +1,1 @@
-# procedure-steps-all.sparql — full timeline for all WPs since ?since
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX :     <https://id.parliament.uk/schema/>
-
-SELECT DISTINCT ?workPackage ?biDate ?step ?stepLabel ?houseLabel WHERE {
-  ?workPackage a :WorkPackage .
-  ?workPackage :workPackageHasBusinessItem ?bi .
-  ?bi :businessItemDate ?biDate ;
-      :businessItemHasProcedureStep ?step .
-  OPTIONAL { ?step rdfs:label ?stepLabel . }
-  OPTIONAL { ?bi :businessItemHasHouse ?house . ?house :preferredLabel ?houseLabel . }
-  FILTER ( STR(?biDate) >= STR(?since) && STR(?biDate) <= STR(?today) )
-}
-ORDER BY ?workPackage ?biDate
+# SPARQL query for procedure steps
