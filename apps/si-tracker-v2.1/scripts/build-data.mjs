@@ -1,4 +1,4 @@
-// apps/si-tracker-v2.1/scripts/build-data.mjs (V2.1 backend)
+// build-data.mjs — patched to use base-sis.sparql and log more if count === 0
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +13,7 @@ const ENDPOINT = 'https://api.parliament.uk/sparql';
 const SINCE = process.env.SI_SINCE || '2024-07-04'; // last election default
 
 async function sparql(query){
-  const q = query.replace(/\?since\b/g, `"${SINCE}"^^<http://www.w3.org/2001/XMLSchema#date>`);
+  const q = query.replace(/\?since\b/g, `\"${SINCE}\"^^<http://www.w3.org/2001/XMLSchema#date>`);
   const res = await fetch(ENDPOINT, {
     method:'POST',
     headers: { 'content-type':'application/sparql-query', 'accept':'application/sparql-results+json' },
@@ -54,23 +54,22 @@ async function main(){
   await fs.mkdir(dataDir, { recursive: true });
   await fs.mkdir(feedsDir, { recursive: true });
 
-  // Load queries
-  const [availableQ, committeesQ, jcsiQ, motionsQ, currentQ, commonsOnlyQ] = await Promise.all([
-    readQ('available.sparql'), readQ('committees.sparql'), readQ('jcsi.sparql'), readQ('motions.sparql'),
+  // Switch to base-sis.sparql (ontology-driven, since-filtered)
+  const [baseQ, committeesQ, jcsiQ, motionsQ, currentQ, commonsOnlyQ] = await Promise.all([
+    readQ('base-sis.sparql'), readQ('committees.sparql'), readQ('jcsi.sparql'), readQ('motions.sparql'),
     readQ('currently-before.sparql'), readQ('commons-only.sparql')
   ]);
   const statusFiles = ['status/withdrawn.sparql','status/revoked.sparql','status/void.sparql','status/signed.sparql'];
   const statusQs = await Promise.all(statusFiles.map(f=> readQ(f)));
 
-  // Run queries
-  const [available, committees, jcsi, motions, current, commonsOnly, ...statusRs] = await Promise.all([
-    sparql(availableQ), sparql(committeesQ), sparql(jcsiQ), sparql(motionsQ), sparql(currentQ), sparql(commonsOnlyQ),
+  // Run
+  const [base, committees, jcsi, motions, current, commonsOnly, ...statusRs] = await Promise.all([
+    sparql(baseQ), sparql(committeesQ), sparql(jcsiQ), sparql(motionsQ), sparql(currentQ), sparql(commonsOnlyQ),
     ...statusQs.map(s=> sparql(s))
   ]);
 
-  // Merge
   const items = new Map();
-  for(const r of available.results.bindings){
+  for(const r of base.results.bindings){
     const id = val(r.workPackage); if(!id) continue;
     const o = items.get(id) || { id, events: [], committees: {}, status: 'current', tags: [] };
     o.title = val(r.title) || o.title || '';
@@ -80,6 +79,7 @@ async function main(){
     o.department = val(r.departmentLabel) || o.department || null;
     items.set(id, o);
   }
+
   for(const r of committees.results.bindings){
     const id = val(r.workPackage); if(!id) continue;
     const o = items.get(id) || { id, events: [], committees: {}, status:'current', tags:[] };
@@ -114,7 +114,7 @@ async function main(){
   const commonsSet = new Set(commonsOnly.results.bindings.map(r=> val(r.workPackage)).filter(Boolean));
   for(const id of commonsSet){ const o = items.get(id); if(o) o.commonsOnly = true; }
 
-  // Enrich with EM + CIF
+  // Enrich
   const docs = []; const calEvents = [];
   for(const [id, it] of items){
     if(it.links?.legislation){
@@ -138,7 +138,13 @@ async function main(){
 
   const list = Array.from(items.values()).sort((a,b)=> (b.attentionScore - a.attentionScore) || (b.laidDate||'').localeCompare(a.laidDate||''));
 
-  // Always write outputs
+  // If zero, log some hints into build.json later
+  let debugHints = null;
+  if(list.length === 0){
+    debugHints = { since: SINCE, note: "No results after ontology-based query; check that BusinessItem dates exist for SIs", sampleChecks: 5 };
+  }
+
+  // Write outputs
   await fs.writeFile(path.join(dataDir, 'instruments.json'), JSON.stringify(list, null, 2));
   await fs.writeFile(path.join(dataDir, 'affirmative-events.json'), JSON.stringify(calEvents.sort((a,b)=> (a.date||'').localeCompare(b.date||'')), null, 2));
   await fs.writeFile(path.join(dataDir, 'lunr-index.json'), JSON.stringify({docs}, null, 2));
@@ -150,8 +156,8 @@ async function main(){
   await fs.writeFile(path.join(feedsDir,'affirmatives.json'), JSON.stringify(list.filter(i=> i.procedure?.scrutiny==='affirmative').map(pick), null, 2));
   await fs.writeFile(path.join(feedsDir,'breaches.json'), JSON.stringify(list.filter(i=> i.breaks21DayRule===true).map(pick), null, 2));
 
-  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when: new Date().toISOString(), count:list.length, schema:'v2.1', since:SINCE}, null, 2));
-  console.log('V2.1 build complete. Items:', list.length);
+  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when: new Date().toISOString(), count:list.length, schema:'v2.1-patch', since:SINCE, hints: debugHints}, null, 2));
+  console.log('V2.1 patch build complete. Items:', list.length);
 }
 
 main().catch(async e=>{
@@ -160,5 +166,5 @@ main().catch(async e=>{
   await fs.writeFile(path.join(dataDir,'instruments.json'), '[]');
   await fs.writeFile(path.join(dataDir,'affirmative-events.json'), '[]');
   await fs.writeFile(path.join(dataDir,'lunr-index.json'), '{"docs":[]}');
-  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), error:String(e.message||e), schema:'v2.1', since:SINCE}, null, 2));
+  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), error:String(e.message||e), schema:'v2.1-patch', since:SINCE}, null, 2));
 });

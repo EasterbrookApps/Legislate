@@ -1,0 +1,44 @@
+# base-sis.sparql — Ontology-driven feed of SIs since ?since
+# Strategy:
+# - Find all WorkPackages whose WorkPackagedThing is a StatutoryInstrument
+# - Derive a "laidOrMadeDate" from ANY BusinessItem date attached to that thing
+#   (avoids brittle label matching and picks up motions/laid/made events)
+# - Filter by ?since (injected by the builder as xsd:date)
+# - Return standard fields used by the app
+PREFIX :   <https://id.parliament.uk/schema/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT DISTINCT
+  ?workPackage ?title ?laidOrMadeDate ?procedureKind ?procedureScrutiny ?legislationURI ?departmentLabel
+WHERE {
+  ?workPackage a :WorkPackage ; :workPackagedThing ?thing .
+  ?thing a :StatutoryInstrument .
+
+  OPTIONAL { ?thing :preferredLabel ?title . }
+
+  # Robust date derivation: any BusinessItem for this SI (laid, made, motion, etc.)
+  {
+    SELECT ?thing (MIN(?d) AS ?laidOrMadeDate)
+    WHERE {
+      ?bi a :BusinessItem ;
+          :workPackagedThing ?thing ;
+          :businessItemDate ?d .
+      FILTER (?d >= ?since)
+    }
+    GROUP BY ?thing
+  }
+
+  OPTIONAL {
+    ?workPackage :hasProcedure ?proc .
+    OPTIONAL { ?proc :procedureKind ?procedureKind . }
+    OPTIONAL { ?proc :procedureRouteScrutiny ?procedureScrutiny . }
+  }
+
+  OPTIONAL {
+    ?thing :layingBody ?dept .
+    ?dept  :preferredLabel ?departmentLabel .
+  }
+
+  OPTIONAL { ?thing :workPackageableThingHasLegislationURL ?legislationURI . }
+}
+ORDER BY DESC(?laidOrMadeDate)
