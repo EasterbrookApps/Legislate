@@ -1,13 +1,14 @@
 {
-  "when": "2025-08-13T17:38:30.769Z",
-  "schema": "v2.1-diagnostics",
+  "when": "2025-08-13T18:25:04.951Z",
+  "schema": "v2.1-diagnostics-fixed",
   "count": 0,
   "since": "2024-05-26",
   "diagnostics": {
     "since": "2024-05-26",
-    "status": 404,
+    "status": 403,
     "rows": 0,
     "sample": [],
-    "error": "HTTP 404"
+    "url": "https://lda.data.parliament.uk/sparql",
+    "error": "HTTP 403"
   }
 }
