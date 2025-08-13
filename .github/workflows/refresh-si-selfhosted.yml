@@ -1,0 +1,31 @@
+name: Refresh SI data (V2.1) — self-hosted
+
+on:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: 'Start date (YYYY-MM-DD). Leave blank for session start.'
+        required: false
+        default: '2024-05-26'
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install deps
+        run: npm install node-fetch@2
+      - name: Build dataset (full headers)
+        run: node apps/si-tracker-v2.1/scripts/build-data.mjs
+        env:
+          SI_SINCE: ${{ github.event.inputs.since }}
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/si-tracker-v2.1/data/*.json
+          git commit -m "Self-hosted refresh (since=${{ github.event.inputs.since }})" || echo "No changes"
+          git push
