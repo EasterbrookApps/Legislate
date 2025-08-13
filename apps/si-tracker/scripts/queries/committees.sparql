@@ -1,1 +1,30 @@
-# (placeholder)
+# Committee attention flags via step labels (robust to ID drift)
+PREFIX :   <https://id.parliament.uk/schema/>
+PREFIX id: <https://id.parliament.uk/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT DISTINCT ?workPackage ?slscFlag ?jcsiFlag ?slscReportURI
+WHERE {
+  ?workPackage a :WorkPackage ;
+               :workPackagedThing ?thing .
+  ?thing a :StatutoryInstrument .
+
+  OPTIONAL {
+    ?bi a :BusinessItem ;
+        :workPackagedThing ?thing ;
+        :businessItemHasProcedureStep ?step .
+    ?step :preferredLabel ?stepLabel .
+    FILTER ( CONTAINS(LCASE(?stepLabel), "secondary legislation scrutiny committee draws special attention") )
+    BIND (true AS ?slscFlag)
+    OPTIONAL { ?bi :workPackagedThingPaperURI ?slscReportURI . }
+  }
+
+  OPTIONAL {
+    ?bi2 a :BusinessItem ;
+         :workPackagedThing ?thing ;
+         :businessItemHasProcedureStep ?step2 .
+    ?step2 :preferredLabel ?label2 .
+    FILTER ( CONTAINS(LCASE(?label2), "joint committee on statutory instruments reports") )
+    BIND (true AS ?jcsiFlag)
+  }
+}

@@ -1,1 +1,26 @@
-# (placeholder)
+# Approval motions tabled for affirmative SIs (Commons & Lords)
+PREFIX :   <https://id.parliament.uk/schema/>
+PREFIX id: <https://id.parliament.uk/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+SELECT DISTINCT ?workPackage ?houseLabel ?date ?label
+WHERE {
+  ?workPackage a :WorkPackage ;
+               :workPackagedThing ?thing ;
+               :hasProcedure ?proc .
+  ?thing a :StatutoryInstrument .
+
+  ?proc :procedureRouteScrutiny ?scrutiny .
+  FILTER ( LCASE(STR(?scrutiny)) = "affirmative" )
+
+  ?bi a :BusinessItem ;
+      :workPackagedThing ?thing ;
+      :businessItemHasProcedureStep ?step ;
+      :businessItemDate ?date ;
+      :preferredLabel ?label ;
+      :businessItemHasHouse ?house .
+  ?house :preferredLabel ?houseLabel .
+  ?step  :preferredLabel ?stepLabel .
+  FILTER ( CONTAINS(LCASE(?stepLabel), "approval motion on statutory instrument tabled") )
+}
+ORDER BY ?date
