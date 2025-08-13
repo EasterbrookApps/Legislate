@@ -1,63 +1,50 @@
-# base-sis.sparql (refined): robust laid since ?since, both Houses, human-readable procedure fields
+# base-sis.sparql — Only SIs laid before Parliament and with a modelled procedure, since ?since
+# Aligns with Parliament's "laid this session" pattern; requires laid step in either House.
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX :    <https://id.parliament.uk/schema/>
-PREFIX rdfs:<http://www.w3.org/2000/01/rdf-schema#>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 PREFIX id:  <https://id.parliament.uk/>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 SELECT DISTINCT
-  ?workPackage ?SI ?title ?laidDate ?madeDate ?comesIntoForceDate ?comesIntoForceNote ?legislationURI
-  ?procedureKind ?procedureKindLabel ?procedureScrutiny ?procedureScrutinyLabel
-  ?departmentLabel
+  ?workPackage ?SI ?title ?laidDate ?madeDate ?comesIntoForceDate ?comesIntoForceNote
+  ?legislationURI ?procedureKindLabel ?procedureScrutinyLabel ?departmentLabel
 WHERE {
-  # SI as StatutoryInstrumentPaper, linked to WorkPackage
+  # Statutory Instrument Paper with WorkPackage
   ?SI a :StatutoryInstrumentPaper ;
-      :workPackagedThingHasWorkPackage ?workPackage .
+      :workPackagedThingHasWorkPackage ?workPackage ;
+      rdfs:label ?title .
 
-  OPTIONAL { ?SI rdfs:label ?title . }
+  # Must have a modelled procedure
+  ?workPackage :workPackageHasProcedure ?procRoute .
+  OPTIONAL { ?procRoute rdfs:label ?procedureKindLabel . }
+  OPTIONAL { ?procRoute :procedureRouteScrutiny ?scrutiny .
+            OPTIONAL { ?scrutiny rdfs:label ?procedureScrutinyLabel . } }
 
-  # Procedure and scrutiny from the work package
-  OPTIONAL {
-    ?workPackage :workPackageHasProcedure ?proc .
-    OPTIONAL { ?proc :procedureKind ?procedureKind . }
-    OPTIONAL { ?proc :procedureRouteScrutiny ?procedureScrutiny . }
-    OPTIONAL { ?procedureKind rdfs:label ?procedureKindLabel . }
-    OPTIONAL { ?procedureScrutiny rdfs:label ?procedureScrutinyLabel . }
-  }
-
-  # Department
-  OPTIONAL {
-    ?SI :layingBody ?dept .
-    OPTIONAL { ?dept :preferredLabel ?departmentLabel . }
-    OPTIONAL { ?dept :name ?departmentLabel . }
-  }
-
-  # Links and dates on the paper
+  # Legislation.gov link & key dates (optional)
   OPTIONAL { ?SI :workPackagedThingHasWorkPackagedThingWebLink ?legislationURI . }
   OPTIONAL { ?SI :statutoryInstrumentPaperMadeDate ?madeDate . }
   OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceDate ?comesIntoForceDate . }
   OPTIONAL { ?SI :statutoryInstrumentPaperComingIntoForceNote ?comesIntoForceNote . }
 
-  # Determine laid date using explicit laid steps for both Houses.
+  # Find laid BusinessItem (Commons or Lords)
   {
-    SELECT ?SI (MIN(?d) AS ?laidDate)
-    WHERE {
-      ?SI :workPackagedThingHasWorkPackage ?wp .
-      ?wp :workPackageHasBusinessItem ?bi .
-      ?bi :businessItemDate ?d ;
-          :businessItemHasProcedureStep ?step .
-      # Prefer fixed step IDs; fall back to label contains if IDs ever change.
-      FILTER (
-        ?step = id:cspzmb6w ||           # Laid before the House of Commons
-        ?step = id:WkH5enjt ||           # Laid before the House of Lords
-        CONTAINS(LCASE(STR(?step)), "cspzmb6w") ||
-        CONTAINS(LCASE(STR(?step)), "wkh5enjt") ||
-        CONTAINS(LCASE(?stepLabel), "laid before the house of commons") ||
-        CONTAINS(LCASE(?stepLabel), "laid before the house of lords")
-      )
-      OPTIONAL { ?step rdfs:label ?stepLabel . }
-      FILTER (?d >= ?since)
-    }
-    GROUP BY ?SI
+    ?workPackage :workPackageHasBusinessItem ?laidBI .
+    ?laidBI :businessItemHasProcedureStep id:cspzmb6w ;   # Commons: laid before the House of Commons
+           :businessItemDate ?laidDate ;
+           :layingHasLayingBody ?layingBody .
   }
+  UNION
+  {
+    ?workPackage :workPackageHasBusinessItem ?laidBI2 .
+    ?laidBI2 :businessItemHasProcedureStep id:WkH5enjt ;  # Lords: laid before the House of Lords
+            :businessItemDate ?laidDate ;
+            :layingHasLayingBody ?layingBody .
+  }
+
+  # Department / laying body
+  OPTIONAL { ?layingBody :name ?departmentLabel . }
+
+  # Only include SIs laid on/after ?since
+  FILTER ( ?laidDate >= ?since )
 }
-ORDER BY DESC(?laidDate) DESC(?madeDate)
+ORDER BY DESC(?laidDate)

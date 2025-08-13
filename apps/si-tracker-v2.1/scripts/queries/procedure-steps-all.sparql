@@ -1,20 +1,13 @@
-# procedure-steps-all.sparql: get timeline steps for all WPs since ?since
+# procedure-steps-all.sparql — Timeline: all BusinessItems and their ProcedureSteps for WPs since ?since
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
 PREFIX :    <https://id.parliament.uk/schema/>
-PREFIX rdfs:<http://www.w3.org/2000/01/rdf-schema#>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-PREFIX id:  <https://id.parliament.uk/>
-
-SELECT DISTINCT ?workPackage ?step ?stepLabel ?date ?houseLabel
-WHERE {
-  ?si a :StatutoryInstrumentPaper ;
-      :workPackagedThingHasWorkPackage ?workPackage .
-
+SELECT DISTINCT ?workPackage ?bi ?biDate ?step ?stepLabel ?houseLabel WHERE {
   ?workPackage :workPackageHasBusinessItem ?bi .
-  ?bi :businessItemDate ?date ;
+  ?bi :businessItemDate ?biDate ;
       :businessItemHasProcedureStep ?step .
   OPTIONAL { ?step rdfs:label ?stepLabel . }
   OPTIONAL { ?bi :businessItemHasHouse ?house . ?house :preferredLabel ?houseLabel . }
-
-  FILTER (?date >= ?since)
+  FILTER ( ?biDate >= ?since )
 }
-ORDER BY ?workPackage ?date
+ORDER BY ?workPackage ?biDate

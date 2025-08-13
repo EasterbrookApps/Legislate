@@ -1,4 +1,4 @@
-// build-data.mjs (refined): maps human-readable procedure labels & attaches timeline
+// build-data.mjs — Align with Parliament laid steps; attach full timeline; exclude non‑laid / no‑procedure.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,124 +10,157 @@ const feedsDir = path.join(appRoot, 'feeds');
 const queriesDir = path.join(__dirname, 'queries');
 
 const ENDPOINT = 'https://api.parliament.uk/sparql';
-const SINCE = process.env.SI_SINCE || '2024-07-04';
+const SINCE = process.env.SI_SINCE || '2024-07-04'; // election date default
 
-async function sparql(q){
-  const q2 = q.replace(/\?since\b/g, `\"${SINCE}\"^^<http://www.w3.org/2001/XMLSchema#date>`);
-  const res = await fetch(ENDPOINT, { method:'POST', headers:{ 'content-type':'application/sparql-query', 'accept':'application/sparql-results+json' }, body:q2 });
-  if(!res.ok){
-    const txt = await res.text().catch(()=>'');
-    throw new Error(`SPARQL ${res.status}: ${txt.substring(0,200)}`);
-  }
-  return await res.json();
+function injectSince(q){
+  return q.replace(/\?since\b/g, `"${SINCE}"^^<http://www.w3.org/2001/XMLSchema#date>`);
 }
+
+async function runQuery(text){
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: { 'content-type':'application/sparql-query', 'accept':'application/sparql-results+json' },
+    body: injectSince(text)
+  });
+  if(!res.ok){
+    const t = await res.text().catch(()=>'');
+    throw new Error(`SPARQL ${res.status}: ${t.substring(0,300)}`);
+  }
+  return res.json();
+}
+
 const readQ = (rel)=> fs.readFile(path.join(queriesDir, rel), 'utf8');
 const v = (b)=> b?.value ?? null;
 
 async function fetchHTML(url){
-  try{ const r=await fetch(url,{headers:{accept:'text/html'}}); return r.ok? await r.text(): null; }catch{ return null; }
+  try{
+    const res = await fetch(url, { headers: { 'accept':'text/html' } });
+    if(!res.ok) return null;
+    return await res.text();
+  }catch{ return null; }
 }
-function stripHtml(html){ return (html||'').replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' '); }
+function stripHtml(html){
+  return (html||'').replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/<[^>]+>/g,' ');
+}
 function extractCIFs(text){
-  if(!text) return []; const t=text.replace(/\s+/g,' ');
-  const rx=/(come into force|coming into force)[^0-9]{0,40}(\d{1,2}\s+[A-Za-z]+\s+\d{4})/gi;
-  const out=new Set(); let m; while((m=rx.exec(t))) out.add(norm(m[2])); return Array.from(out).filter(Boolean).sort();
+  if(!text) return [];
+  const t = text.replace(/\s+/g,' ');
+  const rx = /(come into force|coming into force)[^0-9]{0,40}(\d{1,2}\s+[A-Za-z]+\s+\d{4})/gi;
+  const out = new Set(); let m; while((m = rx.exec(t))) out.add(normalise(m[2]));
+  return Array.from(out).filter(Boolean).sort();
 }
-const norm=(s)=>{ try{ const d=new Date(s); return isNaN(d)?null:d.toISOString().slice(0,10);}catch{return null;} };
-const days=(a,b)=> Math.round((new Date(b+'T00:00:00Z') - new Date(a+'T00:00:00Z'))/86400000);
-const breach21=(laid,cifs)=> (!laid||!cifs?.length)? null : days(laid, cifs[0])<21;
-
-function pickLabel(uri, label){
-  if(label) return label;
-  if(!uri) return null;
-  const s=String(uri); const m=s.match(/[^/]+$/); return m?m[0]:s;
-}
+function normalise(s){ try{ const d=new Date(s); if(!isNaN(d)) return d.toISOString().slice(0,10);}catch{} return null; }
+function daysBetween(a,b){ return Math.round((new Date(b+'T00:00:00Z') - new Date(a+'T00:00:00Z'))/86400000); }
+function breach21(laid, cifs){ if(!laid||!cifs?.length) return null; return daysBetween(laid, cifs[0]) < 21; }
 
 async function main(){
-  await fs.mkdir(dataDir,{recursive:true}); await fs.mkdir(feedsDir,{recursive:true});
-  const [baseQ, committeesQ, jcsiQ, motionsQ, currentQ, commonsOnlyQ, stepsQ] = await Promise.all([
-    readQ('base-sis.sparql'), readQ('committees.sparql'), readQ('jcsi.sparql'), readQ('motions.sparql'),
-    readQ('currently-before.sparql'), readQ('commons-only.sparql'), readQ('procedure-steps-all.sparql')
-  ]);
-  const statusFiles = ['status/withdrawn.sparql','status/revoked.sparql','status/void.sparql','status/signed.sparql'];
-  const statusQs = await Promise.all(statusFiles.map(f=> readQ(f)));
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(feedsDir, { recursive: true });
 
-  const [base, committees, jcsi, motions, current, commonsOnly, steps, ...statusRs] = await Promise.all([
-    sparql(baseQ), sparql(committeesQ), sparql(jcsiQ), sparql(motionsQ), sparql(currentQ), sparql(commonsOnlyQ), sparql(stepsQ),
-    ...statusQs.map(s=> sparql(s))
+  // Load queries
+  const [
+    baseQ, timelineQ,
+    committeesQ, jcsiQ, motionsQ, currentQ, commonsOnlyQ,
+    withdrawnQ, revokedQ, voidQ, signedQ
+  ] = await Promise.all([
+    readQ('base-sis.sparql'),
+    readQ('procedure-steps-all.sparql'),
+    readQ('committees.sparql').catch(()=>''),
+    readQ('jcsi.sparql').catch(()=>''),
+    readQ('motions.sparql').catch(()=>''),
+    readQ('currently-before.sparql').catch(()=>''),
+    readQ('commons-only.sparql').catch(()=>''),
+    readQ('status/withdrawn.sparql').catch(()=>''),
+    readQ('status/revoked.sparql').catch(()=>''),
+    readQ('status/void.sparql').catch(()=>''),
+    readQ('status/signed.sparql').catch(()=>''),
   ]);
 
+  // Execute main & timeline first
+  const [baseR, timelineR] = await Promise.all([ runQuery(baseQ), runQuery(timelineQ) ]);
+
+  // Build index
   const items = new Map();
-
-  // Base
-  for(const r of base.results.bindings){
+  for(const r of baseR.results.bindings){
     const id = v(r.workPackage); if(!id) continue;
-    const o = items.get(id) || { id, events:[], committees:{}, status:'current', tags:[] };
-    o.wp = id;
+    const o = items.get(id) || { id, events: [], committees: {}, status:'current', tags:[] };
+    o.si = v(r.SI);
     o.title = v(r.title) || o.title || '';
-    o.laidDate = v(r.laidDate) || o.laidDate || v(r.madeDate) || null; // prefer laidDate, fallback madeDate
-    o.procedure = {
-      kind: pickLabel(v(r.procedureKind), v(r.procedureKindLabel)),
-      scrutiny: pickLabel(v(r.procedureScrutiny), v(r.procedureScrutinyLabel))
-    };
+    o.laidDate = (v(r.laidDate)||'').slice(0,10) || o.laidDate || null;
     o.links = o.links || {};
     o.links.legislation = v(r.legislationURI) || o.links.legislation || null;
+    o.madeDate = (v(r.madeDate)||'').slice(0,10) || null;
+    o.comesIntoForce = v(r.comesIntoForceDate) ? [ (v(r.comesIntoForceDate)||'').slice(0,10) ] : o.comesIntoForce;
+    o.comesIntoForceNote = v(r.comesIntoForceNote) || null;
     o.department = v(r.departmentLabel) || o.department || null;
+    o.procedure = {
+      kindLabel: v(r.procedureKindLabel) || null,
+      scrutinyLabel: v(r.procedureScrutinyLabel) || null
+    };
+    // Fallback: if laidDate missing, use madeDate
+    if(!o.laidDate && o.madeDate) o.laidDate = o.madeDate;
     items.set(id, o);
   }
 
-  // Steps -> timeline
-  const timelineByWp = new Map();
-  for(const r of steps.results.bindings){
-    const wp = v(r.workPackage); if(!wp) continue;
-    const arr = timelineByWp.get(wp) || [];
-    arr.push({ date: v(r.date)?.slice(0,10) || null, step: v(r.step), stepLabel: v(r.stepLabel) || pickLabel(v(r.step)), house: v(r.houseLabel)||null });
-    timelineByWp.set(wp, arr);
+  // Attach timeline
+  const tlByWP = new Map();
+  for(const r of timelineR.results.bindings){
+    const id = v(r.workPackage); if(!id) continue;
+    const entry = {
+      date: (v(r.biDate)||'').slice(0,10) || null,
+      step: v(r.step) || null,
+      stepLabel: v(r.stepLabel) || null,
+      house: v(r.houseLabel) || null
+    };
+    const arr = tlByWP.get(id) || [];
+    arr.push(entry);
+    tlByWP.set(id, arr);
+  }
+  for(const [id, arr] of tlByWP){
+    const o = items.get(id); if(!o) continue;
+    o.timeline = arr.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
   }
 
-  // Attach timelines and derive laid date from explicit laid step if present
-  const laidStepIds = new Set(['https://id.parliament.uk/cspzmb6w', 'https://id.parliament.uk/WkH5enjt']);
-  for(const [id, o] of items){
-    const tl = (timelineByWp.get(id) || []).sort((a,b)=> (a.date||'').localeCompare(b.date||''));
-    o.timeline = tl;
-    const laidEvent = tl.find(ev=> ev.step && (laidStepIds.has(ev.step) || /laid before the house/i.test(ev.stepLabel||'')));
-    if(laidEvent?.date) o.laidDate = laidEvent.date;
-  }
-
-  // Other enrichments
-  for(const r of committees.results.bindings){
-    const id = v(r.workPackage); if(!id) continue;
-    const o = items.get(id) || { id, events: [], committees: {}, status:'current', tags:[] };
-    o.committees.SLSC = { ...(o.committees.SLSC||{}), flagged: true, report: v(r.slscReportURI) || null };
-    items.set(id, o);
-  }
-  for(const r of jcsi.results.bindings){
-    const id = v(r.workPackage); if(!id) continue;
-    const o = items.get(id) || { id, events: [], committees: {}, status:'current', tags:[] };
-    o.committees.JCSI = { ...(o.committees.JCSI||{}), flagged: true };
-    items.set(id, o);
-  }
-  for(const r of motions.results.bindings){
-    const id = v(r.workPackage); if(!id) continue;
-    const o = items.get(id) || { id, events: [], committees: {}, status:'current', tags:[] };
-    o.events.push({ date: v(r.date)?.slice(0,10) || null, house: v(r.houseLabel) || null, label: v(r.label) || 'Approval motion tabled', kind: 'motion' });
-    items.set(id, o);
-  }
-  const statusNames = ['withdrawn','revoked','void','signed'];
-  statusRs.forEach((res, idx)=>{
-    for(const r of res.results.bindings){
-      const id = v(r.workPackage); if(!id) continue;
-      const o = items.get(id) || { id, events: [], committees: {}, status:'current', tags:[] };
-      o.status = statusNames[idx]; items.set(id, o);
+  // Filter: ensure we only keep items that are laid && have a procedure
+  for(const [id,o] of Array.from(items.entries())){
+    const hasLaid = !!o.laidDate;
+    const hasProc = !!(o.procedure && (o.procedure.kindLabel || o.procedure.scrutinyLabel));
+    if(!hasLaid || !hasProc){
+      items.delete(id);
     }
-  });
-  const currentSet = new Set(current.results.bindings.map(r=> v(r.workPackage)).filter(Boolean));
-  for(const [id, o] of items){ if(!currentSet.has(id) && o.status === 'current'){ o.status = o.status; } }
-  const commonsSet = new Set(commonsOnly.results.bindings.map(r=> v(r.workPackage)).filter(Boolean));
-  for(const id of commonsSet){ const o = items.get(id); if(o) o.commonsOnly = true; }
+  }
 
-  // EM enrichment + 21-day rule
-  const docs = []; const calEvents = [];
+  // Optional enrichers if present
+  const runners = [];
+  if(committeesQ) runners.push(runQuery(committeesQ).then(R=>({R,key:'SLSC'})));
+  if(jcsiQ)       runners.push(runQuery(jcsiQ).then(R=>({R,key:'JCSI'})));
+  if(motionsQ)    runners.push(runQuery(motionsQ).then(R=>({R,key:'MOTION'})));
+  if(currentQ)    runners.push(runQuery(currentQ).then(R=>({R,key:'CURRENT'})));
+  if(commonsOnlyQ)runners.push(runQuery(commonsOnlyQ).then(R=>({R,key:'COMMONS'})));
+  if(withdrawnQ)  runners.push(runQuery(withdrawnQ).then(R=>({R,key:'WITHDRAWN'})));
+  if(revokedQ)    runners.push(runQuery(revokedQ).then(R=>({R,key:'REVOKED'})));
+  if(voidQ)       runners.push(runQuery(voidQ).then(R=>({R,key:'VOID'})));
+  if(signedQ)     runners.push(runQuery(signedQ).then(R=>({R,key:'SIGNED'})));
+
+  const extras = await Promise.all(runners);
+  for(const {R,key} of extras){
+    if(!R) continue;
+    for(const r of R.results.bindings){
+      const id = v(r.workPackage); if(!id) continue;
+      const o = items.get(id); if(!o) continue;
+      if(key==='SLSC'){ o.committees.SLSC = { flagged:true, report: v(r.slscReportURI)||null }; }
+      else if(key==='JCSI'){ o.committees.JCSI = { flagged:true }; }
+      else if(key==='MOTION'){ (o.events=o.events||[]).push({ date:(v(r.date)||'').slice(0,10), house:v(r.houseLabel)||null, label:v(r.label)||'Motion', kind:'motion' }); }
+      else if(key==='CURRENT'){ /* presence implies current; already default */ }
+      else if(key==='COMMONS'){ o.commonsOnly = true; }
+      else if(key==='WITHDRAWN'){ o.status='withdrawn'; }
+      else if(key==='REVOKED'){ o.status='revoked'; }
+      else if(key==='VOID'){ o.status='void'; }
+      else if(key==='SIGNED'){ o.status='signed'; }
+    }
+  }
+
+  // EM + 21-day check
   for(const [id, it] of items){
     if(it.links?.legislation){
       const emURL = it.links.legislation.replace(/\/contents\/made.*/,'') + '/memorandum/contents';
@@ -135,41 +168,55 @@ async function main(){
       const [emHTML, legHTML] = await Promise.all([fetchHTML(emURL), fetchHTML(it.links.legislation)]);
       const emText = stripHtml(emHTML);
       if(emText) it.emHtml = emHTML;
-      const cifs = (legHTML? extractCIFs(legHTML): []);
+      const cifs = extractCIFs(legHTML);
       if(cifs.length) it.comesIntoForce = cifs;
-      if((it.procedure?.kind||'').toLowerCase().includes('made') && (it.procedure?.scrutiny||'').toLowerCase().includes('negative')){
-        it.breaks21DayRule = breach21(it.laidDate, cifs);
+      // 21-day: made negatives (use laidDate vs first CIF date)
+      const procK = (it.procedure?.kindLabel||'').toLowerCase();
+      const procS = (it.procedure?.scrutinyLabel||'').toLowerCase();
+      const isMadeNegative = procK.includes('made') && procS.includes('negative') || procS=='negative';
+      if(isMadeNegative){
+        it.breaks21DayRule = breach21(it.laidDate, it.comesIntoForce);
       } else it.breaks21DayRule = null;
-      docs.push({ id, content: [it.title, emText || ''].join(' ') });
     }
-    if((it.procedure?.scrutiny||'').toLowerCase() === 'affirmative'){
-      for(const ev of (it.events||[])){ if(ev.date) calEvents.push({ date: ev.date, title: it.title, house: ev.house, kind: ev.kind||'motion' }); }
-    }
+    // attention score
     it.attentionScore = (it.committees?.SLSC?.flagged?3:0)+(it.committees?.JCSI?.flagged?3:0)+(it.breaks21DayRule===true?4:0)+((it.events?.length||0)?2:0);
   }
 
+  // Build list
   const list = Array.from(items.values()).sort((a,b)=> (b.attentionScore - a.attentionScore) || (b.laidDate||'').localeCompare(a.laidDate||''));
 
-  await fs.writeFile(path.join(dataDir,'instruments.json'), JSON.stringify(list,null,2));
-  await fs.writeFile(path.join(dataDir,'affirmative-events.json'), JSON.stringify(calEvents.sort((a,b)=> (a.date||'').localeCompare(b.date||'')), null, 2));
-  await fs.writeFile(path.join(dataDir,'lunr-index.json'), JSON.stringify({docs}, null, 2));
+  // Calendar events from motions (affirmatives)
+  const calEvents = [];
+  for(const it of list){
+    if((it.procedure?.scrutinyLabel||'').toLowerCase().includes('affirmative')){
+      for(const ev of (it.events||[])){ if(ev.date) calEvents.push({ date:ev.date, title: it.title, house: ev.house, kind: ev.kind||'motion' }); }
+    }
+  }
+
+  // Always write outputs
+  await fs.writeFile(path.join(dataDir, 'instruments.json'), JSON.stringify(list, null, 2));
+  await fs.writeFile(path.join(dataDir, 'affirmative-events.json'), JSON.stringify(calEvents.sort((a,b)=> (a.date||'').localeCompare(b.date||'')), null, 2));
+  await fs.writeFile(path.join(dataDir, 'lunr-index.json'), JSON.stringify({docs: list.map(i=>({id:i.id, content: [i.title, stripHtml(i.emHtml||'')].join(' ')}))}, null, 2));
   try{ await fs.access(path.join(dataDir,'archive.json')); }catch{ await fs.writeFile(path.join(dataDir,'archive.json'), JSON.stringify({ids:[]}, null, 2)); }
 
-  const pick = (i)=> ({ id:i.id, title:i.title, laidDate:i.laidDate, department:i.department, procedure:i.procedure, status:i.status, commonsOnly:!!i.commonsOnly, breaks21DayRule:i.breaks21DayRule });
-  await fs.mkdir(feedsDir,{recursive:true});
+  // Feeds
+  const pick = (i)=> ({ id:i.id, title:i.title, laidDate:i.laidDate, department:i.department, procedure:{kind:i.procedure?.kindLabel||null, scrutiny:i.procedure?.scrutinyLabel||null}, status:i.status||'current', commonsOnly:!!i.commonsOnly, breaks21DayRule:i.breaks21DayRule });
+  await fs.mkdir(feedsDir, { recursive: true });
   await fs.writeFile(path.join(feedsDir,'newly-laid.json'), JSON.stringify(list.slice(0,50).map(pick), null, 2));
-  await fs.writeFile(path.join(feedsDir,'affirmatives.json'), JSON.stringify(list.filter(i=> (i.procedure?.scrutiny||'').toLowerCase()==='affirmative').map(pick), null, 2));
+  await fs.writeFile(path.join(feedsDir,'affirmatives.json'), JSON.stringify(list.filter(i=> (i.procedure?.scrutinyLabel||'').toLowerCase().includes('affirmative')).map(pick), null, 2));
   await fs.writeFile(path.join(feedsDir,'breaches.json'), JSON.stringify(list.filter(i=> i.breaks21DayRule===true).map(pick), null, 2));
 
-  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), count:list.length, schema:'v2.1-fix2', since:SINCE}, null, 2));
-  console.log('V2.1 fix2 build complete. Items:', list.length);
+  // Debug hints
+  const debug = list.length===0 ? { since:SINCE, msg:"No items after laid-step filter; confirm step IDs && availability." } : undefined;
+  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), count:list.length, schema:'v2.1-proc-timeline', since:SINCE, debug}, null, 2));
+  console.log('Build complete. Items:', list.length);
 }
 
 main().catch(async e=>{
   console.error('Build failed:', e.message||e);
-  await fs.mkdir(dataDir,{recursive:true});
-  await fs.writeFile(path.join(dataDir,'instruments.json'),'[]');
-  await fs.writeFile(path.join(dataDir,'affirmative-events.json'),'[]');
-  await fs.writeFile(path.join(dataDir,'lunr-index.json'),'{"docs":[]}');
-  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), error:String(e.message||e), schema:'v2.1-fix2', since:SINCE}, null, 2));
+  await fs.mkdir(dataDir, { recursive: true });
+  await fs.writeFile(path.join(dataDir,'instruments.json'), '[]');
+  await fs.writeFile(path.join(dataDir,'affirmative-events.json'), '[]');
+  await fs.writeFile(path.join(dataDir,'lunr-index.json'), '{"docs":[]}');
+  await fs.writeFile(path.join(dataDir,'build.json'), JSON.stringify({when:new Date().toISOString(), error:String(e.message||e), schema:'v2.1-proc-timeline', since:SINCE}, null, 2));
 });
