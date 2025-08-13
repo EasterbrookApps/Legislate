@@ -1,4 +1,4 @@
-// Diagnostics probe (POST + Accept header) — writes probe.json and build.json
+// Diagnostics probe with User-Agent header
 import fs from 'node:fs';
 
 const since = process.env.SI_SINCE || '2024-05-26';
@@ -28,7 +28,8 @@ async function run() {
       method: 'POST',
       headers: {
         'content-type': 'application/sparql-query',
-        'accept': 'application/sparql-results+json'
+        'accept': 'application/sparql-results+json',
+        'user-agent': 'Mozilla/5.0 (compatible; SI-Tracker/1.0; +https://easterbrookapps.github.io)'
       },
       body: minimalQuery
     });
@@ -45,10 +46,11 @@ async function run() {
   } catch (err) {
     probe.error = err.message || String(err);
   }
+  fs.mkdirSync('apps/si-tracker-v2.1/data', { recursive: true });
   fs.writeFileSync('apps/si-tracker-v2.1/data/probe.json', JSON.stringify(probe, null, 2));
   const buildFile = {
     when: new Date().toISOString(),
-    schema: 'v2.1-diagnostics-fixed',
+    schema: 'v2.1-diagnostics-UA',
     count: probe.rows,
     since,
     diagnostics: probe
