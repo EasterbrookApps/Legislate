@@ -1,4 +1,4 @@
-# Base set of SIs in the current Session (from 2024-11-01), with laid date etc.
+# SIs from the start of the current Parliament (last election: 2024-07-04) to today
 PREFIX :   <https://id.parliament.uk/schema/>
 PREFIX id: <https://id.parliament.uk/>
 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -11,6 +11,7 @@ WHERE {
 
   OPTIONAL { ?thing :preferredLabel ?title . }
 
+  # Any "Laid before the House ..." business item date
   OPTIONAL {
     ?laidBI a :BusinessItem ;
             :workPackagedThing ?thing ;
@@ -33,6 +34,7 @@ WHERE {
 
   OPTIONAL { ?thing :workPackageableThingHasLegislationURL ?legislationURI . }
 
-  FILTER (BOUND(?laidDate) && ?laidDate >= "2024-11-01"^^xsd:date)
+  # Filter from last General Election to today
+  FILTER (BOUND(?laidDate) && ?laidDate >= "2024-07-04"^^xsd:date)
 }
 ORDER BY DESC(?laidDate)
