@@ -92,3 +92,9 @@ button.cta{background:linear-gradient(180deg,#3cc8ff,#2aa0ff);color:#03121f}
 .playercard{display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-radius:12px; background:#0c1320; border:1px solid #20304a}
 .playercard .name{display:flex; align-items:center; gap:8px; font-weight:700}
 .turnarrow{margin-left:6px; font-size:18px}
+
+.calib-bar{margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+.calib-dot{position:absolute;width:8px;height:8px;border-radius:50%;background:#fff;outline:2px solid #000a;transform:translate(-50%,-50%);}
+.path-ghost{position:absolute; inset:0; pointer-events:none}
+.path-ghost .pt{position:absolute; width:10px; height:10px; border-radius:50%; background:#fff8; transform:translate(-50%,-50%);}
+.toggle{display:flex; align-items:center; gap:8px}
