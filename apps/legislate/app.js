@@ -208,8 +208,6 @@ function useGame(){
   const [state, setState] = useState(()=>createState(players));
   useEffect(()=>{ setState(createState(players)); }, [players]);
 
-  useEffect(()=>{ setState(createState(players)); }, [players]);
-
   function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
   function reset(){ setState(createState(players)); }
 
@@ -452,7 +450,6 @@ function App(){
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
-  useEffect(()=>{ setState(createState(players)); }, [players]);
   const { setPathPoint, setStageAt } = (()=>{
     function setPathPoint(i,x,y){ setState(s=>{ const p=[...s.path]; p[i]=[x,y]; savePath(p); return {...s, path:p}; }); }
     function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; saveStages(a); return {...s, stages:a}; }); }
