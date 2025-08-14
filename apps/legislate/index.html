@@ -32,26 +32,15 @@
 <script>
 document.addEventListener('click', function(e){
   const t = e.target;
-  if(t && t.hasAttribute('data-dismiss')){
-    if(window.__onCardOk) { try{ window.__onCardOk(); }catch(e){} }
-    else {
-      const modal = document.getElementById('card-modal');
-      if(modal){ modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true'); }
+  if(t && t.hasAttribute && t.hasAttribute('data-dismiss')){
+    if(window.__onCardOk){ try{ window.__onCardOk(); }catch(e){} }
+    const modal = document.getElementById('card-modal');
+    if(modal){
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden','true');
     }
   }
-}, { passive: true });
-</script>
-
-
-<script>
-// Ensure audio context resumes on first user gesture (mobile/iOS)
-document.addEventListener('click', function(){
-  try{
-    if(window._ambCtx && window._ambCtx.state !== 'running'){
-      window._ambCtx.resume();
-    }
-  }catch(e){}
-}, { once:false, passive:true });
+}, { passive:true });
 </script>
 
 </body>

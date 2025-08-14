@@ -1,103 +1,5 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.sh/react@18.3.1/jsx-runtime'
 
-
-// === Modal helpers (blocking) for centered card ===
-function showCardModalBlocking({ title, text }){
-  const modal = document.getElementById('card-modal');
-  if(!modal) return Promise.resolve();
-  const titleEl = modal.querySelector('#card-title');
-  const bodyEl = modal.querySelector('#card-body');
-  titleEl.textContent = title || 'Card';
-  bodyEl.textContent = text || '';
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden','false');
-  return new Promise(resolve => {
-    const dismissers = modal.querySelectorAll('[data-dismiss]');
-    const onClose = ()=>{
-      modal.classList.add('hidden');
-      modal.setAttribute('aria-hidden','true');
-      dismissers.forEach(el=>el.removeEventListener('click', onClose));
-      resolve();
-    };
-    dismissers.forEach(el=>el.addEventListener('click', onClose, { once:true }));
-  });
-}
-
-  const ctx = new (window.AudioContext||window.webkitAudioContext)();
-  const gain = ctx.createGain(); gain.gain.value = 0.22; // louder by request
-  const pan = (ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createPanner());
-  if(pan.pan) pan.pan.value = 0;
-  // Brown noise approximation
-  const bufferSize = 2 * ctx.sampleRate;
-  const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const output = noiseBuffer.getChannelData(0);
-  let lastOut = 0.0;
-  for (let i = 0; i < bufferSize; i++) {
-    const white = Math.random() * 2 - 1;
-    output[i] = (lastOut + (0.02 * white)) / 1.02;
-    lastOut = output[i];
-    output[i] *= 0.5; // scale
-  }
-  const noise = ctx.createBufferSource();
-  noise.buffer = noiseBuffer;
-  noise.loop = true;
-
-  // Lowpass to soften hiss
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 800;
-
-  noise.connect(lp).connect(gain).connect(pan).connect(ctx.destination);
-  noise.start(0);
-
-  // Subtle dynamics
-  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.18;
-  const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.05 * gain.gain.value; // 5% depth
-  lfo.connect(lfoGain);
-  lfoGain.connect(gain.gain);
-  lfo.start();
-
-  // Slow pan drift
-  if(pan.pan){ 
-    const panLFO = ctx.createOscillator(); panLFO.frequency.value = 0.07;
-    const panGain = ctx.createGain(); panGain.gain.value = 0.6; // -0.6..+0.6
-    panLFO.connect(panGain); 
-    panGain.connect(pan.pan); 
-    panLFO.start();
-  }
-
-
-  _ambCtx = ctx; _ambGain = gain; _noiseNode = noise; window.AMB_ON=true;
-}
-
-// Hook that App sets to continue after user clicks OK on a card
-window.__onCardOk = null;
-
-function stopAmbience(){
-  if(_ambCtx){
-    try{ _noiseNode.stop(); }catch{}
-    _ambCtx.close(); _ambCtx=null; _ambGain=null; _noiseNode=null; 
-  }
-}
-
-function showCardModal({ title, text }){
-  const modal = document.getElementById('card-modal');
-  if(!modal) return;
-  const titleEl = modal.querySelector('#card-title');
-  const bodyEl = modal.querySelector('#card-body');
-  titleEl.textContent = title || 'Card';
-  bodyEl.textContent = text || '';
-  modal.classList.remove('hidden');
-  modal.setAttribute('aria-hidden','false');
-}
-function hideCardModal(){
-  const modal = document.getElementById('card-modal');
-  if(!modal) return;
-  modal.classList.add('hidden');
-  modal.setAttribute('aria-hidden','true');
-}
-
-
-
 const { useState, useEffect } = React;
 
 // 58 spaces EXCLUDING start => indices 0..58
@@ -175,7 +77,6 @@ function createState(players, path = loadPath(), stages = loadStages()){
     pendingEffect:null,
     awaitingAck:false,
     modalOpen:false,
-    modalOpen:false,
     log: [],
     extraRoll:false,
     started:false,
@@ -225,7 +126,6 @@ function useGame(){
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
-  useEffect(()=>{ setState(createState(players)); }, [players]);
 
   useEffect(()=>{ setState(createState(players)); }, [players]);
 
@@ -258,6 +158,7 @@ function useGame(){
         const [card, rest] = drawFrom(out.decks[stage]);
         out.decks = {...out.decks, [stage]:rest};
         out.lastCard = { stage, ...card };
+        out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
         out.pendingEffect = card.effect;
         out.awaitingAck = true;
         out.modalOpen = true;
@@ -352,8 +253,9 @@ function PlayerSidebar({state, onRoll, onReset}){
     ]}),
     _jsxs('div', { style:{display:'flex', gap:10, alignItems:'center', marginTop:12}, children:[
       _jsxs('div', { className:`dice ${state.rolling?'rolling':''}`, children:[ state.dice || '–' ]}),
-      _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.modalOpen || state.awaitingAck, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
-                ]}),
+      _jsx('button', { onClick:onRoll, disabled:state.winner!=null, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
+      _jsx('button', { className:'secondary', onClick:onReset, children:'Reset' }),
+    ]}),
     state.lastCard && _jsxs(_Fragment, { children:[
       _jsx('div', { style:{height:10}}),
       _jsxs('div', { className:'card', style:{background:'#0b1320', border:'1px solid #20304a'}, children:[
@@ -453,7 +355,10 @@ function CalibBar({calib, state, setStageAt}){
       _jsxs('div', { className:'badge', children:['Index: ', calib.idx]}),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.max(0,i-1)), children:'◀ Prev' }),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.min(BOARD_SIZE, calib.idx+1)), children:'Next ▶' }),
-                        _jsx('label', { className:'stage-chip', children:_jsxs('span', { children:[ ' Import JSON ', _jsx('input', { type:'file', accept:'.json', onChange:e=> e.target.files?.[0] && calib.importJSON(e.target.files[0]) }) ]}) }),
+      _jsx('button', { className:'secondary', onClick:calib.exportJSON, children:'Export JSON (path+stages)' }),
+      _jsx('button', { className:'secondary', onClick:calib.exportPathCode, children:'Export PATH (code)' }),
+      _jsx('button', { className:'secondary', onClick:calib.exportStagesCode, children:'Export stages (code)' }),
+      _jsx('label', { className:'stage-chip', children:_jsxs('span', { children:[ ' Import JSON ', _jsx('input', { type:'file', accept:'.json', onChange:e=> e.target.files?.[0] && calib.importJSON(e.target.files[0]) }) ]}) }),
       _jsx('span', { className:'small', children:'Set stage at this index:'}),
       _jsx(StageBtn, { id:'early' }),
       _jsx(StageBtn, { id:'commons' }),
@@ -468,7 +373,6 @@ function App(){
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
-  useEffect(()=>{ setState(createState(players)); }, [players]);
   const { setPathPoint, setStageAt } = (()=>{
     function setPathPoint(i,x,y){ setState(s=>{ const p=[...s.path]; p[i]=[x,y]; savePath(p); return {...s, path:p}; }); }
     function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; saveStages(a); return {...s, stages:a}; }); }
@@ -477,29 +381,47 @@ function App(){
 
   const calib = useCalibration(state, setState, setPathPoint, setStageAt);
 
-  // Show modal when a card is pending
-  useEffect(()=>{
-    if(state.modalOpen && state.lastCard){
-      const { title, text } = state.lastCard;
-      const modal = document.getElementById('card-modal');
-      if(modal){
-        const titleEl = modal.querySelector('#card-title');
-        const bodyEl = modal.querySelector('#card-body');
-        titleEl.textContent = title || 'Card';
-        bodyEl.textContent = text || '';
-        modal.classList.remove('hidden');
-        modal.setAttribute('aria-hidden','false');
+// Show modal when a card is pending
+useEffect(()=>{
+  if(state.modalOpen && state.lastCard){
+    const { title, text } = state.lastCard;
+    const modal = document.getElementById('card-modal');
+    if(modal){
+      const titleEl = modal.querySelector('#card-title');
+      const bodyEl = modal.querySelector('#card-body');
+      titleEl.textContent = title || 'Card';
+      bodyEl.textContent = text || '';
+      modal.classList.remove('hidden');
+      modal.setAttribute('aria-hidden','false');
+    }
+  }
+}, [state.modalOpen, state.lastCard]);
+
+// Continue game when OK is clicked
+window.__onCardOk = ()=>{
+  setState(s=>{
+    if(!s.awaitingAck || !s.pendingEffect){
+      return { ...s, modalOpen:false, lastCard:null, awaitingAck:false };
+    }
+    let out = { ...s, modalOpen:false, awaitingAck:false };
+    out = applyEffect(s.pendingEffect, out);
+    out.pendingEffect = null;
+    if(out.positions[out.turn]===BOARD_SIZE){
+      const label = (out.players[out.turn].name||`P{out.turn+1}`);
+      return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
+    }
+    if(out.awaitingAck){ return out; }
+      let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
+      if(out.skips[nextTurn] > 0){
+        const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
+        const label = (out.players[nextTurn].name||`P${nextTurn+1}`);
+        out.log = [`${label} skips a turn.`, ...out.log];
+        nextTurn = (nextTurn+1) % out.players.length;
+        return {...out, skips: nextSkips, turn: nextTurn};
       }
-    }
-  }, [state.modalOpen, state.lastCard]);
-
-
-  // Show centered card modal when a card is drawn
-  useEffect(()=>{
-    if(state && state.lastCard){
-      showCardModal({ title: state.lastCard.title, text: state.lastCard.text });
-    }
-  }, [state && state.lastCard]);
+      return {...out, turn: nextTurn};
+  });
+};
 
 
   function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
@@ -530,6 +452,7 @@ function App(){
         const [card, rest] = drawFrom(out.decks[stage]);
         out.decks = {...out.decks, [stage]:rest};
         out.lastCard = { stage, ...card };
+        out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
         out.pendingEffect = card.effect;
         out.awaitingAck = true;
         out.modalOpen = true;
@@ -551,45 +474,9 @@ function App(){
     });
   }
 
-  
-  // When user clicks OK on modal, apply pending effect and advance turn
-  window.__onCardOk = ()=>{
-    setState(s=>{
-      if(!s.awaitingAck || !s.pendingEffect) {
-        // just close
-        return { ...s, modalOpen:false, lastCard:null, awaitingAck:false };
-      }
-      let out = { ...s, modalOpen:false, awaitingAck:false };
-      out = applyEffect(out.pendingEffect, out);
-      out.pendingEffect = null;
-      // Win check after effect
-      if(out.positions[out.turn]===BOARD_SIZE){
-        const label = (out.players[out.turn].name||`P${out.turn+1}`);
-        return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
-      }
-      // Advance turn (respect extraRoll & skips)
-      if(out.awaitingAck){ return out; }
-      let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
-      if(out.skips[nextTurn] > 0){
-        const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
-        const label = (out.players[nextTurn].name||`P${nextTurn+1}`);
-        out.log = [`${label} skips a turn.`, ...out.log];
-        nextTurn = (nextTurn+1) % out.players.length;
-        return {...out, skips: nextSkips, turn: nextTurn};
-      }
-      return {...out, turn: nextTurn};
-    });
-    // Hide modal in DOM
-    const modal = document.getElementById('card-modal');
-    if(modal){
-      modal.classList.add('hidden');
-      modal.setAttribute('aria-hidden','true');
-    }
-  };
-
   return _jsxs('div', { className:'grid', children:[
     state.started
-      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)),  })
+      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)) })
       : _jsx(SetupPanel, { playerCount, setPlayerCount, players, setPlayers, onStart: ()=>setState(s=>({...s, started:true})) }),
     _jsxs('div', { className:'card', children:[
       _jsx('h2', { className:'h', children:'Board (58 spaces)' }),

@@ -58,15 +58,12 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 .card-modal.hidden { display: none; }
 .card-modal__backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.55); backdrop-filter: blur(2px); }
 .card-modal__panel { position: relative; width: min(90vw, 580px); background: #0b1320; color:#fff; border-radius: 16px; box-shadow: 0 12px 40px rgba(0,0,0,.25); display: grid; grid-template-rows: auto 1fr auto; max-height: 80vh; transform: scale(.98); opacity: 0; animation: card-in .18s ease-out forwards; }
-.card-modal__header { padding: 16px 20px; border-bottom: 1px solid #ececec; }
-.card-modal__title { margin: 0; font-size: 1.125rem; font-weight: 700; letter-spacing: .2px; }
-.card-modal__close { position: absolute; top: 10px; right: 10px; border: 0; background: transparent; font-size: 1.5rem; line-height: 1; cursor: pointer; opacity: .6; }
+.card-modal__header { padding: 16px 20px; border-bottom: 1px solid #20304a; }
+.card-modal__title { margin: 0; font-size: 1.2rem; font-weight: 700; letter-spacing: .2px; }
+.card-modal__close { position: absolute; top: 10px; right: 10px; border: 0; background: transparent; font-size: 1.5rem; line-height: 1; cursor: pointer; opacity: .7; color:#fff; }
 .card-modal__close:hover { opacity: 1; }
-.card-modal__body { background: rgba(255,255,255,0.02);  padding: 20px; font-size: 1.05rem; line-height: 1.5; white-space: pre-wrap; }
-.card-modal__footer { padding: 16px 20px; border-top: 1px solid #ececec; display: flex; justify-content: flex-end; gap: 12px; }
-.card-modal__btn { padding: 10px 16px; border-radius: 10px; border: 1px solid #e5e5e5; background: #111; color: #fff; cursor: pointer; }
+.card-modal__body { padding: 20px; font-size: 1.05rem; line-height: 1.5; white-space: pre-wrap; }
+.card-modal__footer { padding: 16px 20px; border-top: 1px solid #20304a; display: flex; justify-content: flex-end; gap: 12px; }
+.card-modal__btn { padding: 10px 16px; border-radius: 10px; border: 1px solid #2a3b58; background: #1a2640; color: #fff; cursor: pointer; }
 .card-modal__btn:hover { filter: brightness(1.05); }
 @keyframes card-in { to { transform: scale(1); opacity: 1; } }
-
-.card-modal__title{font-size:1.25rem}
-.card-modal__body{font-size:1.1rem}
