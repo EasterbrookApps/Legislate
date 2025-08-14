@@ -48,8 +48,6 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 
 /* Calibration */
 .calib-bar{margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-.path-ghost{position:absolute; inset:0; pointer-events:none}
-.path-ghost .pt{position:absolute; width:10px; height:10px; border-radius:50%; background:#fff8; transform:translate(-50%,-50%)}
 .calib-dot{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;outline:2px solid #000a;transform:translate(-50%,-50%)}
 
 /* Modal */
