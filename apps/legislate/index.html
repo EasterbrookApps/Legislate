@@ -1,1 +1,70 @@
-<!doctype html><title>Legislate?!</title><div id='app'></div><script type='module' src='./app.js'></script>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legislate?! — Web Edition (baked v58)</title>
+  <meta name="description" content="Unofficial web adaptation of Legislate?! with 58-space baked calibration and stage decks." />
+  <link rel="stylesheet" href="./style.css" />
+  <style>/* tiny safeguard so users see errors if they occur */
+    #error { position: fixed; bottom: 8px; left: 8px; right: 8px; background:#300; color:#fff; padding:.5rem .75rem; border-radius:8px; display:none }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Legislate?!</div>
+    <div id="calib-chip" class="chip" aria-hidden="true">Calibration: v58</div>
+    <div class="spacer"></div>
+    <div class="menu">
+      <button id="menuBtn" aria-haspopup="true" aria-expanded="false" title="Settings">⚙ Settings</button>
+      <div id="menuPanel" class="menu-panel" role="menu" aria-labelledby="menuBtn">
+        <div class="menu-section" aria-label="Player settings">
+          <div class="menu-title">Game</div>
+          <button class="menu-item" data-action="restart" role="menuitem">Restart game</button>
+          <label class="menu-item checkbox" role="menuitemcheckbox">
+            <input type="checkbox" id="reducedMotion" /> Reduced motion
+          </label>
+          <label class="menu-item checkbox" role="menuitemcheckbox">
+            <input type="checkbox" id="muteAudio" /> Mute sounds
+          </label>
+        </div>
+        <div class="divider"></div>
+        <div class="menu-section" id="devSection" hidden aria-label="Dev tools">
+          <div class="menu-title">Dev tools</div>
+          <label class="menu-item checkbox">
+            <input type="checkbox" id="toggleCalibration" /> Edit calibration
+          </label>
+          <button class="menu-item" id="exportCalib" role="menuitem">Export calibration</button>
+          <label class="menu-item file">
+            Import calibration <input type="file" id="importCalib" accept="application/json" />
+          </label>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="calib-banner" class="calib-banner" role="status" aria-live="polite" hidden>
+    <div>Calibration mode is active — base is v58. Edits won’t persist unless you export.</div>
+    <div class="banner-actions">
+      <button id="exitCalib" class="secondary">Exit calibration</button>
+      <button id="exportCalib2" class="secondary">Export</button>
+      <button id="dismissBanner" class="secondary">Dismiss</button>
+    </div>
+  </div>
+
+  <div id="app"></div>
+  <div id="error" aria-live="assertive"></div>
+
+  <!-- React (CDN) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- show JS errors so a blank page isn't silent -->
+  <script>window.addEventListener('error', e => { 
+    const box = document.getElementById('error'); 
+    if(!box) return; 
+    box.style.display='block'; 
+    box.textContent = 'Error: ' + (e.error && e.error.message ? e.error.message : e.message); 
+  });</script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
