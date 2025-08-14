@@ -1,5 +1,3 @@
-import React from 'https://esm.sh/react@18.3.1';
-import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.sh/react@18.3.1/jsx-runtime'
 
 
@@ -26,7 +24,9 @@ function showCardModalBlocking({ title, text }){
 }
 
   const ctx = new (window.AudioContext||window.webkitAudioContext)();
-  const gain = ctx.createGain(); gain.gain.value = 0.04; // subtle
+  const gain = ctx.createGain(); gain.gain.value = 0.22; // louder by request
+  const pan = (ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createPanner());
+  if(pan.pan) pan.pan.value = 0;
   // Brown noise approximation
   const bufferSize = 2 * ctx.sampleRate;
   const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -46,19 +46,36 @@ function showCardModalBlocking({ title, text }){
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass'; lp.frequency.value = 800;
 
-  noise.connect(lp).connect(gain).connect(ctx.destination);
+  noise.connect(lp).connect(gain).connect(pan).connect(ctx.destination);
   noise.start(0);
 
-   = ctx; _ambGain = gain; _noiseNode = noise; window.=true;
+  // Subtle dynamics
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.18;
+  const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.05 * gain.gain.value; // 5% depth
+  lfo.connect(lfoGain);
+  lfoGain.connect(gain.gain);
+  lfo.start();
+
+  // Slow pan drift
+  if(pan.pan){ 
+    const panLFO = ctx.createOscillator(); panLFO.frequency.value = 0.07;
+    const panGain = ctx.createGain(); panGain.gain.value = 0.6; // -0.6..+0.6
+    panLFO.connect(panGain); 
+    panGain.connect(pan.pan); 
+    panLFO.start();
+  }
+
+
+  _ambCtx = ctx; _ambGain = gain; _noiseNode = noise; window.AMB_ON=true;
 }
 
 // Hook that App sets to continue after user clicks OK on a card
 window.__onCardOk = null;
 
-function (){
-  if(){
+function stopAmbience(){
+  if(_ambCtx){
     try{ _noiseNode.stop(); }catch{}
-    .close(); =null; _ambGain=null; _noiseNode=null; window.=false;
+    _ambCtx.close(); _ambCtx=null; _ambGain=null; _noiseNode=null; 
   }
 }
 
@@ -210,6 +227,8 @@ function useGame(){
   const [state, setState] = useState(()=>createState(players));
   useEffect(()=>{ setState(createState(players)); }, [players]);
 
+  useEffect(()=>{ setState(createState(players)); }, [players]);
+
   function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
   function reset(){ setState(createState(players)); }
 
@@ -334,8 +353,8 @@ function PlayerSidebar({state, onRoll, onReset}){
     _jsxs('div', { style:{display:'flex', gap:10, alignItems:'center', marginTop:12}, children:[
       _jsxs('div', { className:`dice ${state.rolling?'rolling':''}`, children:[ state.dice || '–' ]}),
       _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.modalOpen || state.awaitingAck, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
-      _jsx('button', { className:'secondary', onClick:onReset, children:'Reset' }),
-          state.lastCard && _jsxs(_Fragment, { children:[
+                ]}),
+    state.lastCard && _jsxs(_Fragment, { children:[
       _jsx('div', { style:{height:10}}),
       _jsxs('div', { className:'card', style:{background:'#0b1320', border:'1px solid #20304a'}, children:[
         _jsx('div', { style:{display:'flex', alignItems:'center', gap:8, fontWeight:800}, children:_jsxs('span', { className:'stage-chip', children:[ _jsx('span', { className:'color-dot', style:{background: swatch(state.lastCard.stage)} }), STAGE_LABEL[state.lastCard.stage] ]}) }),
@@ -434,10 +453,7 @@ function CalibBar({calib, state, setStageAt}){
       _jsxs('div', { className:'badge', children:['Index: ', calib.idx]}),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.max(0,i-1)), children:'◀ Prev' }),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.min(BOARD_SIZE, calib.idx+1)), children:'Next ▶' }),
-      _jsx('button', { className:'secondary', onClick:calib.exportJSON, children:'Export JSON (path+stages)' }),
-      _jsx('button', { className:'secondary', onClick:calib.exportPathCode, children:'Export PATH (code)' }),
-      _jsx('button', { className:'secondary', onClick:calib.exportStagesCode, children:'Export stages (code)' }),
-      _jsx('label', { className:'stage-chip', children:_jsxs('span', { children:[ ' Import JSON ', _jsx('input', { type:'file', accept:'.json', onChange:e=> e.target.files?.[0] && calib.importJSON(e.target.files[0]) }) ]}) }),
+                        _jsx('label', { className:'stage-chip', children:_jsxs('span', { children:[ ' Import JSON ', _jsx('input', { type:'file', accept:'.json', onChange:e=> e.target.files?.[0] && calib.importJSON(e.target.files[0]) }) ]}) }),
       _jsx('span', { className:'small', children:'Set stage at this index:'}),
       _jsx(StageBtn, { id:'early' }),
       _jsx(StageBtn, { id:'commons' }),
@@ -452,6 +468,7 @@ function App(){
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
+  useEffect(()=>{ setState(createState(players)); }, [players]);
   const { setPathPoint, setStageAt } = (()=>{
     function setPathPoint(i,x,y){ setState(s=>{ const p=[...s.path]; p[i]=[x,y]; savePath(p); return {...s, path:p}; }); }
     function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; saveStages(a); return {...s, stages:a}; }); }
@@ -572,7 +589,7 @@ function App(){
 
   return _jsxs('div', { className:'grid', children:[
     state.started
-      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)) })
+      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)),  })
       : _jsx(SetupPanel, { playerCount, setPlayerCount, players, setPlayers, onStart: ()=>setState(s=>({...s, started:true})) }),
     _jsxs('div', { className:'card', children:[
       _jsx('h2', { className:'h', children:'Board (58 spaces)' }),
@@ -584,5 +601,5 @@ function App(){
 }
 
 // Mount
-const root = createRoot(document.getElementById('app'));
+const root = ReactDOM.createRoot(document.getElementById('app'));
 root.render(_jsx(App, {}));
