@@ -1,61 +1,8 @@
 
-:root{
-  --bg:#0b0f14; --panel:#101722; --ink:#e9eef6; --muted:#9fb1cc; --accent:#4bb5ff;
-  --ring:#1f2b40;
-  --orange:#ff9f43;   /* Early stages */
-  --green:#18d18c;    /* Commons */
-  --red:#ff6b6b;      /* Lords */
-  --blue:#58a6ff;     /* Implementation */
-}
-*{box-sizing:border-box}
-html,body{height:100%}
-body{margin:0;background:#0b0f14;color:var(--ink);font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial}
-#app{padding:20px; max-width:1400px; margin:0 auto;}
-a{color:var(--accent)}
-button{appearance:none;border:0;border-radius:14px;padding:12px 16px;background:#1b2636;color:var(--ink);cursor:pointer;font-weight:700;box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 10px 24px rgba(0,0,0,.35);transition: .2s}
-button:hover{background:#223148}
-button:active{transform:translateY(1px)}
-button.secondary{background:#0f1722;border:1px solid #233046}
-button.cta{background:linear-gradient(180deg,#3cc8ff,#2aa0ff);color:#03121f}
-input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-radius:12px;padding:10px 12px}
-.small{color:var(--muted);font-size:13px}
-.badge{padding:6px 12px;border-radius:999px;background:#0f1722;border:1px solid #233046;color:#c9d7ee;font-size:12px}
-.grid{display:grid;grid-template-columns: 500px 1fr;gap:24px;align-items:start}
-@media (max-width: 1100px){ .grid{grid-template-columns:1fr;} }
-.card{background:linear-gradient(180deg,#111821,#0e141d);border:1px solid var(--ring);border-radius:18px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
-.h{font-size:22px;font-weight:900;letter-spacing:.3px;margin:0 0 10px}
-.setup-row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
-.color-dot{width:14px;height:14px;border-radius:50%;display:inline-block;border:2px solid #0d1117}
-
-/* Board */
-.board-wrap{width:min(95vw, 1100px);aspect-ratio:1/1;margin:0 auto;background:#09101a;border:1px solid var(--ring);border-radius:20px;position:relative;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.45)}
-.board-img{position:absolute; inset:0; background-image:url('https://raw.githubusercontent.com/edent/Legislate/master/Board/Legislate.png'); background-size:cover; background-position:center; filter:saturate(1.05) contrast(1.02)}
-
-/* Tokens */
-.token{position:absolute;width:34px;height:34px;border-radius:50%;box-shadow: 0 8px 20px rgba(0,0,0,.45), 0 0 0 3px #0008 inset;display:flex;align-items:center;justify-content:center;font-weight:900;color:#04131f;transform: translate(-50%, -50%);transition: left .22s ease, top .22s ease;}
-.token .label{position:absolute; top:36px; left:50%; transform:translateX(-50%); font-size:12px; color:#d7e6ff; text-shadow:0 1px 0 #000}
-.token.turn{outline:3px solid #fff6; z-index:5}
-
-/* Dice & lists */
-.dice{width:86px;height:86px;border-radius:14px;background:#0f1722;border:1px solid #20304a;display:flex;align-items:center;justify-content:center;font-size:38px;font-weight:900;box-shadow:0 10px 30px rgba(0,0,0,.45)}
-.dice.rolling{animation: wobble .5s ease}
-@keyframes wobble{ 0%{transform:rotate(0)} 25%{transform:rotate(10deg)} 75%{transform:rotate(-10deg)} 100%{transform:rotate(0)} }
-.playerlist{display:flex; flex-direction:column; gap:6px}
-.playercard{display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-radius:12px; background:#0c1320; border:1px solid #20304a}
-.playercard .name{display:flex; align-items:center; gap:8px; font-weight:700}
-.turnarrow{margin-left:6px; font-size:18px}
-.dimmed{opacity:.6}
-
-/* Calibration */
-.calib-bar{margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-.calib-dot{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;outline:2px solid #000a;transform:translate(-50%,-50%)}
-
-/* Modal */
-.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:50}
-.modal{width:min(520px, 92vw);background:#0e141d;border:1px solid #20304a;border-radius:16px;padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.6);transform:scale(.98);opacity:0;animation: pop .18s ease forwards}
-@keyframes pop { to { transform:scale(1); opacity:1; } }
-.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
-.toast{position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#0f1722; border:1px solid #20304a; border-radius:12px; padding:10px 14px; z-index:60}
-
-/* History drawer */
-.drawer{position:fixed; right:16px; bottom:16px; width:300px; max-height:60vh; overflow:auto; background:#0e141d; border:1px solid #20304a; border-radius:12px; padding:10px; box-shadow:0 10px 30px rgba(0,0,0,.45); z-index:40}
+body{margin:0;font-family:sans-serif;background:#111;color:#fff}
+.board-wrap{position:relative;width:100%;max-width:800px;margin:20px auto;aspect-ratio:1/1;background:#000}
+.board-img{position:absolute;inset:0;background:url('https://raw.githubusercontent.com/edent/Legislate/master/Board/Legislate.png') center/cover no-repeat}
+.token{position:absolute;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#000;font-weight:bold;transform:translate(-50%,-50%);}
+.controls{padding:10px;text-align:center}
+button{padding:8px 14px;margin:4px;font-weight:bold}
+.toast{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);background:#333;padding:8px 14px;border-radius:8px}
