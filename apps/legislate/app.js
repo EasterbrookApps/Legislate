@@ -1,6 +1,65 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.sh/react@18.3.1/jsx-runtime'
 
-// === Modal helpers for centered card ===
+
+// === Modal helpers (blocking) for centered card ===
+function showCardModalBlocking({ title, text }){
+  const modal = document.getElementById('card-modal');
+  if(!modal) return Promise.resolve();
+  const titleEl = modal.querySelector('#card-title');
+  const bodyEl = modal.querySelector('#card-body');
+  titleEl.textContent = title || 'Card';
+  bodyEl.textContent = text || '';
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+  return new Promise(resolve => {
+    const dismissers = modal.querySelectorAll('[data-dismiss]');
+    const onClose = ()=>{
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden','true');
+      dismissers.forEach(el=>el.removeEventListener('click', onClose));
+      resolve();
+    };
+    dismissers.forEach(el=>el.addEventListener('click', onClose, { once:true }));
+  });
+}
+
+// === Procedural ambience (parliamentary murmur) ===
+let _ambCtx = null, _ambGain = null, _noiseNode = null;
+function startAmbience(){
+  if(_ambCtx) return;
+  const ctx = new (window.AudioContext||window.webkitAudioContext)();
+  const gain = ctx.createGain(); gain.gain.value = 0.04; // subtle
+  // Brown noise approximation
+  const bufferSize = 2 * ctx.sampleRate;
+  const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const output = noiseBuffer.getChannelData(0);
+  let lastOut = 0.0;
+  for (let i = 0; i < bufferSize; i++) {
+    const white = Math.random() * 2 - 1;
+    output[i] = (lastOut + (0.02 * white)) / 1.02;
+    lastOut = output[i];
+    output[i] *= 0.5; // scale
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  noise.loop = true;
+
+  // Lowpass to soften hiss
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 800;
+
+  noise.connect(lp).connect(gain).connect(ctx.destination);
+  noise.start(0);
+
+  _ambCtx = ctx; _ambGain = gain; _noiseNode = noise;
+}
+function stopAmbience(){
+  if(_ambCtx){
+    try{ _noiseNode.stop(); }catch{}
+    _ambCtx.close(); _ambCtx=null; _ambGain=null; _noiseNode=null;
+  }
+}
+
 function showCardModal({ title, text }){
   const modal = document.getElementById('card-modal');
   if(!modal) return;
@@ -17,13 +76,7 @@ function hideCardModal(){
   modal.classList.add('hidden');
   modal.setAttribute('aria-hidden','true');
 }
-(function attachModalHandlers(){
-  const modal = document.getElementById('card-modal');
-  if(!modal) return;
-  modal.querySelectorAll('[data-dismiss]').forEach(el=>{
-    el.addEventListener('click', hideCardModal);
-  });
-})();
+
 
 
 const { useState, useEffect } = React;
@@ -100,6 +153,7 @@ function createState(players, path = loadPath(), stages = loadStages()){
     winner: null,
     decks: JSON.parse(JSON.stringify(DECKS)),
     lastCard: null,
+    modalOpen:false,
     log: [],
     extraRoll:false,
     started:false,
@@ -149,6 +203,7 @@ function useGame(){
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
+  useEffect(()=>{ setState(createState(players)); }, [players]);
 
   useEffect(()=>{ setState(createState(players)); }, [players]);
 
@@ -180,7 +235,7 @@ function useGame(){
       if(stage){
         const [card, rest] = drawFrom(out.decks[stage]);
         out.decks = {...out.decks, [stage]:rest};
-        out.lastCard = { stage, ...card };
+        out.lastCard = { stage, ...card }; out.modalOpen=true;
         out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
         out = applyEffect(card.effect, out);
         if(out.positions[out.turn]===BOARD_SIZE){
@@ -273,8 +328,9 @@ function PlayerSidebar({state, onRoll, onReset}){
     ]}),
     _jsxs('div', { style:{display:'flex', gap:10, alignItems:'center', marginTop:12}, children:[
       _jsxs('div', { className:`dice ${state.rolling?'rolling':''}`, children:[ state.dice || '–' ]}),
-      _jsx('button', { onClick:onRoll, disabled:state.winner!=null, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
+      _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.modalOpen, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
       _jsx('button', { className:'secondary', onClick:onReset, children:'Reset' }),
+      _jsx('button', { className:'secondary', onClick:()=>{ if(!_ambCtx) startAmbience(); else stopAmbience(); }, children: _ambCtx ? '🔇 Ambience' : '🔊 Ambience' }),
     ]}),
     state.lastCard && _jsxs(_Fragment, { children:[
       _jsx('div', { style:{height:10}}),
@@ -393,6 +449,7 @@ function App(){
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
+  useEffect(()=>{ setState(createState(players)); }, [players]);
   const { setPathPoint, setStageAt } = (()=>{
     function setPathPoint(i,x,y){ setState(s=>{ const p=[...s.path]; p[i]=[x,y]; savePath(p); return {...s, path:p}; }); }
     function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; saveStages(a); return {...s, stages:a}; }); }
