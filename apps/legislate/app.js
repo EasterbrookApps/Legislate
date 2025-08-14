@@ -1,5 +1,4 @@
 
-// UMD-safe Legislate (58-space). React/ReactDOM via UMD. No ESM imports.
 (function(){
   'use strict';
   const { useState, useEffect, useRef } = React;
@@ -36,8 +35,15 @@
   function loadPath(){ return ls.load(LS_PATH, DEFAULT_PATH); }
   function loadStages(){ return ls.load(LS_STAGES, Array(BOARD_SIZE+1).fill(null)); }
 
-  const DECKS = {"early": [{"title": "Scope rethink", "text": "Refocus policy intent.\nMiss a turn.", "effect": {"type": "skip_next", "count": 1}}, {"title": "Early stages card 1", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 2", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 3", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 4", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 5", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 6", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 7", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 8", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 9", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 10", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 11", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 12", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 13", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 14", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 15", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 16", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 17", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 18", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 19", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 20", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 21", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 22", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 23", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 24", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 25", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 26", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 27", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 28", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 29", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 30", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 31", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Early stages card 32", "text": "Progress update.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}], "commons": [{"title": "Opposition day", "text": "Time squeezed.\nGo back 2.", "effect": {"type": "move", "delta": -2}}, {"title": "Commons card 1", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 2", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 3", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 4", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 5", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 6", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 7", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 8", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 9", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 10", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 11", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 12", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 13", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 14", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 15", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 16", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 17", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 18", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 19", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 20", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 21", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 22", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 23", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 24", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 25", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 26", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 27", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 28", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 29", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 30", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 31", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Commons card 32", "text": "Committee work.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}], "lords": [{"title": "Amendment marshalled", "text": "Complex amendments tabled.\nGo back 1.", "effect": {"type": "move", "delta": -1}}, {"title": "Lords card 1", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 2", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 3", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 4", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 5", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 6", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 7", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 8", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 9", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 10", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 11", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 12", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 13", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 14", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 15", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 16", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 17", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 18", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 19", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 20", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 21", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 22", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 23", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 24", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 25", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 26", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 27", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 28", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 29", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 30", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 31", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Lords card 32", "text": "Scrutiny continues.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}], "implementation": [{"title": "Commencement SIs", "text": "Phased start dates.\nAdvance 2.", "effect": {"type": "move", "delta": 2}}, {"title": "Implementation card 1", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 2", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 3", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 4", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 5", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 6", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 7", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 8", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 9", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 10", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 11", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 12", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 13", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 14", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 15", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 16", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 17", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 18", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 19", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 20", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 21", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 22", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 23", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 24", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 25", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 26", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 27", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 28", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 29", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 30", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 31", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}, {"title": "Implementation card 32", "text": "Rollout progresses.\nAdvance 1.", "effect": {"type": "move", "delta": 1}}]};
-  const FACTS = ["A Bill normally has three readings in each House before Royal Assent.", "Public Bill Committees can take written and oral evidence on Bills.", "The Lords can delay most Bills but cannot block money Bills.", "Programme motions in the Commons can timetable a Bill.", "Statutory Instruments are the most common form of secondary legislation."];
+  const DECKS = {
+    early: [{title:'Scope rethink', text:'Refocus policy intent.\nMiss a turn.', effect:{type:'skip_next', count:1}}],
+    commons: [{title:'Opposition day', text:'Time squeezed.\nGo back 2.', effect:{type:'move', delta:-2}}],
+    lords: [{title:'Amendment marshalled', text:'Complex amendments tabled.\nGo back 1.', effect:{type:'move', delta:-1}}],
+    implementation: [{title:'Commencement SIs', text:'Phased start dates.\nAdvance 2.', effect:{type:'move', delta:2}}]
+  };
+  const FACTS = [
+    'A Bill normally has three readings in each House before Royal Assent.'
+  ];
 
   const audioCtx = (typeof window !== 'undefined' && ('AudioContext' in window || 'webkitAudioContext' in window)) ? new (window.AudioContext || window.webkitAudioContext)() : null;
   function beep(freq=440, dur=0.08, gain=0.03){ if(!audioCtx) return; const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type='square'; o.frequency.value=freq; g.gain.value=gain; o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+dur); }
@@ -48,7 +54,6 @@
   function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
   function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
   function drawFrom(deck){ const card=deck[0]; const rest=deck.slice(1).concat([card]); return [card,rest]; }
-
   function defaultPlayers(n){ return Array.from({length:n}, (_,i)=>({ name:`Player ${i+1}`, color: ['#4bb5ff','#ffd166','#00d68f','#ff6b6b','#c792ea','#50fa7b'][i%6] })); }
 
   function createState(players, path = loadPath(), stages = loadStages()){ 
@@ -71,15 +76,13 @@
       log: [],
       extraRoll:false,
       started:false,
-      muted: (ls.get(LS_AUDIO) ?? 'on') !== 'on', // default ON => false
+      muted: (ls.get(LS_AUDIO) ?? 'on') !== 'on',
       factsOn: (ls.get(LS_FACTS) ?? 'on') === 'on',
       toast: null,
       _undo: null,
     };
   }
-
   function saveGame(state){ const copy = {...state}; delete copy._undo; ls.save(LS_GAME, copy); }
-
   function applyEffect(effect, s){
     if(!effect) return s;
     let out = {...s};
@@ -87,7 +90,6 @@
       case 'move': { const d = Number(effect.delta||0); out.positions[out.turn] = clamp(out.positions[out.turn] + d, 0, BOARD_SIZE); out.log = [`Effect: move ${d>0?'+':''}${d}.`, ...out.log]; break; }
       case 'skip_next': { const c = Number(effect.count||1); out.skips[out.turn] += c; out.log = [`Effect: miss ${c} turn${c>1?'s':''}.`, ...out.log]; break; }
       case 'extra_roll': { out.extraRoll = true; out.log = [`Effect: extra roll.`, ...out.log]; break; }
-      case 'jump_next_stage': { const target = effect.stage; const here = out.positions[out.turn]; let j = here+1; while(j<=BOARD_SIZE && out.stages[j]!==target) j++; if(j<=BOARD_SIZE){ out.positions[out.turn] = j; out.log = [`Effect: jump to next ${STAGE_LABEL[target]} at ${j}.`, ...out.log]; } break; }
     }
     return out;
   }
@@ -133,17 +135,13 @@
   }
 
   function App(){
-    const [players, setPlayers] = useState(()=>Array.from({length:4},(_,i)=>({name:`Player ${i+1}`, color:['#4bb5ff','#ffd166','#00d68f','#ff6b6b','#c792ea','#50fa7b'][i%6]})));
-    const [state, setState] = useState(()=>createState(players));
+    const [players, setPlayers] = useState(defaultPlayers(4));
+    const [state, setState] = useState(createState(players));
     useEffect(()=>{ saveGame(state); }, [state]);
-
-    function setPathPoint(i,x,y){ setState(s=>{ const path=[...s.path]; path[i]=[x,y]; ls.save(LS_PATH, path); return {...s, path}; }); }
-    function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; ls.save(LS_STAGES, a); return {...s, stages:a}; }); }
 
     async function stepMove(n){ for(let k=0;k<n;k++){ await new Promise(r=>requestAnimationFrame(()=>setTimeout(r, 160))); setState(s=>{ if(s.winner) return s; const np = clamp(s.positions[s.turn] + 1, 0, BOARD_SIZE); const positions = [...s.positions]; positions[s.turn] = np; const label = s.players[s.turn].name || `P${s.turn+1}`; const log = [`${label} moved to ${np}.`, ...s.log]; return {...s, positions, log}; }); } }
 
     function snapshot(s){ return { positions:[...s.positions], turn:s.turn, skips:[...s.skips], decks:JSON.parse(JSON.stringify(s.decks)), lastCard:s.lastCard?{...s.lastCard}:null, history:[...s.history], extraRoll:s.extraRoll, winner:s.winner, dice:s.dice, log:[...s.log], cardOpen:s.cardOpen, started:s.started, muted:s.muted, factsOn:s.factsOn }; }
-
     function resetGame(){ setState(createState(players)); }
 
     async function onDiceFinal(d){ 
@@ -258,27 +256,34 @@
       );
     }
 
+    function setStageAt(i,stage){ setState(s=>{ const a=[...s.stages]; a[i]=stage; ls.save(LS_STAGES, a); return {...s, stages:a}; }); }
+    function setPathPoint(i,x,y){ setState(s=>{ const path=[...s.path]; path[i]=[x,y]; ls.save(LS_PATH, path); return {...s, path}; }); }
+
     function Board(){ 
-      return React.createElement('div', { className:'board-wrap' }, 
+      function onTap(e){
+        if (!e.currentTarget.classList.contains('calib-enabled')) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = ((e.clientX - rect.left)/rect.width)*100;
+        const y = ((e.clientY - rect.top)/rect.height)*100;
+        // example: set point 0 for quick sanity
+        setPathPoint(0, x, y);
+      }
+      return React.createElement('div', { className:'board-wrap', onClick:onTap }, 
         React.createElement('div', { className:'board-img' }),
         ...state.players.map((p,idx)=>{ const pos = state.positions[idx]; const [x,y] = state.path[Math.min(pos, state.path.length-1)] || [0,0]; const isTurn = idx===state.turn && state.winner==null; return React.createElement('div', { key:idx, className:`token ${isTurn?'turn':''}`, style:{ left:`${x}%`, top:`${y}%`, background:p.color } }, React.createElement('span', null, (idx+1)), React.createElement('span', { className:'label' }, (p.name || `P${idx+1}`)) ); })
       );
     }
 
-    const [state, setState] = React.useState(createState([{name:'Player 1', color:'#4bb5ff'},{name:'Player 2', color:'#ffd166'},{name:'Player 3', color:'#00d68f'},{name:'Player 4', color:'#ff6b6b'}]));
-
-    // Main render tree
-    const root = ReactDOM.createRoot(document.getElementById('app'));
-    root.render(
-      React.createElement('div', { className:'grid' },
-        /* Left: sidebar or setup */
-        (state.started ? React.createElement(Sidebar, null) : React.createElement(Setup, null)),
-        /* Right: board + calibration */
-        React.createElement('div', { className:'card' },
-          React.createElement('h2', { className:'h' }, 'Board (58 spaces)'),
-          React.createElement(Board, null),
-          React.createElement(CalibBar, null)
-        )
+    return React.createElement('div', { className:'grid' }, 
+      state.started ? React.createElement(Sidebar, null) : React.createElement(Setup, null),
+      React.createElement('div', { className:'card' }, 
+        React.createElement('h2', { className:'h' }, 'Board (58 spaces)'),
+        React.createElement(Board, null),
+        React.createElement(CalibBar, null)
       )
     );
-  })();
+  }
+
+  const root = ReactDOM.createRoot(document.getElementById('app'));
+  root.render(React.createElement(App, null));
+})();

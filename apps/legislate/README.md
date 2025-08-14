@@ -1,20 +1,15 @@
-# Legislate?! — Web (58-space, UMD)
+# Legislate?! — Web (58-space, UMD v9a.1)
 
-UMD-safe build for GitHub Pages. No ESM imports or module scripts.
+This build fixes a crash introduced by a stray `useState` outside the React component.
+- ✅ Hooks are only used **inside** `App()` now.
+- ✅ Single `ReactDOM.createRoot(...).render(...)` path.
+- ✅ Same features and styling.
 
-## Features
-- Dice final value stays visible (~1.8s)
-- Per-step movement animation
-- Audio (toggle), legislative facts (toggle)
-- Decks for Early stages / Commons / Lords / Implementation
-- Calibration (import/export JSON), persistent saves & settings
-- Undo last move
+## Upload on mobile
+1) Open your repo path: `Web-Apps/apps/legislate/`
+2) Upload/replace: `.nojekyll`, `index.html`, `style.css`, `app.js`
+3) Commit with message: `UMD v9a.1`
+4) Visit with cache-buster:  
+   `https://easterbrookapps.github.io/Web-Apps/apps/legislate/?v=umd-v9a1`
 
-## Deploy on mobile (GitHub app or browser)
-1. On your phone, open your repo folder: `Web-Apps/apps/legislate/`.
-2. Tap **Add file → Upload files**.
-3. Select: `index.html`, `style.css`, `app.js`, `.nojekyll`.
-4. Commit with message “UMD v9a”.  
-5. Visit: `https://easterbrookapps.github.io/Web-Apps/apps/legislate/?v=umd-v9a`
-
-If you’re replacing an existing folder, upload these 4 files; don’t remove your calibration JSONs — the app uses **localStorage** keys so your saved calibration remains intact.
+If it still won’t load on iOS Safari, try **Settings → Safari → Clear History and Website Data**, then reopen with the cache-buster query.
