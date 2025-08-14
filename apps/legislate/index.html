@@ -28,5 +28,19 @@
     </div>
   </div>
 
+
+<script>
+document.addEventListener('click', function(e){
+  const t = e.target;
+  if(t && t.hasAttribute('data-dismiss')){
+    if(window.__onCardOk) { try{ window.__onCardOk(); }catch(e){} }
+    else {
+      const modal = document.getElementById('card-modal');
+      if(modal){ modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true'); }
+    }
+  }
+}, { passive: true });
+</script>
+
 </body>
 </html>

@@ -24,9 +24,9 @@ function showCardModalBlocking({ title, text }){
 }
 
 // === Procedural ambience (parliamentary murmur) ===
-let _ambCtx = null, _ambGain = null, _noiseNode = null;
+let _ambCtx = null, _ambGain = null, _noiseNode = null; window.AMB_ON=false;
 function startAmbience(){
-  if(_ambCtx) return;
+  if(_ambCtx) { window.AMB_ON=true; return; }
   const ctx = new (window.AudioContext||window.webkitAudioContext)();
   const gain = ctx.createGain(); gain.gain.value = 0.04; // subtle
   // Brown noise approximation
@@ -51,12 +51,16 @@ function startAmbience(){
   noise.connect(lp).connect(gain).connect(ctx.destination);
   noise.start(0);
 
-  _ambCtx = ctx; _ambGain = gain; _noiseNode = noise;
+  _ambCtx = ctx; _ambGain = gain; _noiseNode = noise; window.AMB_ON=true;
 }
+
+// Hook that App sets to continue after user clicks OK on a card
+window.__onCardOk = null;
+
 function stopAmbience(){
   if(_ambCtx){
     try{ _noiseNode.stop(); }catch{}
-    _ambCtx.close(); _ambCtx=null; _ambGain=null; _noiseNode=null;
+    _ambCtx.close(); _ambCtx=null; _ambGain=null; _noiseNode=null; window.AMB_ON=false;
   }
 }
 
@@ -153,6 +157,9 @@ function createState(players, path = loadPath(), stages = loadStages()){
     winner: null,
     decks: JSON.parse(JSON.stringify(DECKS)),
     lastCard: null,
+    pendingEffect:null,
+    awaitingAck:false,
+    modalOpen:false,
     modalOpen:false,
     log: [],
     extraRoll:false,
@@ -235,14 +242,16 @@ function useGame(){
       if(stage){
         const [card, rest] = drawFrom(out.decks[stage]);
         out.decks = {...out.decks, [stage]:rest};
-        out.lastCard = { stage, ...card }; out.modalOpen=true;
-        out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
-        out = applyEffect(card.effect, out);
+        out.lastCard = { stage, ...card };
+        out.pendingEffect = card.effect;
+        out.awaitingAck = true;
+        out.modalOpen = true;
         if(out.positions[out.turn]===BOARD_SIZE){
           const label = (out.players[out.turn].name||`P${out.turn+1}`);
           return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
         }
       }
+      if(out.awaitingAck){ return out; }
       let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
       if(out.skips[nextTurn] > 0){
         const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
@@ -314,7 +323,7 @@ function SetupPanel({playerCount, setPlayerCount, players, setPlayers, onStart})
   ]})
 }
 
-function PlayerSidebar({state, onRoll, onReset}){
+function PlayerSidebar({state, onRoll, onReset, onToggleAmbience}){
   const me = state.players[state.turn];
   const label = me.name || `P${state.turn+1}`;
   return _jsxs('div', { className:'card', children:[
@@ -328,9 +337,9 @@ function PlayerSidebar({state, onRoll, onReset}){
     ]}),
     _jsxs('div', { style:{display:'flex', gap:10, alignItems:'center', marginTop:12}, children:[
       _jsxs('div', { className:`dice ${state.rolling?'rolling':''}`, children:[ state.dice || '–' ]}),
-      _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.modalOpen, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
+      _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.modalOpen || state.awaitingAck, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
       _jsx('button', { className:'secondary', onClick:onReset, children:'Reset' }),
-      _jsx('button', { className:'secondary', onClick:()=>{ if(!_ambCtx) startAmbience(); else stopAmbience(); }, children: _ambCtx ? '🔇 Ambience' : '🔊 Ambience' }),
+      _jsx('button', { className:'secondary', onClick:()=>{ if(!_ambCtx) startAmbience(); else stopAmbience(); onToggleAmbience && onToggleAmbience(); }, children: (window.AMB_ON ? '🔇 Ambience' : '🔊 Ambience') }),
     ]}),
     state.lastCard && _jsxs(_Fragment, { children:[
       _jsx('div', { style:{height:10}}),
@@ -458,6 +467,23 @@ function App(){
 
   const calib = useCalibration(state, setState, setPathPoint, setStageAt);
 
+  // Show modal when a card is pending
+  useEffect(()=>{
+    if(state.modalOpen && state.lastCard){
+      const { title, text } = state.lastCard;
+      const modal = document.getElementById('card-modal');
+      if(modal){
+        const titleEl = modal.querySelector('#card-title');
+        const bodyEl = modal.querySelector('#card-body');
+        titleEl.textContent = title || 'Card';
+        bodyEl.textContent = text || '';
+        modal.classList.remove('hidden');
+        modal.setAttribute('aria-hidden','false');
+      }
+    }
+  }, [state.modalOpen, state.lastCard]);
+
+
   // Show centered card modal when a card is drawn
   useEffect(()=>{
     if(state && state.lastCard){
@@ -494,13 +520,15 @@ function App(){
         const [card, rest] = drawFrom(out.decks[stage]);
         out.decks = {...out.decks, [stage]:rest};
         out.lastCard = { stage, ...card };
-        out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
-        out = applyEffect(card.effect, out);
+        out.pendingEffect = card.effect;
+        out.awaitingAck = true;
+        out.modalOpen = true;
         if(out.positions[out.turn]===BOARD_SIZE){
           const label = (out.players[out.turn].name||`P${out.turn+1}`);
           return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
         }
       }
+      if(out.awaitingAck){ return out; }
       let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
       if(out.skips[nextTurn] > 0){
         const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
@@ -513,9 +541,45 @@ function App(){
     });
   }
 
+  
+  // When user clicks OK on modal, apply pending effect and advance turn
+  window.__onCardOk = ()=>{
+    setState(s=>{
+      if(!s.awaitingAck || !s.pendingEffect) {
+        // just close
+        return { ...s, modalOpen:false, lastCard:null, awaitingAck:false };
+      }
+      let out = { ...s, modalOpen:false, awaitingAck:false };
+      out = applyEffect(out.pendingEffect, out);
+      out.pendingEffect = null;
+      // Win check after effect
+      if(out.positions[out.turn]===BOARD_SIZE){
+        const label = (out.players[out.turn].name||`P${out.turn+1}`);
+        return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
+      }
+      // Advance turn (respect extraRoll & skips)
+      if(out.awaitingAck){ return out; }
+      let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
+      if(out.skips[nextTurn] > 0){
+        const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
+        const label = (out.players[nextTurn].name||`P${nextTurn+1}`);
+        out.log = [`${label} skips a turn.`, ...out.log];
+        nextTurn = (nextTurn+1) % out.players.length;
+        return {...out, skips: nextSkips, turn: nextTurn};
+      }
+      return {...out, turn: nextTurn};
+    });
+    // Hide modal in DOM
+    const modal = document.getElementById('card-modal');
+    if(modal){
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden','true');
+    }
+  };
+
   return _jsxs('div', { className:'grid', children:[
     state.started
-      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)) })
+      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)), onToggleAmbience: ()=>setState(s=>({...s})) })
       : _jsx(SetupPanel, { playerCount, setPlayerCount, players, setPlayers, onStart: ()=>setState(s=>({...s, started:true})) }),
     _jsxs('div', { className:'card', children:[
       _jsx('h2', { className:'h', children:'Board (58 spaces)' }),
