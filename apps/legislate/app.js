@@ -24,11 +24,8 @@ function showCardModalBlocking({ title, text }){
 }
 
 // === Procedural ambience (parliamentary murmur) ===
-let _ambCtx = null, _ambGain = null, _noiseNode = null; window.AMB_ON=false; window.AMB_VOL=0.18;
 
 
-function startAmbience(){
-  if(_ambCtx) { window.AMB_ON=true; return; }
   const ctx = new (window.AudioContext||window.webkitAudioContext)();
   const master = ctx.createGain(); master.gain.value = (window.AMB_VOL||0.18);
   const comp = ctx.createDynamicsCompressor();
@@ -96,9 +93,6 @@ function startAmbience(){
 // Hook that App sets to continue after user clicks OK on a card
 window.__onCardOk = null;
 
-function stopAmbience(){
-  if(_ambCtx){
-    try{ _noiseNode.stop(); }catch{}
     _ambCtx.close(); _ambCtx=null; _ambGain=null; _noiseNode=null; window.AMB_ON=false; window.AMB_VOL=0.18;
   }
 }
@@ -377,10 +371,9 @@ function PlayerSidebar({state, onRoll, onReset, onToggleAmbience}){
     _jsxs('div', { style:{display:'flex', gap:10, alignItems:'center', marginTop:12}, children:[
       _jsxs('div', { className:`dice ${state.rolling?'rolling':''}`, children:[ state.dice || '–' ]}),
       _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.modalOpen || state.awaitingAck, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
-      _jsx('button', { className:'secondary', onClick:onReset, children:'Reset' }),
-      _jsx('input', { type:'range', min:0, max:1, step:0.01, value: (window.AMB_VOL||0.18), onInput:(e)=>{ window.AMB_VOL = Number(e.target.value); if(_ambGain){ _ambGain.gain.value = window.AMB_VOL; } if(window.requestAnimationFrame) requestAnimationFrame(()=>{}); }, style:{ width:120 } }),
-      _jsx('span', { className:'small', children:'Ambience Vol'}),
-      _jsx('button', { className:'secondary', onClick:()=>{ if(!_ambCtx) startAmbience(); else stopAmbience(); onToggleAmbience && onToggleAmbience(); }, children: (window.AMB_ON ? '🔇 Ambience' : '🔊 Ambience') }),
+      
+      
+      
     ]}),
     state.lastCard && _jsxs(_Fragment, { children:[
       _jsx('div', { style:{height:10}}),
@@ -481,9 +474,9 @@ function CalibBar({calib, state, setStageAt}){
       _jsxs('div', { className:'badge', children:['Index: ', calib.idx]}),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.max(0,i-1)), children:'◀ Prev' }),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.min(BOARD_SIZE, calib.idx+1)), children:'Next ▶' }),
-      _jsx('button', { className:'secondary', onClick:calib.exportJSON, children:'Export JSON (path+stages)' }),
-      _jsx('button', { className:'secondary', onClick:calib.exportPathCode, children:'Export PATH (code)' }),
-      _jsx('button', { className:'secondary', onClick:calib.exportStagesCode, children:'Export stages (code)' }),
+      
+      
+      
       _jsx('label', { className:'stage-chip', children:_jsxs('span', { children:[ ' Import JSON ', _jsx('input', { type:'file', accept:'.json', onChange:e=> e.target.files?.[0] && calib.importJSON(e.target.files[0]) }) ]}) }),
       _jsx('span', { className:'small', children:'Set stage at this index:'}),
       _jsx(StageBtn, { id:'early' }),
