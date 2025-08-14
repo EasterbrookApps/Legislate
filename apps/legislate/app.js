@@ -23,77 +23,40 @@ function showCardModalBlocking({ title, text }){
   });
 }
 
-// === Procedural ambience (parliamentary murmur) ===
-
-
   const ctx = new (window.AudioContext||window.webkitAudioContext)();
-  const master = ctx.createGain(); master.gain.value = (window.AMB_VOL||0.18);
-  const comp = ctx.createDynamicsCompressor();
-  comp.threshold.value = -30; comp.knee.value = 24; comp.ratio.value = 2.5; comp.attack.value = 0.03; comp.release.value = 0.3;
-  const pan = (ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createPanner());
-  if(pan.pan) pan.pan.value = 0;
-
-  // Base white noise
+  const gain = ctx.createGain(); gain.gain.value = 0.04; // subtle
+  // Brown noise approximation
   const bufferSize = 2 * ctx.sampleRate;
   const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-  const data = noiseBuffer.getChannelData(0);
-  for(let i=0;i<bufferSize;i++){ data[i] = Math.random()*2-1; }
-
-  // Formant bands with less gating, more overlap
-  const centers = [250, 750, 1300, 2800, 4200]; // extended highs for airy feel
-  const Qs = [0.8, 1.0, 1.0, 1.2, 1.4];
-  const voiceGain = ctx.createGain(); voiceGain.gain.value = 1.0;
-
-  centers.forEach((fc, idx)=>{
-    const src = ctx.createBufferSource(); src.buffer = noiseBuffer; src.loop = true;
-    const bp = ctx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value = fc; bp.Q.value = Qs[idx];
-    const g  = ctx.createGain(); g.gain.value = 0.4;
-
-    // Gentle amplitude drift
-    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.08 + Math.random()*0.05;
-    const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.12 * (0.8 + Math.random()*0.4);
-    lfo.connect(lfoGain).connect(g.gain);
-
-    src.connect(bp).connect(g).connect(voiceGain);
-    src.start(); lfo.start();
-
-    // Slow drift of frequency
-    const drift = ()=>{
-      const now = ctx.currentTime;
-      const target = fc * (0.94 + Math.random()*0.12);
-      bp.frequency.cancelScheduledValues(now);
-      bp.frequency.linearRampToValueAtTime(target, now + 3 + Math.random()*4);
-    };
-    setInterval(drift, 3500 + Math.random()*2000);
-  });
-
-  // Room reflections via multi-tap delay
-  const delayTimes = [0.06, 0.11, 0.17]; // seconds
-  const reflectionGain = ctx.createGain(); reflectionGain.gain.value = 0.25;
-  delayTimes.forEach(dt=>{
-    const delay = ctx.createDelay(); delay.delayTime.value = dt;
-    const filt = ctx.createBiquadFilter(); filt.type='lowpass'; filt.frequency.value = 3500;
-    voiceGain.connect(delay).connect(filt).connect(reflectionGain).connect(voiceGain);
-  });
-
-  // Stereo drift
-  if(pan.pan){
-    const panLFO = ctx.createOscillator(); panLFO.frequency.value = 0.02; // slower
-    const panGain = ctx.createGain(); panGain.gain.value = 0.5;
-    panLFO.connect(panGain).connect(pan.pan);
-    panLFO.start();
+  const output = noiseBuffer.getChannelData(0);
+  let lastOut = 0.0;
+  for (let i = 0; i < bufferSize; i++) {
+    const white = Math.random() * 2 - 1;
+    output[i] = (lastOut + (0.02 * white)) / 1.02;
+    lastOut = output[i];
+    output[i] *= 0.5; // scale
   }
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  noise.loop = true;
 
-  voiceGain.connect(master).connect(comp).connect(pan).connect(ctx.destination);
-  _ambCtx = ctx; _ambGain = master; _noiseNode = null; window.AMB_ON=true;
+  // Lowpass to soften hiss
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 800;
+
+  noise.connect(lp).connect(gain).connect(ctx.destination);
+  noise.start(0);
+
+   = ctx; _ambGain = gain; _noiseNode = noise; window.=true;
 }
-
-
 
 // Hook that App sets to continue after user clicks OK on a card
 window.__onCardOk = null;
 
-    _ambCtx.close(); _ambCtx=null; _ambGain=null; _noiseNode=null; window.AMB_ON=false; window.AMB_VOL=0.18;
+function (){
+  if(){
+    try{ _noiseNode.stop(); }catch{}
+    .close(); =null; _ambGain=null; _noiseNode=null; window.=false;
   }
 }
 
@@ -356,7 +319,7 @@ function SetupPanel({playerCount, setPlayerCount, players, setPlayers, onStart})
   ]})
 }
 
-function PlayerSidebar({state, onRoll, onReset, onToggleAmbience}){
+function PlayerSidebar({state, onRoll, onReset}){
   const me = state.players[state.turn];
   const label = me.name || `P${state.turn+1}`;
   return _jsxs('div', { className:'card', children:[
@@ -371,11 +334,8 @@ function PlayerSidebar({state, onRoll, onReset, onToggleAmbience}){
     _jsxs('div', { style:{display:'flex', gap:10, alignItems:'center', marginTop:12}, children:[
       _jsxs('div', { className:`dice ${state.rolling?'rolling':''}`, children:[ state.dice || '–' ]}),
       _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.modalOpen || state.awaitingAck, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
-      
-      
-      
-    ]}),
-    state.lastCard && _jsxs(_Fragment, { children:[
+      _jsx('button', { className:'secondary', onClick:onReset, children:'Reset' }),
+          state.lastCard && _jsxs(_Fragment, { children:[
       _jsx('div', { style:{height:10}}),
       _jsxs('div', { className:'card', style:{background:'#0b1320', border:'1px solid #20304a'}, children:[
         _jsx('div', { style:{display:'flex', alignItems:'center', gap:8, fontWeight:800}, children:_jsxs('span', { className:'stage-chip', children:[ _jsx('span', { className:'color-dot', style:{background: swatch(state.lastCard.stage)} }), STAGE_LABEL[state.lastCard.stage] ]}) }),
@@ -474,9 +434,9 @@ function CalibBar({calib, state, setStageAt}){
       _jsxs('div', { className:'badge', children:['Index: ', calib.idx]}),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.max(0,i-1)), children:'◀ Prev' }),
       _jsx('button', { onClick:()=>calib.setIdx(i=>Math.min(BOARD_SIZE, calib.idx+1)), children:'Next ▶' }),
-      
-      
-      
+      _jsx('button', { className:'secondary', onClick:calib.exportJSON, children:'Export JSON (path+stages)' }),
+      _jsx('button', { className:'secondary', onClick:calib.exportPathCode, children:'Export PATH (code)' }),
+      _jsx('button', { className:'secondary', onClick:calib.exportStagesCode, children:'Export stages (code)' }),
       _jsx('label', { className:'stage-chip', children:_jsxs('span', { children:[ ' Import JSON ', _jsx('input', { type:'file', accept:'.json', onChange:e=> e.target.files?.[0] && calib.importJSON(e.target.files[0]) }) ]}) }),
       _jsx('span', { className:'small', children:'Set stage at this index:'}),
       _jsx(StageBtn, { id:'early' }),
@@ -613,7 +573,7 @@ function App(){
 
   return _jsxs('div', { className:'grid', children:[
     state.started
-      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)), onToggleAmbience: ()=>setState(s=>({...s})) })
+      ? _jsx(PlayerSidebar, { state, onRoll: roll, onReset: ()=>setState(createState(players)) })
       : _jsx(SetupPanel, { playerCount, setPlayerCount, players, setPlayers, onStart: ()=>setState(s=>({...s, started:true})) }),
     _jsxs('div', { className:'card', children:[
       _jsx('h2', { className:'h', children:'Board (58 spaces)' }),
