@@ -12,5 +12,21 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script type="module" src="./app.js?v=20250813h"></script>
+
+  <!-- Card Modal -->
+  <div id="card-modal" class="card-modal hidden" aria-hidden="true">
+    <div class="card-modal__backdrop" data-dismiss></div>
+    <div class="card-modal__panel" role="dialog" aria-modal="true" aria-labelledby="card-title">
+      <div class="card-modal__header">
+        <h2 id="card-title" class="card-modal__title">Card</h2>
+        <button class="card-modal__close" data-dismiss aria-label="Close">×</button>
+      </div>
+      <div id="card-body" class="card-modal__body"></div>
+      <div class="card-modal__footer">
+        <button class="card-modal__btn" data-dismiss>OK</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

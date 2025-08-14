@@ -1,5 +1,31 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.sh/react@18.3.1/jsx-runtime'
 
+// === Modal helpers for centered card ===
+function showCardModal({ title, text }){
+  const modal = document.getElementById('card-modal');
+  if(!modal) return;
+  const titleEl = modal.querySelector('#card-title');
+  const bodyEl = modal.querySelector('#card-body');
+  titleEl.textContent = title || 'Card';
+  bodyEl.textContent = text || '';
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden','false');
+}
+function hideCardModal(){
+  const modal = document.getElementById('card-modal');
+  if(!modal) return;
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden','true');
+}
+(function attachModalHandlers(){
+  const modal = document.getElementById('card-modal');
+  if(!modal) return;
+  modal.querySelectorAll('[data-dismiss]').forEach(el=>{
+    el.addEventListener('click', hideCardModal);
+  });
+})();
+
+
 const { useState, useEffect } = React;
 
 // 58 spaces EXCLUDING start => indices 0..58
@@ -374,6 +400,14 @@ function App(){
   })();
 
   const calib = useCalibration(state, setState, setPathPoint, setStageAt);
+
+  // Show centered card modal when a card is drawn
+  useEffect(()=>{
+    if(state && state.lastCard){
+      showCardModal({ title: state.lastCard.title, text: state.lastCard.text });
+    }
+  }, [state && state.lastCard]);
+
 
   function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
   function reset(){ setState(createState(players)); }
