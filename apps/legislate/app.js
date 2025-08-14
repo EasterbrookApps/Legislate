@@ -1,3 +1,5 @@
+import React from 'https://esm.sh/react@18.3.1';
+import { createRoot } from 'https://esm.sh/react-dom@18.3.1/client';
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from 'https://esm.sh/react@18.3.1/jsx-runtime'
 
 
@@ -582,5 +584,5 @@ function App(){
 }
 
 // Mount
-const root = ReactDOM.createRoot(document.getElementById('app'));
+const root = createRoot(document.getElementById('app'));
 root.render(_jsx(App, {}));
