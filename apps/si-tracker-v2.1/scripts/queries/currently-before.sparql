@@ -1,7 +1,0 @@
-# SIs still before Parliament (no completion)
-PREFIX :   <https://id.parliament.uk/schema/>
-SELECT DISTINCT ?workPackage WHERE {
-  ?workPackage a :WorkPackage ; :workPackagedThing ?thing .
-  ?thing a :StatutoryInstrument .
-  FILTER NOT EXISTS { ?workPackage :hasWorkPackageCompletionDate ?d }
-}

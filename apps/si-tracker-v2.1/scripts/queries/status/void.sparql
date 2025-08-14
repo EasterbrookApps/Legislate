@@ -1,9 +1,0 @@
-# Void
-PREFIX :   <https://id.parliament.uk/schema/>
-SELECT DISTINCT ?workPackage WHERE {
-  ?workPackage a :WorkPackage ; :workPackagedThing ?thing .
-  ?thing a :StatutoryInstrument .
-  ?bi a :BusinessItem ; :workPackagedThing ?thing ; :businessItemHasProcedureStep ?step .
-  ?step :preferredLabel ?label .
-  FILTER ( CONTAINS(LCASE(?label), "void") )
-}

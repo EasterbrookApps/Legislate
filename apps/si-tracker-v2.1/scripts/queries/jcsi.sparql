@@ -1,9 +1,0 @@
-# JCSI flags
-PREFIX :   <https://id.parliament.uk/schema/>
-SELECT DISTINCT ?workPackage (true AS ?jcsiFlag)
-WHERE {
-  ?workPackage :workPackagedThing ?thing . ?thing a :StatutoryInstrument .
-  ?bi a :BusinessItem ; :workPackagedThing ?thing ; :businessItemHasProcedureStep ?step .
-  ?step :preferredLabel ?stepLabel .
-  FILTER ( CONTAINS(LCASE(?stepLabel), "joint committee on statutory instruments reports") )
-}
