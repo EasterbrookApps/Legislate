@@ -28,7 +28,9 @@ let _ambCtx = null, _ambGain = null, _noiseNode = null; window.AMB_ON=false;
 function startAmbience(){
   if(_ambCtx) { window.AMB_ON=true; return; }
   const ctx = new (window.AudioContext||window.webkitAudioContext)();
-  const gain = ctx.createGain(); gain.gain.value = 0.04; // subtle
+  const gain = ctx.createGain(); gain.gain.value = 0.22; // louder by request
+  const pan = (ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createPanner());
+  if(pan.pan) pan.pan.value = 0;
   // Brown noise approximation
   const bufferSize = 2 * ctx.sampleRate;
   const noiseBuffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -48,8 +50,25 @@ function startAmbience(){
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass'; lp.frequency.value = 800;
 
-  noise.connect(lp).connect(gain).connect(ctx.destination);
+  noise.connect(lp).connect(gain).connect(pan).connect(ctx.destination);
   noise.start(0);
+
+  // Subtle dynamics
+  const lfo = ctx.createOscillator(); lfo.frequency.value = 0.18;
+  const lfoGain = ctx.createGain(); lfoGain.gain.value = 0.05 * gain.gain.value; // 5% depth
+  lfo.connect(lfoGain);
+  lfoGain.connect(gain.gain);
+  lfo.start();
+
+  // Slow pan drift
+  if(pan.pan){ 
+    const panLFO = ctx.createOscillator(); panLFO.frequency.value = 0.07;
+    const panGain = ctx.createGain(); panGain.gain.value = 0.6; // -0.6..+0.6
+    panLFO.connect(panGain); 
+    panGain.connect(pan.pan); 
+    panLFO.start();
+  }
+
 
   _ambCtx = ctx; _ambGain = gain; _noiseNode = noise; window.AMB_ON=true;
 }
