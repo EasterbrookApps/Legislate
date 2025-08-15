@@ -1,97 +1,144 @@
-/* Mobile calibration shim (feature-flagged; no edits to app.js)
-   Usage: add this line BEFORE your app.js in index.html:
-     <script src="mobilecal-shim.js"></script>
-
-   Enable on phone with:  ?mobilecal=1
-   Disable:               ?mobilecal=0  (or clear site data)
+/* Mobile calibration shim v2 (safe, additive, with toggle)
+   - No edits to app.js; load this BEFORE app.js in index.html
+   - Desktop calibration remains the source of truth
+   - Optional mobile scaling based on recorded Desktop board size
+   - On small screens, shows a tiny toggle button to switch MobileCal ON/OFF
 */
 (function(){
   try{
     var LS = window.localStorage;
-    var LEGACY  = 'legislate_path_v1';             // app reads this key
-    var DESKTOP = 'legislate_path_desktop_v1';     // desktop calibration
-    var MOBILE  = 'legislate_path_mobile_v1';      // mobile calibration
+    var LEGACY   = 'legislate_path_v1';               // app reads this key
+    var DESKTOP  = 'legislate_path_desktop_v1';       // desktop calibration points (JSON array)
+    var DESKMETA = 'legislate_path_desktop_meta_v1';  // {w,h} recorded board size when desktop cal last used
+    var MOBILE   = 'legislate_path_mobile_v1';        // mobile calibration points
 
-    // opt-in flag via querystring, remembered in localStorage
+    // read & persist flag
     var Q = new URLSearchParams(location.search);
     if (Q.has('mobilecal')) LS.setItem('mobilecal_enabled', Q.get('mobilecal'));
-    var enabled = LS.getItem('mobilecal_enabled') === '1';
-    var isSmall = window.matchMedia('(max-width: 768px)').matches;
+    var enabled  = LS.getItem('mobilecal_enabled') === '1';
+    var isSmall  = window.matchMedia('(max-width: 768px)').matches;
     var useMobile = enabled && isSmall;
 
-    // migrate existing legacy desktop path once
-    if (!LS.getItem(DESKTOP) && LS.getItem(LEGACY)) {
-      LS.setItem(DESKTOP, LS.getItem(LEGACY));
-    }
+    // migrate legacy desktop path once
+    try { if (!LS.getItem(DESKTOP) && LS.getItem(LEGACY)) { LS.setItem(DESKTOP, LS.getItem(LEGACY)); } } catch(e){}
 
-    function extractBgUrl(el){
-      var bg = getComputedStyle(el).backgroundImage || '';
-      var m = bg.match(/url\(["']?(.*?)["']?\)/);
-      return m ? m[1] : null;
-    }
-
-    function scalePathToBoard(srcJSON){
-      var src;
-      try{ src = JSON.parse(srcJSON || '[]'); }catch(e){ return null; }
-      if(!Array.isArray(src) || !src.length) return null;
-
-      var board = document.querySelector('.board-img, .board-wrap') || document.body;
-      var cw = board.clientWidth, ch = board.clientHeight;
-      if(!(cw>0 && ch>0)) return null;
-
-      var url = extractBgUrl(board);
-      if(!url) return null;
-
-      return new Promise(function(resolve){
-        var img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload = function(){
-          var nw = img.naturalWidth || cw;
-          var nh = img.naturalHeight || ch;
-          var sx = cw / nw, sy = ch / nh;
-          var out = src.map(function(pt){
-            if(!pt || pt.length<2) return pt;
-            var x = pt[0], y = pt[1];
-            return [ Math.round(x * sx), Math.round(y * sy) ];
-          });
-          resolve(JSON.stringify(out));
-        };
-        img.onerror = function(){ resolve(null); };
-        img.src = url;
-      });
-    }
-
-    function applyProfile(json){
-      if(json){
-        LS.setItem(MOBILE, json);
-        LS.setItem(LEGACY, json); // app will read this this session
-      }
-    }
-
+    // util: ready
     function ready(fn){
-      if(document.readyState !== 'loading') fn();
+      if (document.readyState !== 'loading') fn();
       else document.addEventListener('DOMContentLoaded', fn, { once: true });
     }
 
+    function getBoardBox(){
+      var el = document.querySelector('.board-img, .board-wrap');
+      if (!el) return null;
+      var w = el.clientWidth|0, h = el.clientHeight|0;
+      return (w>0 && h>0) ? {el:el, w:w, h:h} : null;
+    }
+
+    // record desktop baseline size (non-mobile or mobile disabled)
+    function maybeRecordDesktopMeta(){
+      if (useMobile) return; // only record when desktop is active
+      try {
+        var box = getBoardBox();
+        if (!box) return;
+        var meta = { w: box.w, h: box.h, t: Date.now() };
+        LS.setItem(DESKMETA, JSON.stringify(meta));
+      } catch(e){}
+    }
+
+    function parseJSON(j){ try{ return JSON.parse(j||'null'); }catch(e){ return null; } }
+
+    function scaleFromDesktop(pointsJSON, deskMeta, currentBox){
+      var pts = parseJSON(pointsJSON);
+      if (!Array.isArray(pts) || !pts.length) return null;
+      var meta = (typeof deskMeta==='string') ? parseJSON(deskMeta) : deskMeta;
+      if (!meta || !meta.w || !meta.h) return null;
+      var sx = currentBox.w / meta.w, sy = currentBox.h / meta.h;
+      var out = pts.map(function(p){
+        if (!p || p.length<2) return p;
+        return [ Math.round(p[0]*sx), Math.round(p[1]*sy) ];
+      });
+      return JSON.stringify(out);
+    }
+
+    function applyJSONToAppKey(json){
+      if (json) {
+        LS.setItem(MOBILE, json); // persist
+        LS.setItem(LEGACY, json); // app reads this key
+      }
+    }
+
+    function ensureDesktopInAppKey(){
+      var d = LS.getItem(DESKTOP);
+      if (d) LS.setItem(LEGACY, d);
+    }
+
+    // inject a small toggle button on small screens so you can flip without query params
+    function injectToggle(){
+      if (!isSmall) return;
+      var btn = document.createElement('button');
+      btn.textContent = enabled ? 'MobileCal: ON' : 'MobileCal: OFF';
+      btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      btn.style.cssText = [
+        'position:fixed','right:12px','bottom:12px','z-index:3000','font:600 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
+        'padding:9px 12px','border-radius:12px','border:1px solid #1e2a40',
+        'background:'+ (enabled?'#0b5':'#333'),
+        'color:#fff','opacity:0.85','box-shadow:0 4px 16px rgba(0,0,0,.25)','letter-spacing:.2px','cursor:pointer'
+      ].join(';');
+      btn.addEventListener('mouseenter', function(){ btn.style.opacity='1'; });
+      btn.addEventListener('mouseleave', function(){ btn.style.opacity='0.9'; });
+      btn.addEventListener('click', function(){
+        try{
+          var now = LS.getItem('mobilecal_enabled') === '1';
+          LS.setItem('mobilecal_enabled', now ? '0' : '1');
+          // reload preserving query but removing mobilecal= if present (not required after we set LS)
+          var u = new URL(location.href);
+          u.searchParams.delete('mobilecal');
+          location.replace(u.toString());
+        }catch(e){ location.reload(); }
+      });
+      document.body.appendChild(btn);
+    }
+
     ready(function(){
-      if(!useMobile){
-        // Ensure app uses Desktop by default
-        if (LS.getItem(DESKTOP)) { LS.setItem(LEGACY, LS.getItem(DESKTOP)); }
+      // record desktop meta as soon as we can (harmless if mobile enabled — we check inside)
+      maybeRecordDesktopMeta();
+
+      if (!useMobile){
+        ensureDesktopInAppKey();
+        injectToggle();
         return;
       }
-      // Wait for the board element to exist and be sized
-      var tries = 0;
-      (function waitBoard(){
-        var board = document.querySelector('.board-img, .board-wrap');
-        if(board && board.clientWidth>0 && board.clientHeight>0){
-          var base = LS.getItem(DESKTOP) || LS.getItem(LEGACY);
-          if(!base){ return; }
-          var p = scalePathToBoard(base);
-          if(p && typeof p.then === 'function'){ p.then(applyProfile); }
-          return;
-        }
-        if(++tries < 60) setTimeout(waitBoard, 50); // ~3 seconds max
-      })();
+
+      // Using mobile: try to scale from desktop using recorded dimensions
+      var box = getBoardBox();
+      if (!box){
+        // wait briefly for layout
+        var tries = 0;
+        (function waitBox(){
+          var b = getBoardBox();
+          if (b){
+            box = b;
+            proceed();
+            return;
+          }
+          if (++tries < 60) return setTimeout(waitBox, 50); // ~3s
+          // timeout -> just keep desktop
+          ensureDesktopInAppKey();
+          injectToggle();
+        })();
+      } else {
+        proceed();
+      }
+
+      function proceed(){
+        var base = LS.getItem(DESKTOP) || LS.getItem(LEGACY);
+        var meta = LS.getItem(DESKMETA);
+        var scaled = scaleFromDesktop(base, meta, box);
+        if (scaled) applyJSONToAppKey(scaled);
+        else ensureDesktopInAppKey(); // graceful fallback
+        injectToggle();
+      }
     });
-  }catch(e){ /* fail-safe: do nothing */ }
+  }catch(e){ /* fail safe */ }
 })();
