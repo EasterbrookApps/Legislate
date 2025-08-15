@@ -1,28 +1,24 @@
-/* Mobile calibration shim v2 (safe, additive, with toggle)
-   - No edits to app.js; load this BEFORE app.js in index.html
-   - Desktop calibration remains the source of truth
-   - Optional mobile scaling based on recorded Desktop board size
-   - On small screens, shows a tiny toggle button to switch MobileCal ON/OFF
+/* Mobile calibration shim v3 (always-visible toggle)
+   - Load BEFORE app.js
+   - Desktop calibration remains the source of truth (never overwritten)
+   - Toggle is visible on all screens; scaling applies only on small screens (<=768px)
 */
 (function(){
   try{
     var LS = window.localStorage;
-    var LEGACY   = 'legislate_path_v1';               // app reads this key
-    var DESKTOP  = 'legislate_path_desktop_v1';       // desktop calibration points (JSON array)
-    var DESKMETA = 'legislate_path_desktop_meta_v1';  // {w,h} recorded board size when desktop cal last used
-    var MOBILE   = 'legislate_path_mobile_v1';        // mobile calibration points
+    var LEGACY   = 'legislate_path_v1';
+    var DESKTOP  = 'legislate_path_desktop_v1';
+    var DESKMETA = 'legislate_path_desktop_meta_v1';
+    var MOBILE   = 'legislate_path_mobile_v1';
 
-    // read & persist flag
     var Q = new URLSearchParams(location.search);
     if (Q.has('mobilecal')) LS.setItem('mobilecal_enabled', Q.get('mobilecal'));
     var enabled  = LS.getItem('mobilecal_enabled') === '1';
     var isSmall  = window.matchMedia('(max-width: 768px)').matches;
     var useMobile = enabled && isSmall;
 
-    // migrate legacy desktop path once
     try { if (!LS.getItem(DESKTOP) && LS.getItem(LEGACY)) { LS.setItem(DESKTOP, LS.getItem(LEGACY)); } } catch(e){}
 
-    // util: ready
     function ready(fn){
       if (document.readyState !== 'loading') fn();
       else document.addEventListener('DOMContentLoaded', fn, { once: true });
@@ -35,9 +31,8 @@
       return (w>0 && h>0) ? {el:el, w:w, h:h} : null;
     }
 
-    // record desktop baseline size (non-mobile or mobile disabled)
     function maybeRecordDesktopMeta(){
-      if (useMobile) return; // only record when desktop is active
+      if (useMobile) return;
       try {
         var box = getBoardBox();
         if (!box) return;
@@ -63,8 +58,8 @@
 
     function applyJSONToAppKey(json){
       if (json) {
-        LS.setItem(MOBILE, json); // persist
-        LS.setItem(LEGACY, json); // app reads this key
+        LS.setItem(MOBILE, json);
+        LS.setItem(LEGACY, json);
       }
     }
 
@@ -73,17 +68,16 @@
       if (d) LS.setItem(LEGACY, d);
     }
 
-    // inject a small toggle button on small screens so you can flip without query params
     function injectToggle(){
-      if (!isSmall) return;
       var btn = document.createElement('button');
       btn.textContent = enabled ? 'MobileCal: ON' : 'MobileCal: OFF';
       btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      btn.title = 'Toggle mobile calibration (scales desktop points on small screens)';
       btn.style.cssText = [
         'position:fixed','right:12px','bottom:12px','z-index:3000','font:600 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, sans-serif',
         'padding:9px 12px','border-radius:12px','border:1px solid #1e2a40',
         'background:'+ (enabled?'#0b5':'#333'),
-        'color:#fff','opacity:0.85','box-shadow:0 4px 16px rgba(0,0,0,.25)','letter-spacing:.2px','cursor:pointer'
+        'color:#fff','opacity:0.9','box-shadow:0 4px 16px rgba(0,0,0,.25)','letter-spacing:.2px','cursor:pointer'
       ].join(';');
       btn.addEventListener('mouseenter', function(){ btn.style.opacity='1'; });
       btn.addEventListener('mouseleave', function(){ btn.style.opacity='0.9'; });
@@ -91,7 +85,6 @@
         try{
           var now = LS.getItem('mobilecal_enabled') === '1';
           LS.setItem('mobilecal_enabled', now ? '0' : '1');
-          // reload preserving query but removing mobilecal= if present (not required after we set LS)
           var u = new URL(location.href);
           u.searchParams.delete('mobilecal');
           location.replace(u.toString());
@@ -101,30 +94,21 @@
     }
 
     ready(function(){
-      // record desktop meta as soon as we can (harmless if mobile enabled — we check inside)
+      ensureDesktopInAppKey();
       maybeRecordDesktopMeta();
 
       if (!useMobile){
-        ensureDesktopInAppKey();
         injectToggle();
         return;
       }
 
-      // Using mobile: try to scale from desktop using recorded dimensions
       var box = getBoardBox();
       if (!box){
-        // wait briefly for layout
         var tries = 0;
         (function waitBox(){
           var b = getBoardBox();
-          if (b){
-            box = b;
-            proceed();
-            return;
-          }
-          if (++tries < 60) return setTimeout(waitBox, 50); // ~3s
-          // timeout -> just keep desktop
-          ensureDesktopInAppKey();
+          if (b){ box = b; proceed(); return; }
+          if (++tries < 60) return setTimeout(waitBox, 50);
           injectToggle();
         })();
       } else {
@@ -136,7 +120,6 @@
         var meta = LS.getItem(DESKMETA);
         var scaled = scaleFromDesktop(base, meta, box);
         if (scaled) applyJSONToAppKey(scaled);
-        else ensureDesktopInAppKey(); // graceful fallback
         injectToggle();
       }
     });
