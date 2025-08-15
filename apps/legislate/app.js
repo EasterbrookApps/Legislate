@@ -6,7 +6,9 @@ const { useState, useEffect } = React;
 const BOARD_SIZE = 58;
 
 // Local storage keys
-const LS_PATH = 'legislate:path58';
+const LS_PATH_DESKTOP = 'legislate:path58:desktop';
+const LS_PATH_MOBILE = 'legislate:path58:mobile';
+const LS_PATH_LEGACY = 'legislate:path58';
 const LS_STAGES = 'legislate:stages58';
 
 // Stage identifiers and colours (requested mapping)
@@ -28,9 +30,13 @@ const STAGE_IDS = ['early','commons','lords','implementation'];
 let DEFAULT_PATH = Array.from({length: BOARD_SIZE+1}, (_,i)=>[5+i*1.6, 90 - Math.min(60, i*1.1)]);
 
 // Storage helpers
-function loadPath(){ try{ const s = localStorage.getItem(LS_PATH); if(s) return JSON.parse(s); }catch{} return DEFAULT_PATH; }
+function activeProfile(){ return (window.__calibrationProfile || loadProfile()); }
+function setActiveProfile(p){ window.__calibrationProfile = p; try{ localStorage.setItem('legislate:profile', p); }catch{} }
+function loadProfile(){ try{ const p = localStorage.getItem('legislate:profile'); if(p) return p; }catch{} return (matchMedia('(max-width: 768px)').matches ? 'mobile' : 'desktop'); }
+function loadPath(profile){ try{ const key = profile==='mobile' ? LS_PATH_MOBILE : LS_PATH_DESKTOP; const s = localStorage.getItem(key); if(s) return JSON.parse(s); }catch{} // migrate legacy
+try{ const legacy = localStorage.getItem(LS_PATH_LEGACY); if(legacy && profile!=='mobile'){ const arr=JSON.parse(legacy); localStorage.setItem(LS_PATH_DESKTOP, legacy); return arr; } }catch{} return DEFAULT_PATH; }catch{} return DEFAULT_PATH; }
 function loadStages(){ try{ const s = localStorage.getItem(LS_STAGES); if(s) return JSON.parse(s); }catch{} return Array(BOARD_SIZE+1).fill(null); }
-function savePath(arr){ try{ localStorage.setItem(LS_PATH, JSON.stringify(arr)); }catch{} }
+function savePath(arr){ try{ const key = activeProfile()==='mobile'?LS_PATH_MOBILE:LS_PATH_DESKTOP; localStorage.setItem(key, JSON.stringify(arr)); }catch{} }catch{} }
 function saveStages(arr){ try{ localStorage.setItem(LS_STAGES, JSON.stringify(arr)); }catch{} }
 
 // Sample decks (stage-themed placeholders)
@@ -61,7 +67,7 @@ function clamp(n,a,b){ return Math.max(a, Math.min(b, n)); }
 function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
 function drawFrom(deck){ const card=deck[0]; const rest=deck.slice(1).concat([card]); return [card,rest]; }
 
-function createState(players, path = loadPath(), stages = loadStages()){
+function createState(players, path = loadPath(loadProfile()), stages = loadStages()){
   return {
     players,
     path,
@@ -123,6 +129,7 @@ function applyEffect(effect, s){
 }
 
 function useGame(){
+  window.__onCardOk = null;
   const [playerCount, setPlayerCount] = useState(4);
   const [players, setPlayers] = useState(()=>defaultPlayers(4));
   const [state, setState] = useState(()=>createState(players));
@@ -130,6 +137,38 @@ function useGame(){
   useEffect(()=>{ setState(createState(players)); }, [players]);
 
   function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
+
+  useEffect(()=>{
+    if(state.modalOpen && state.lastCard){
+      const el = document.getElementById('card-modal'); if(!el) return;
+      el.querySelector('#card-title').textContent = state.lastCard.title || 'Card';
+      el.querySelector('#card-body').textContent = state.lastCard.text || '';
+      el.classList.remove('hidden'); el.setAttribute('aria-hidden','false');
+    }
+  }, [state.modalOpen, state.lastCard]);
+
+  window.__onCardOk = ()=>{
+    setState(s=>{
+      if(!s.awaitingAck || !s.pendingEffect){ return { ...s, modalOpen:false, lastCard:null, awaitingAck:false }; }
+      let out = { ...s, modalOpen:false, awaitingAck:false };
+      out = applyEffect(s.pendingEffect, out);
+      out.pendingEffect = null;
+      if(out.positions[out.turn]===BOARD_SIZE){
+        const label = (out.players[out.turn].name||`P${out.turn+1}`);
+        return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
+      }
+      if(out.awaitingAck){ return out; }
+      let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
+      if(out.skips[nextTurn] > 0){
+        const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
+        const label = (out.players[nextTurn].name||`P${nextTurn+1}`);
+        out.log = [`${label} skips a turn.`, ...out.log];
+        nextTurn = (nextTurn+1) % out.players.length;
+        return {...out, skips: nextSkips, turn: nextTurn};
+      }
+      return {...out, turn: nextTurn};
+    });
+  };
   function reset(){ setState(createState(players)); }
 
   async function roll(){
@@ -159,9 +198,7 @@ function useGame(){
         out.decks = {...out.decks, [stage]:rest};
         out.lastCard = { stage, ...card };
         out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
-        out.pendingEffect = card.effect;
-        out.awaitingAck = true;
-        out.modalOpen = true;
+        out.pendingEffect = card.effect; out.awaitingAck = true; out.modalOpen = true;
         if(out.positions[out.turn]===BOARD_SIZE){
           const label = (out.players[out.turn].name||`P${out.turn+1}`);
           return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
@@ -253,7 +290,7 @@ function PlayerSidebar({state, onRoll, onReset}){
     ]}),
     _jsxs('div', { style:{display:'flex', gap:10, alignItems:'center', marginTop:12}, children:[
       _jsxs('div', { className:`dice ${state.rolling?'rolling':''}`, children:[ state.dice || '–' ]}),
-      _jsx('button', { onClick:onRoll, disabled:state.winner!=null, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
+      _jsx('button', { onClick:onRoll, disabled:state.winner!=null || state.awaitingAck || state.modalOpen, children: state.winner!=null ? 'Game over' : 'Roll 🎲' }),
       _jsx('button', { className:'secondary', onClick:onReset, children:'Reset' }),
     ]}),
     state.lastCard && _jsxs(_Fragment, { children:[
@@ -278,6 +315,8 @@ function PlayerSidebar({state, onRoll, onReset}){
 
 // Calibration
 function useCalibration(state, setState, setPathPoint, setStageAt){
+  const [profile, setProfile] = React.useState(loadProfile());
+  React.useEffect(()=>{ setActiveProfile(profile); }, [profile]);
   const [enabled, setEnabled] = useState(false);
   const [idx, setIdx] = useState(0);
 
@@ -299,7 +338,7 @@ function useCalibration(state, setState, setPathPoint, setStageAt){
       try{
         const data = JSON.parse(reader.result);
         if(Array.isArray(data.path) && Array.isArray(data.stages) && data.path.length===BOARD_SIZE+1 && data.stages.length===BOARD_SIZE+1){
-          localStorage.setItem(LS_PATH, JSON.stringify(data.path));
+          localStorage.setItem(activeProfile()==='mobile'?LS_PATH_MOBILE:LS_PATH_DESKTOP, JSON.stringify(data.path));
           localStorage.setItem(LS_STAGES, JSON.stringify(data.stages));
           setState(s=>({...s, path:data.path, stages:data.stages}));
         } else alert('Invalid calibration JSON');
@@ -348,8 +387,11 @@ function Board({state, calib}){
 }
 
 function CalibBar({calib, state, setStageAt}){
+  const [profile, setProfile] = React.useState(loadProfile());
+  React.useEffect(()=>{ setActiveProfile(profile); }, [profile]);
   const StageBtn = ({id}) => _jsxs('button', { className:'secondary', onClick:()=>setStageAt(calib.idx, id), children:[ _jsx('span', { className:'color-dot', style:{background: STAGE_COLOR[id]} }), STAGE_LABEL[id] ]});
   return _jsxs('div', { className:'calib-bar', children:[
+    _jsxs('div', { className:'badge', children:['Profile: ', _jsx('select', { value: profile, onChange:(e)=>{ setProfile(e.target.value); calib.reloadProfile && calib.reloadProfile(e.target.value); }, children:[ _jsx('option', { value:'desktop', children:'Desktop' }), _jsx('option', { value:'mobile', children:'Mobile' }) ] }) ]}),
     _jsxs('label', { children:[ _jsx('input', { type:'checkbox', checked:calib.enabled, onChange:e=>calib.setEnabled(e.target.checked)}), ' Calibration mode (click to set index 0..58)' ]}),
     calib.enabled && _jsxs(_Fragment, { children:[
       _jsxs('div', { className:'badge', children:['Index: ', calib.idx]}),
@@ -381,36 +423,28 @@ function App(){
 
   const calib = useCalibration(state, setState, setPathPoint, setStageAt);
 
-// Show modal when a card is pending
-useEffect(()=>{
-  if(state.modalOpen && state.lastCard){
-    const { title, text } = state.lastCard;
-    const modal = document.getElementById('card-modal');
-    if(modal){
-      const titleEl = modal.querySelector('#card-title');
-      const bodyEl = modal.querySelector('#card-body');
-      titleEl.textContent = title || 'Card';
-      bodyEl.textContent = text || '';
-      modal.classList.remove('hidden');
-      modal.setAttribute('aria-hidden','false');
-    }
-  }
-}, [state.modalOpen, state.lastCard]);
+  function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
 
-// Continue game when OK is clicked
-window.__onCardOk = ()=>{
-  setState(s=>{
-    if(!s.awaitingAck || !s.pendingEffect){
-      return { ...s, modalOpen:false, lastCard:null, awaitingAck:false };
+  useEffect(()=>{
+    if(state.modalOpen && state.lastCard){
+      const el = document.getElementById('card-modal'); if(!el) return;
+      el.querySelector('#card-title').textContent = state.lastCard.title || 'Card';
+      el.querySelector('#card-body').textContent = state.lastCard.text || '';
+      el.classList.remove('hidden'); el.setAttribute('aria-hidden','false');
     }
-    let out = { ...s, modalOpen:false, awaitingAck:false };
-    out = applyEffect(s.pendingEffect, out);
-    out.pendingEffect = null;
-    if(out.positions[out.turn]===BOARD_SIZE){
-      const label = (out.players[out.turn].name||`P{out.turn+1}`);
-      return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
-    }
-    if(out.awaitingAck){ return out; }
+  }, [state.modalOpen, state.lastCard]);
+
+  window.__onCardOk = ()=>{
+    setState(s=>{
+      if(!s.awaitingAck || !s.pendingEffect){ return { ...s, modalOpen:false, lastCard:null, awaitingAck:false }; }
+      let out = { ...s, modalOpen:false, awaitingAck:false };
+      out = applyEffect(s.pendingEffect, out);
+      out.pendingEffect = null;
+      if(out.positions[out.turn]===BOARD_SIZE){
+        const label = (out.players[out.turn].name||`P${out.turn+1}`);
+        return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};
+      }
+      if(out.awaitingAck){ return out; }
       let nextTurn = out.extraRoll ? out.turn : (out.turn+1) % out.players.length;
       if(out.skips[nextTurn] > 0){
         const nextSkips = [...out.skips]; nextSkips[nextTurn]-=1;
@@ -420,11 +454,8 @@ window.__onCardOk = ()=>{
         return {...out, skips: nextSkips, turn: nextTurn};
       }
       return {...out, turn: nextTurn};
-  });
-};
-
-
-  function start(){ setState(s=>({...s, started:true, log:[`Game started with ${players.length} players.`, ...s.log]})); }
+    });
+  };
   function reset(){ setState(createState(players)); }
   async function roll(){
     setState(s=>({...s, rolling:true}));
@@ -453,9 +484,7 @@ window.__onCardOk = ()=>{
         out.decks = {...out.decks, [stage]:rest};
         out.lastCard = { stage, ...card };
         out.log = [`Drew ${STAGE_LABEL[stage]} card: ${card.title}`, ...out.log];
-        out.pendingEffect = card.effect;
-        out.awaitingAck = true;
-        out.modalOpen = true;
+        out.pendingEffect = card.effect; out.awaitingAck = true; out.modalOpen = true;
         if(out.positions[out.turn]===BOARD_SIZE){
           const label = (out.players[out.turn].name||`P${out.turn+1}`);
           return {...out, winner: out.turn, log:[`🏆 ${label} has implemented their Act!`, ...out.log]};

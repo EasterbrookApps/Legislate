@@ -52,7 +52,6 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 .path-ghost .pt{position:absolute; width:10px; height:10px; border-radius:50%; background:#fff8; transform:translate(-50%,-50%);}
 .calib-dot{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;outline:2px solid #000a;transform:translate(-50%,-50%);}
 
-
 /* === Centered Card Modal === */
 .card-modal { position: fixed; inset: 0; display: grid; place-items: center; z-index: 1000; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 .card-modal.hidden { display: none; }
@@ -67,3 +66,6 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 .card-modal__btn { padding: 10px 16px; border-radius: 10px; border: 1px solid #2a3b58; background: #1a2640; color: #fff; cursor: pointer; }
 .card-modal__btn:hover { filter: brightness(1.05); }
 @keyframes card-in { to { transform: scale(1); opacity: 1; } }
+
+.calib-bar select{ background:#0f1a2a; color:#cfe1ff; border:1px solid #2a3b58; padding:6px 8px; border-radius:8px; }
+.calib-bar .badge{ display:flex; align-items:center; gap:8px; }
