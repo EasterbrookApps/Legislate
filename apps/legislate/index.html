@@ -35,7 +35,10 @@ document.addEventListener('click', function(e){
   if(t && t.hasAttribute && t.hasAttribute('data-dismiss')){
     if(window.__onCardOk){ try{ window.__onCardOk(); }catch(e){} }
     const modal = document.getElementById('card-modal');
-    if(modal){ modal.classList.add('hidden'); modal.setAttribute('aria-hidden','true'); }
+    if(modal){
+      modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden','true');
+    }
   }
 }, { passive:true });
 </script>
