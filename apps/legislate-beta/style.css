@@ -29,7 +29,7 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 .stage-chip{display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid #20304a; background:#0c1320; font-size:12px}
 
 /* Board */
-.board-wrap{width:min(95vw, 1100px);aspect-ratio:1/1;margin:0 auto;background:#09101a;border:1px solid var(--ring);border-radius:20px;position:relative;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.45)}
+.board-wrap{width:min(95vw, 1100px);aspect-ratio:var(--board-ar, 1/1);margin:0 auto;background:#09101a;border:1px solid var(--ring);border-radius:20px;position:relative;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.45)}
 .board-img{position:absolute; inset:0; background-image:url('https://raw.githubusercontent.com/edent/Legislate/master/Board/Legislate.png'); background-size:cover; background-position:center; filter:saturate(1.05) contrast(1.02)}
 
 /* Tokens */
@@ -67,9 +67,3 @@ input.input{background:#0f1722;border:1px solid #223148;color:var(--ink);border-
 .card-modal__btn { padding: 10px 16px; border-radius: 10px; border: 1px solid #2a3b58; background: #1a2640; color: #fff; cursor: pointer; }
 .card-modal__btn:hover { filter: brightness(1.05); }
 @keyframes card-in { to { transform: scale(1); opacity: 1; } }
-
-
-/* Mobile stability: avoid text auto-resize and ensure GPU compositing for tokens */
-html { -webkit-text-size-adjust: 100%; }
-.board-img{ will-change: transform; }
-.token{ transform: translate(-50%, -50%) translateZ(0); }
