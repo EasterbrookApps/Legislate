@@ -327,13 +327,36 @@ function useCalibration(state, setState, setPathPoint, setStageAt){
 }
 
 function Board({state, calib}){
-  return _jsxs('div', { className:'board-wrap', onClick: calib.onClickBoard, children:[
+  const wrapRef = React.useRef(null);
+  const [__map, __setMap] = React.useState({iw:0, ih:0, ox:0, oy:0});
+  React.useLayoutEffect(()=>{
+    const wrap = wrapRef.current; if(!wrap) return;
+    const imgDiv = wrap.querySelector('.board-img'); if(!imgDiv) return;
+    const cw = wrap.clientWidth||0, ch = wrap.clientHeight||0;
+    const bg = getComputedStyle(imgDiv).backgroundImage||'';
+    const m = bg.match(/url\(["']?(.*?)["']?\)/);
+    const url = m?m[1]:null;
+    if(!cw||!ch||!url){ __setMap({iw:cw, ih:ch, ox:0, oy:0}); return; }
+    const im = new Image();
+    im.onload = ()=>{
+      const nw = im.naturalWidth||cw, nh = im.naturalHeight||ch;
+      const scale = Math.min(cw/nw, ch/nh);
+      const iw = Math.round(nw*scale), ih = Math.round(nh*scale);
+      const ox = Math.round((cw - iw)/2), oy = Math.round((ch - ih)/2);
+      __setMap({iw, ih, ox, oy});
+    };
+    im.src = url;
+  }, [state.players.length]);
+  const mapX = (p)=> Math.round(__map.ox + (p/100)*__map.iw);
+  const mapY = (p)=> Math.round(__map.oy + (p/100)*__map.ih);
+
+  return _jsxs('div', { className:'board-wrap', ref: wrapRef, onClick: calib.onClickBoard, children:[
     _jsx('div', { className:'board-img' }),
     calib.enabled && _jsx('div', { className:'path-ghost', children:
       state.path.map(([x,y],i)=> _jsx('div', { className:'pt', style:{left:`${x}%`, top:`${y}%`, opacity: i===calib.idx?1:.6 }}, i))
     }),
     calib.enabled && _jsx('div', { className:'calib-dot', style:{
-      left: `${(state.path[calib.idx]?.[0] ?? 0)}%`, top: `${(state.path[calib.idx]?.[1] ?? 0)}%`
+      left: `${mapX((state.path[calib.idx]?.[0] ?? 0))}px`, top: `${mapY((state.path[calib.idx]?.[1] ?? 0))}px`
     }}),
     state.players.map((p,idx)=>{
       const pos = state.positions[idx];
