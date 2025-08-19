@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+  <title>Legislate — SVG Beta (White)</title>
+  <link rel="stylesheet" href="style.css?v=white1">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">Legislate — SVG Beta</div>
+      <div class="spacer"></div>
+      <div class="io">
+        <button id="btn-import">Import Path</button>
+        <input type="file" id="file-import" accept="application/json" hidden>
+        <button id="btn-export">Export Path</button>
+        <button id="btn-reset">Reset Path</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Setup panel -->
+      <section class="setup" id="setup">
+        <h2>Setup</h2>
+        <div class="field">
+          <label>Players:</label>
+          <div class="seg">
+            <input type="radio" name="players" id="p2" value="2" checked><label for="p2">2</label>
+            <input type="radio" name="players" id="p3" value="3"><label for="p3">3</label>
+            <input type="radio" name="players" id="p4" value="4"><label for="p4">4</label>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="btn-start" class="primary">Start Game</button>
+        </div>
+        <p class="hint">Import your <code>path-native.json</code> to use your universal calibration. You can also set points using the Calibrate tool.</p>
+      </section>
+
+      <!-- Board -->
+      <section class="board-host">
+        <div id="loading">Loading board…</div>
+      </section>
+    </main>
+
+    <footer class="bottombar">
+      <div class="left">
+        <button id="btn-calib">Calibrate</button>
+        <button id="btn-prev" title="Previous path index">◀</button>
+        <span id="idx">0</span>/<span id="len">0</span>
+        <button id="btn-next" title="Next path index">▶</button>
+      </div>
+      <div class="center">
+        <button id="btn-roll" class="primary">Roll</button>
+        <span id="dice">–</span>
+        <button id="btn-step">Step +1</button>
+      </div>
+      <div class="right">
+        <span id="turn">Turn: —</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal" id="modal" aria-hidden="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <h3 id="modal-title">Card</h3>
+      <div id="modal-body">This is a blocking modal. Click OK to continue.</div>
+      <div class="modal-actions">
+        <button id="modal-ok" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=white1"></script>
+</body>
+</html>
