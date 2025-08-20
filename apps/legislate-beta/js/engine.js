@@ -12,7 +12,7 @@ function afterRoll(n){
   const p=currentPlayer(); if(p.eliminated){ advanceTurn(); return; }
   moveSteps(p, n, ()=>{
     if(p.index>=lastIndex()){ markFinished(p); endOrContinueRound(); return; }
-    if(isCardSpace(p.index)){ const deckId=GameState.board.decks[String(p.index)]; const card=drawFrom(deckId); if(card){ Engine.waitingForCardOk=true; showCard(deckId, card); Engine.pendingEffect={playerId:p.id, effect: card.effect||null}; return; } }
+    if(isCardSpace(p.index)){ const deckId=GameState.board.spaces[p.index].deck || GameState.board.decks[String(p.index)]; const card=drawFrom(deckId); if(card){ Engine.waitingForCardOk=true; showCard(deckId, card); Engine.pendingEffect={playerId:p.id, effect: card.effect||null}; return; } }
     finalizeTurn();
   });
 }

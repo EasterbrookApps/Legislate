@@ -1,9 +1,10 @@
 # Changelog
 
-## v1.0.0 (2025-08-20)
-- Baseline release with SVG board wrapper and % calibration.
-- Dice centrepiece (B/W), ~2.5s animation.
-- Card modal with deck-colour headers; OK-to-continue enforced.
-- Effects: move ±N, start/end, miss_turn, extra_roll, move:previous/nearest:stage, pingpong, eliminate.
-- Admin panel (password `legislate`) with calibration, stage tagging, deck mapping; export to `board.json`.
-- Error screen if `board.json` missing/invalid.
+## v1.2.0 (2025-08-20)
+- Admin UX overhaul: mini-editor per space, Walk Mode (Prev/Next), highlight ring on active space.
+- Progress bar with exact counts; Export disabled until 58/58 configured.
+- Combined `board.json`: per-space `deck` field (legacy `decks` map still supported when loading).
+- Removed admin password tooltip/hint; unlocking admin closes config overlay.
+
+## v1.1.0
+- (Not deployed) Admin login UX fixes, combined Stage+Deck table, click-the-board editing.

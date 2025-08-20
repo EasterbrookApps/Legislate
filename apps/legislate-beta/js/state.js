@@ -10,4 +10,4 @@ function alivePlayers(){ return GameState.players.filter(p=>!p.eliminated); }
 function nextActiveIdx(fromIdx=null){ let idx=(fromIdx===null?GameState.activeIdx:fromIdx); const n=GameState.players.length; for(let step=1;step<=n;step++){ const next=(idx+step)%n; const p=GameState.players[next]; if(!p.eliminated) return next; } return idx; }
 function stageAt(index){ if(!GameState.board) return null; const sp=GameState.board.spaces[index]; return sp? sp.stage : null; }
 function lastIndex(){ return GameState.board? GameState.board.spaces.length-1 : 57; }
-function isCardSpace(index){ if(!GameState.board) return false; return GameState.board.decks.hasOwnProperty(String(index)); }
+function isCardSpace(index){ if(!GameState.board) return false; if(GameState.board.spaces && GameState.board.spaces[index] && GameState.board.spaces[index].deck){ return GameState.board.spaces[index].deck!=='none'; } return GameState.board.decks && GameState.board.decks.hasOwnProperty(String(index)); }

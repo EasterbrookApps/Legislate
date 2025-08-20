@@ -1,19 +1,9 @@
-# Legislate?! v1
+# Legislate?! v1.2
 
 - White UI, SVG board wrapper, tokens move **one space at a time**.
 - Floating black & white die with ~2.5s animation.
-- 5 decks with blocking card modal; OK required to continue.
-- Admin panel (password: `legislate`) for one-time calibration + deck mapping; **Export** downloads `board.json`.
-- Fail-safe: if `data/board.json` is missing/invalid, an error screen prompts you to calibrate via Admin.
+- Cards: 5 decks with blocking modal (OK-to-continue).
+- Admin (password: `legislate`): calibration (58 points), **mini-editor per space**, **Walk Mode**, **highlight ring**, and a **progress bar with exact counts**; Export disabled until 58/58 are configured.
+- Combined export: `board.json` now stores `deck` inside each space item.
 
-## One-time setup
-1. Ensure `assets/board.png` is your real board (current source: uploaded Legislate.jpeg).
-2. Open the game → **Admin** → password `legislate`.
-3. **Calibration**: click 58 spaces in order.
-4. **Stages**: set stage for each index.
-5. **Decks**: map indices to decks (Early, Commons, Lords, Implementation, PingPong).
-6. **Export** → download `board.json` and place it in `apps/legislate/data/board.json` in your repo.
-
-## Notes
-- No localStorage; everything reads from static JSON files.
-- No audio. Multiplayer hooks omitted in v1.
+Current board source: uploaded Legislate.jpeg.
