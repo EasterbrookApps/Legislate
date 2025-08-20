@@ -1,1 +1,6 @@
-[{"text": "Advance 1", "effect": "move:+1"}]
+[
+  {
+    "text": "Move +2",
+    "effect": "move:+2"
+  }
+]

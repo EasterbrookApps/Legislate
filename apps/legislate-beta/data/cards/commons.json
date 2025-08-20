@@ -1,1 +1,6 @@
-[{"text": "Roll again", "effect": "extra_roll"}]
+[
+  {
+    "text": "Move +1",
+    "effect": "move:+1"
+  }
+]

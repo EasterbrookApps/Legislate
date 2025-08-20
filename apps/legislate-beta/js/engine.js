@@ -1,33 +1,44 @@
 
-let Engine={busy:false,waiting:false,pending:null}; function isBusy(){return Engine.busy||Engine.waiting;}
-Engine.isBusy=isBusy;
-function startGame(){ renderPlayersUI(); renderTokens(); }
-function renderPlayersUI(){
-  const c=$('#players'); c.innerHTML='';
-  GameState.players.forEach((p,i)=>{ const el=document.createElement('span'); el.className='player';
-    const dot=document.createElement('span'); dot.className='player-dot'; dot.style.background = ['#ef4444','#3b82f6','#22c55e','#f59e0b','#a855f7','#f97316'][i];
-    const name=document.createElement('span'); name.textContent=p.name; el.appendChild(dot); el.appendChild(name); c.appendChild(el); });
-}
-function afterRoll(n){
-  const p=currentPlayer();
+let Engine={busy:false,waiting:false};
+Engine.isBusy = ()=> Engine.busy || Engine.waiting;
+Engine.afterRoll = function(n){
+  const p=GameState.players[GameState.activeIdx];
   moveSteps(p, n, ()=>{
     if(p.index>=lastIndex()){ showWinners([p]); return; }
-    if(isCardSpace(p.index)){ const deckId=GameState.board.spaces[p.index].deck; const card=drawFrom(deckId)||{text:'—',effect:null}; Engine.waiting=true; showCard(deckId, card); Engine.pending={playerId:p.id, effect:card.effect}; return; }
-    finalizeTurn();
+    const sp = GameState.board.spaces[p.index];
+    if(sp && sp.deck && sp.deck!=='none'){
+      const card = drawFrom(sp.deck);
+      if(card){ Engine.waiting=true; showCard(sp.deck, card); Engine._pending={p,card}; return; }
+    }
+    advanceTurn();
   });
 }
-function onCardAcknowledged(){ Engine.waiting=false; if(Engine.pending){ applyEffect(Engine.pending.effect, Engine.pending.playerId); Engine.pending=null; } else finalizeTurn(); }
+Engine.onCardAcknowledged = function(){
+  Engine.waiting=false;
+  const {p, card} = Engine._pending || {};
+  if(p && card && card.effect){ applyEffect(p, card.effect, ()=>advanceTurn()); }
+  else advanceTurn();
+  Engine._pending=null;
+}
 function moveSteps(player, steps, done){
-  Engine.busy=true; const per=steps>=0?1:-1; let left=Math.abs(steps);
-  const tick=()=>{ if(left<=0){ Engine.busy=false; renderTokens(); done&&done(); return; }
-    player.index = clamp(player.index+per, 0, lastIndex()); left--; renderTokens(); setTimeout(tick, 220); };
-  tick();
+  Engine.busy=true; let remaining=steps;
+  function step(){ if(remaining<=0){ Engine.busy=false; renderTokens(); done&&done(); return; }
+    player.index = clamp(player.index+1, 0, lastIndex()); renderTokens(); remaining--; setTimeout(step, 220); }
+  step();
 }
-function applyEffect(effect, playerId){ const p=GameState.players.find(x=>x.id===playerId); if(!effect){ finalizeTurn(); return; }
-  if(effect==='miss_turn'){ p.skipNext=true; finalizeTurn(); return; }
-  if(effect==='extra_roll'){ p.extraRoll=true; finalizeTurn(); return; }
-  if(effect && effect.startsWith('move:')){ const v=parseInt(effect.split(':')[1],10)||0; moveSteps(p,v,finalizeTurn); return; }
-  finalizeTurn();
+function applyEffect(player, effect, cb){
+  if(effect==='miss_turn'){ player.skipNext=true; return cb(); }
+  if(effect==='extra_roll'){ player.extraRoll=true; return cb(); }
+  if(effect.startsWith('move:')){ const n=parseInt(effect.split(':')[1],10); player.index=clamp(player.index+n,0,lastIndex()); renderTokens(); return cb(); }
+  cb();
 }
-function finalizeTurn(){ const p=currentPlayer(); if(p.extraRoll){ p.extraRoll=false; return; } GameState.activeIdx=(GameState.activeIdx+1)%GameState.players.length; renderTokens(); }
-function showWinners(ws){ alert('Winner: '+ws.map(w=>GameState.players.find(p=>p.id===w.id)?.name||'Player').join(', ')); }
+function advanceTurn(){
+  const p=currentPlayer();
+  if(p.extraRoll){ p.extraRoll=false; return; } // stays same player; next roll uses same activeIdx
+  GameState.activeIdx = (GameState.activeIdx+1) % GameState.players.length;
+  renderTokens();
+}
+function showWinners(w){ const overlay=$('#error-overlay'); overlay.classList.remove('hidden'); const names=w.map(x=>x.name).join(', ');
+  overlay.innerHTML=`<div class="card"><h2>🏆 ${names} wins!</h2><button id="restart-btn2" class="btn">Restart</button></div>`;
+  $('#restart-btn2').addEventListener('click', ()=> location.reload());
+}

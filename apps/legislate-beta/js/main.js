@@ -1,5 +1,6 @@
 
 window.addEventListener('DOMContentLoaded', async ()=>{
-  setupBoardSVG(); initPlayers(4); await loadBoardConfig(); await loadDecks(); setupDice(); startGame();
-  $('#restart').addEventListener('click', ()=> location.reload());
+  setupBoardSVG(); setupAdmin(); setupDice(); initPlayers(4); renderPlayersUI();
+  await loadBoardConfig(); await loadDecks();
+  renderTokens();
 });

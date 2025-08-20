@@ -1,1 +1,14 @@
-[{"text": "Miss a turn", "effect": "miss_turn"}, {"text": "Advance 2", "effect": "move:+2"}]
+[
+  {
+    "text": "Miss a turn",
+    "effect": "miss_turn"
+  },
+  {
+    "text": "Move +2",
+    "effect": "move:+2"
+  },
+  {
+    "text": "Extra roll",
+    "effect": "extra_roll"
+  }
+]

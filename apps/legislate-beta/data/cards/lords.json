@@ -1,1 +1,6 @@
-[{"text": "Go back 1", "effect": "move:-1"}]
+[
+  {
+    "text": "Move -1",
+    "effect": "move:-1"
+  }
+]

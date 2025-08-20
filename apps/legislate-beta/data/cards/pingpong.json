@@ -1,1 +1,6 @@
-[{"text": "Miss a turn", "effect": "miss_turn"}]
+[
+  {
+    "text": "Miss a turn",
+    "effect": "miss_turn"
+  }
+]
