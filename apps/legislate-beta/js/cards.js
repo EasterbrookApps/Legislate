@@ -1,16 +1,45 @@
+// cards.js — effects-only patch: shows card and dispatches effect on OK (no dice/engine changes)
+let Cards={decks:{},current:null};
 
-let Cards={decks:{}};
 async function loadDecks(){
-  const base='data/cards/'; const ids=['early','commons','lords','implementation','pingpong']; Cards.decks={};
-  for(const id of ids){ try{ const res=await fetch(base+id+'.json?c='+Date.now()); const arr=await res.json(); Cards.decks[id]={draw:shuffle(arr.slice()),discard:[]}; }
-    catch(e){ Cards.decks[id]={draw:[],discard:[]}; } }
+  const ids=['early','commons','lords','implementation','pingpong'];
+  Cards.decks={};
+  for(const id of ids){
+    try{
+      const res=await fetch('data/cards/'+id+'.json?c='+(Date.now()));
+      const arr=await res.json();
+      Cards.decks[id]={draw:arr.slice(),discard:[]};
+    }catch(e){ Cards.decks[id]={draw:[],discard:[]}; }
+  }
 }
-function drawFrom(deckId){ const d=Cards.decks[deckId]; if(!d) return null; if(d.draw.length===0){ d.draw=shuffle(d.discard.slice()); d.discard=[]; } const card=d.draw.shift()||null; if(card) d.discard.push(card); return card; }
+
+function drawFrom(deckId){
+  const d=Cards.decks[deckId]; if(!d) return null;
+  if(d.draw.length===0){ d.draw=d.discard.slice(); d.discard=[]; }
+  const card=d.draw.shift()||null; if(card) d.discard.push(card);
+  return card;
+}
+
 function showCard(deckId, card){
-  const modal=$('#card-modal'); modal.classList.remove('hidden');
-  modal.classList.remove('deck-early','deck-commons','deck-lords','deck-implementation','deck-pingpong');
-  modal.classList.add(deckId==='early'?'deck-early':deckId==='commons'?'deck-commons':deckId==='lords'?'deck-lords':deckId==='implementation'?'deck-implementation':'deck-pingpong');
-  $('#card-header').textContent=deckId[0].toUpperCase()+deckId.slice(1);
-  $('#card-text').textContent=card.text||'—';
+  Cards.current={deckId,card};
+  let modal=document.getElementById('card-modal');
+  if(!modal){
+    modal=document.createElement('div'); modal.id='card-modal'; modal.className='overlay';
+    modal.innerHTML='<div class="card card-modal"><div id="card-header" class="card-header"></div><div id="card-text" class="card-text"></div><button id="card-ok" class="btn">OK</button></div>';
+    document.body.appendChild(modal);
+  }
+  modal.classList.remove('hidden');
+  document.getElementById('card-header').textContent=deckId[0].toUpperCase()+deckId.slice(1);
+  document.getElementById('card-text').textContent=card.text||'—';
+  const ok=document.getElementById('card-ok');
+  ok.onclick=function(){
+    // Hide modal, broadcast the effect. Engine stays untouched.
+    modal.classList.add('hidden');
+    const effect = (card && card.effect) ? String(card.effect) : '';
+    document.dispatchEvent(new CustomEvent('card:ok', { detail: { effect } }));
+  };
 }
-function hideCard(){ $('#card-modal').classList.add('hidden'); }
+
+function hideCard(){ const m=document.getElementById('card-modal'); if(m) m.classList.add('hidden'); Cards.current=null; }
+
+window.Cards=Cards; window.loadDecks=loadDecks; window.drawFrom=drawFrom; window.showCard=showCard; window.hideCard=hideCard;
