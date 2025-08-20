@@ -1,14 +1,1 @@
-[
-  {
-    "text": "Amendment accepted. Move forward 2.",
-    "effect": "move:+2"
-  },
-  {
-    "text": "Defeated at Second Reading. Return to start.",
-    "effect": "move:start"
-  },
-  {
-    "text": "Peers call for more scrutiny. Miss a turn.",
-    "effect": "miss_turn"
-  }
-]
+[{"text": "Go back 1", "effect": "move:-1"}]

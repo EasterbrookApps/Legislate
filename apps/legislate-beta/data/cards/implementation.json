@@ -1,14 +1,1 @@
-[
-  {
-    "text": "Judicial review delays rollout. Go back 3.",
-    "effect": "move:-3"
-  },
-  {
-    "text": "Delivery partners aligned. Move forward 2.",
-    "effect": "move:+2"
-  },
-  {
-    "text": "Policy u-turn. Go back to Commons.",
-    "effect": "move:previous:commons"
-  }
-]
+[{"text": "Advance 1", "effect": "move:+1"}]
