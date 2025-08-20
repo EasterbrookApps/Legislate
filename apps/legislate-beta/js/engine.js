@@ -2,17 +2,26 @@
 let Engine={busy:false,waiting:false};
 Engine.isBusy = ()=> Engine.busy || Engine.waiting;
 Engine.afterRoll = function(n){
-  const p=GameState.players[GameState.activeIdx];
-  moveSteps(p, n, ()=>{
-    if(p.index>=lastIndex()){ showWinners([p]); return; }
-    const sp = GameState.board.spaces[p.index];
-    if(sp && sp.deck && sp.deck!=='none'){
-      const card = drawFrom(sp.deck);
-      if(card){ Engine.waiting=true; showCard(sp.deck, card); Engine._pending={p,card}; return; }
-    }
-    advanceTurn();
-  });
-}
+    const p = GameState.players[GameState.activeIdx];
+
+    // If player is at start (index 0), skip counting that as a step
+    let steps = (p.index === 0) ? n + 1 : n;
+
+    moveSteps(p, steps, () =>{
+        const sp = GameState.board.spaces[p.index];
+        if(sp && sp.deck && sp.deck !== 'none'){
+            const card = drawFrom(sp.deck);
+            if(card){ 
+                Engine.waiting=true; 
+                showCard(sp.deck, card); 
+                Engine._pending=[p,card]; 
+                return;
+            }
+        }
+        advanceTurn();
+    });
+};
+
 Engine.onCardAcknowledged = function(){
   Engine.waiting=false;
   const {p, card} = Engine._pending || {};

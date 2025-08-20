@@ -3,7 +3,7 @@ let Dice={overlay:null,bigDie:null,resultEl:null,rolling:false};
 function setupDice(){
   Dice.overlay=$('#dice-overlay'); Dice.bigDie=$('#big-die'); Dice.resultEl=$('#die-result');
   $('#roll-btn-header').addEventListener('click', onRollClicked);
-  document.addEventListener('keydown', (e)=>{ if(e.code==='Space' || e.key==='r' || e.key==='R'){ onRollClicked(); } });
+  // document.addEventListener('keydown', (e)=>{ if(e.code==='Space' || e.key==='r' || e.key==='R'){ onRollClicked(); } });
   $('#card-ok').addEventListener('click', ()=>{ hideCard(); Engine.onCardAcknowledged(); });
   $('#restart-btn').addEventListener('click', ()=> location.reload());
 }
