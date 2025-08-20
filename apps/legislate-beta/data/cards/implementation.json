@@ -1,6 +1,47 @@
 [
   {
-    "text": "Move +2",
-    "effect": "move:+2"
+    "id": "Implementation01",
+    "text": "Everything in your Bill has now come into force – go straight to the finish line.",
+    "effect": ""
+  },
+  {
+    "id": "Implementation02",
+    "text": "Realise don't have power to do everything you want in implementing regulations. Go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "id": "Implementation03",
+    "text": "Consult on guidance; consultation shows some provisions won't work for particular case. Go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "id": "Implementation04",
+    "text": "Pilot scheme reveals gaps in how policy will work in practice. Go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "id": "Implementation05",
+    "text": "Welsh Govt say impossible to implement there until they pass their own legislation. Miss a turn.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Implementation06",
+    "text": "The JCSI object to the drafting of your implementing regulations. Miss a turn.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Implementation07",
+    "text": "Policy officials have moved on by time implementing regulations drafted. Miss a turn trying to find out original intention behind provisions.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Implementation08",
+    "text": "Accidentally repeal old criminal offences before new ones in force – major political embarrassment – go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "id": "Implementation09",
+    "text": "Lots of extra consequential amendments are needed. Miss a turn drafting regulations.",
+    "effect": "miss_turn"
   }
 ]
