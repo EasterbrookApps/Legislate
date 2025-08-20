@@ -1,5 +1,5 @@
 
-let Admin={unlocked:false,calibrating:false,clicks:[],stages:[],deckmap:{},selectedIndex:0,walkMode:false};
+let Admin={unlocked:false,calibrating:false,clicks:[],stages:[],deckmap:{},selectedIndex:0,walkMode:false,totalSpaces:58};
 
 function setupAdmin(){
   $('#admin-toggle').addEventListener('click', ()=> $('#admin-panel').classList.toggle('hidden'));
@@ -7,12 +7,14 @@ function setupAdmin(){
   $('#admin-login').addEventListener('click', onAdminLogin);
   $('#calib-start').addEventListener('click', startCalibration);
   $('#calib-stop').addEventListener('click', stopCalibration);
+  $('#calib-back').addEventListener('click', backCalibrationPoint);
   $('#export-board').addEventListener('click', exportBoard);
   $('#open-admin-from-error').addEventListener('click', ()=> $('#admin-panel').classList.remove('hidden'));
   // Mapping controls
   $('#walk-mode').addEventListener('change', (e)=>{ Admin.walkMode = e.target.checked; ensureMiniEditorVisible(); });
   $('#walk-prev').addEventListener('click', ()=> { stepTo(Math.max(0, Admin.selectedIndex-1)); });
-  $('#walk-next').addEventListener('click', ()=> { stepTo(Math.min(57, Admin.selectedIndex+1)); });
+  $('#walk-next').addEventListener('click', ()=> { stepTo(Math.min((currentSpacesSource()?.length||Admin.totalSpaces)-1, Admin.selectedIndex+1)); });
+  const ts=$('#total-spaces'); if(ts){ ts.addEventListener('change', ()=>{ const v=parseInt(ts.value,10)||58; Admin.totalSpaces=Math.max(2, v); updateProgress(); }); Admin.totalSpaces=parseInt(ts.value,10)||58; }
 
   // Click board to edit nearest
   Board.svg.addEventListener('click', (evt)=>{
@@ -48,37 +50,48 @@ function onAdminLogin(){
 }
 
 function loadExistingToAdminMemory(){
-  if(GameState.board && GameState.board.spaces && Admin.stages.length!==58){
+  if(GameState.board && GameState.board.spaces){
+    // Seed stages from existing board
     Admin.stages = GameState.board.spaces.map(s => s.stage || 'early');
-    // seed deckmap from combined or legacy map
     Admin.deckmap = {};
     GameState.board.spaces.forEach(sp => { if(sp.deck && sp.deck!=='none') Admin.deckmap[String(sp.index)] = sp.deck; });
     if(Object.keys(Admin.deckmap).length===0 && GameState.board.decks){ Admin.deckmap = {...GameState.board.decks}; }
+    Admin.totalSpaces = GameState.board.spaces.length;
+    const ts=$('#total-spaces'); if(ts){ ts.value=String(Admin.totalSpaces); }
   }
 }
 
 function currentSpacesSource(){
   if(Admin.clicks.length>0) return Admin.clicks;  // allow partial calibration
-  if(GameState.board && GameState.board.spaces && GameState.board.spaces.length===58) return GameState.board.spaces;
+  if(GameState.board && GameState.board.spaces) return GameState.board.spaces;
   return null;
 }
 
 function startCalibration(){
-  Admin.calibrating=true; Admin.clicks=[]; $('#calib-status').textContent='Click 58 spaces in order.';
-  Board.crosshairsLayer.style.display='block'; Board.svg.addEventListener('click', onBoardClickCalibrate); renderCrosshairs();
+  Admin.calibrating=true; Admin.clicks=[]; $('#calib-status').textContent='Click spaces in order.';
+  Board.crosshairsLayer.style.display='block'; Board.svg.addEventListener('click', onBoardClickCalibrate); renderCrosshairs(); updateProgress();
 }
 
 function stopCalibration(){
   Admin.calibrating=false; Board.crosshairsLayer.style.display='none'; Board.svg.removeEventListener('click', onBoardClickCalibrate);
-  $('#calib-status').textContent=`Captured ${Admin.clicks.length} points.`;
+  $('#calib-status').textContent=`Captured ${Admin.clicks.length}/${Admin.totalSpaces}`;
   if(Admin.clicks.length>0){ Admin.selectedIndex = Math.min(Admin.selectedIndex, Admin.clicks.length-1); ensureMiniEditorVisible(); updateProgress(); }
+}
+
+function backCalibrationPoint(){
+  if(Admin.clicks.length>0){
+    Admin.clicks.pop();
+    $('#calib-status').textContent=`Captured ${Admin.clicks.length}/${Admin.totalSpaces}`;
+    renderCrosshairs(); ensureMiniEditorVisible(); updateProgress();
+  }
 }
 
 function onBoardClickCalibrate(evt){
   const pt=Board.svg.createSVGPoint(); pt.x=evt.clientX; pt.y=evt.clientY; const ctm=Board.svg.getScreenCTM().inverse(); const loc=pt.matrixTransform(ctm);
   const xPct=(loc.x/Board.viewW)*100, yPct=(loc.y/Board.viewH)*100;
+  if(Admin.clicks.length>=Admin.totalSpaces){ $('#calib-status').textContent=`Reached ${Admin.totalSpaces} spaces.`; return; }
   Admin.clicks.push({index:Admin.clicks.length, x:xPct, y:yPct, stage:'early'});
-  $('#calib-status').textContent=`Captured ${Admin.clicks.length} point${Admin.clicks.length===1?'':'s'}.`;
+  $('#calib-status').textContent=`Captured ${Admin.clicks.length}/${Admin.totalSpaces}`;
   renderCrosshairs(); ensureMiniEditorVisible(); updateProgress();
 }
 
@@ -117,7 +130,7 @@ function renderMiniEditor(i){
     </div>`;
   drawActiveRing(i);
   $('#mini-prev').addEventListener('click', ()=> stepTo(Math.max(0,i-1)));
-  $('#mini-next').addEventListener('click', ()=> stepTo(Math.min((currentSpacesSource()?.length||58)-1,i+1)));
+  $('#mini-next').addEventListener('click', ()=> stepTo(Math.min((currentSpacesSource()?.length||Admin.totalSpaces)-1,i+1)));
   $('#mini-save').addEventListener('click', ()=> saveEditor(i, false));
   $('#mini-savenext').addEventListener('click', ()=> saveEditor(i, true));
   $('#mini-set0').addEventListener('click', ()=> setAsZero(i));
@@ -129,21 +142,20 @@ function saveEditor(i, andNext){
   const ns=$('#mini-stage').value; const nd=$('#mini-deck').value;
   Admin.stages[i]=ns; if(nd==='none') delete Admin.deckmap[String(i)]; else Admin.deckmap[String(i)]=nd;
   updateProgress();
-  if(andNext){ stepTo(Math.min((currentSpacesSource()?.length||58)-1, i+1)); } else { renderMiniEditor(i); }
+  if(andNext){ stepTo(Math.min((currentSpacesSource()?.length||Admin.totalSpaces)-1, i+1)); } else { renderMiniEditor(i); }
 }
 
 function stepTo(i){ Admin.selectedIndex=i; renderMiniEditor(i); }
 
 function updateProgress(){
-  const available = currentSpacesSource(); const cap = available ? available.length : 0; let complete=0;
+  const available = currentSpacesSource(); const cap = available ? available.length : 0; let complete=0; const total = Admin.totalSpaces||58;
   for(let i=0;i<cap;i++){ const st=Admin.stages[i]; const dk=Admin.deckmap[String(i)]; if(st && typeof st==='string' && dk && dk!=='none') complete++; }
-  const pct = cap? Math.round(100*complete/58) : 0;
+  const pct = total? Math.round(100*complete/total) : 0;
   const bar = $('#progress-bar'); const label=$('#progress-label');
-  label.textContent = `${complete}/58 complete`;
+  label.textContent = `${complete}/${total} complete`;
   bar.setAttribute('data-level', pct<34 ? 'red' : (pct<67 ? 'yellow' : 'green'));
-  bar.style.setProperty('--pct', pct); bar.style.setProperty('position','relative');
-  bar.style.setProperty('background-image', `linear-gradient(to right, currentColor 0, currentColor ${pct}%, transparent ${pct}%, transparent 100%)`);
-  $('#export-board').disabled = !(cap===58 && complete===58);
+  bar.style.setProperty('--pct', pct+'%');
+  $('#export-board').disabled = !(cap===total && complete===total);
   drawActiveRing(Admin.selectedIndex);
 }
 
@@ -167,9 +179,9 @@ function setAsZero(i){
 }
 
 function exportBoard(){
-  const src = currentSpacesSource();
-  if(!src || src.length!==58){ alert('Please calibrate first (58 points).'); return; }
-  const spaces = src.map((c,i)=>({ index:i, x:+c.x, y:+c.y, stage: Admin.stages[i] || 'early', deck: (Admin.deckmap[String(i)] || 'none') }));
+  const src = currentSpacesSource(); const total=Admin.totalSpaces||58;
+  if(!src || src.length!==total){ alert(`Please calibrate first (${total} points).`); return; }
+  const spaces = src.slice(0,total).map((c,i)=>({ index:i, x:+c.x, y:+c.y, stage: Admin.stages[i] || 'early', deck: (Admin.deckmap[String(i)] || 'none') }));
   const data={ asset:'assets/board.png', spaces: spaces };
   downloadJSON('board.json', data);
 }

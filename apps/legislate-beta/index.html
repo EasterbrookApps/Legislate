@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Legislate?! v1.2.1</title>
+  <title>Legislate?! v1.2.3</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -27,7 +27,7 @@
       <div id="error-overlay" class="overlay hidden">
         <div class="card">
           <h2>Configuration required</h2>
-        <p>No <code>board.json</code> found or it’s invalid.<br/>Open <b>Admin</b> (password: <code>legislate</code>) to calibrate and export.</p>
+          <p>No <code>board.json</code> found or it’s invalid.<br/>Open <b>Admin</b> (password: <code>legislate</code>) to calibrate and export.</p>
           <button id="open-admin-from-error" class="btn">Open Admin</button>
         </div>
       </div>
@@ -61,14 +61,16 @@
       <div id="admin-tools" class="hidden">
         <section>
           <h4>Calibration</h4>
-          <p>Click <b>Start</b>, then click the 58 spaces in order on the board. Crosshairs will appear.</p>
+          <p>Click <b>Start</b>, then click each space in order on the board.</p>
           <button id="calib-start" class="btn">Start Calibration</button>
           <button id="calib-stop" class="btn subtle">Stop</button>
+          <button id="calib-back" class="btn subtle">Back one</button>
           <div id="calib-status" class="muted"></div>
         </section>
 
         <section id="mapping-section">
           <h4>Mapping</h4>
+          <div id="count-controls">Total spaces: <input id="total-spaces" type="number" min="2" value="58" style="width:80px;margin-left:6px;" /></div>
           <div id="progress-wrap">
             <div id="progress-bar"><span id="progress-label">0/58 complete</span></div>
           </div>

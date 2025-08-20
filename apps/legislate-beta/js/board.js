@@ -5,8 +5,8 @@ async function loadBoardConfig(){
   catch(e){ console.warn('Board config error:', e.message); GameState.board=null; Board.calibrated=false; $('#error-overlay').classList.remove('hidden'); }
 }
 function validateBoard(data){
-  if(!data || !Array.isArray(data.spaces) || data.spaces.length!==58) throw new Error('Invalid spaces');
-  data.spaces.forEach((s,i)=>{ if(typeof s.index!=='number'||typeof s.x!=='number'||typeof s.y!=='number'||!s.stage) throw new Error('Bad space '+i); if(s.index!==i) throw new Error('Indices must be 0..57'); });
+  if(!data || !Array.isArray(data.spaces) || data.spaces.length<2) throw new Error('Invalid spaces');
+  data.spaces.forEach((s,i)=>{ if(typeof s.index!=='number'||typeof s.x!=='number'||typeof s.y!=='number'||!s.stage) throw new Error('Bad space '+i); if(s.index!==i) throw new Error('Indices must be 0..N-1'); });
   if(!data.asset) data.asset='assets/board.png';
   if(!data.decks){ data.decks = {}; }
   data.spaces.forEach(sp=>{ if(sp.deck && sp.deck!=='none'){ data.decks[String(sp.index)] = sp.deck; } });
