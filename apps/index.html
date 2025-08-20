@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Legislate?! v1</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand">Legislate?!</div>
+    <div id="turn-indicator">
+      <span class="player-dot" id="active-color"></span>
+      <span id="active-name">Player 1</span>'s turn
+    </div>
+    <div id="players"></div>
+  </header>
+
+  <main id="main">
+    <div id="board-wrap">
+      <svg id="board-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+        <image id="board-image" href="assets/board.png" x="0" y="0"></image>
+        <g id="tokens-layer"></g>
+        <g id="calibration-crosshairs" style="display:none;"></g>
+      </svg>
+      <div id="error-overlay" class="overlay hidden">
+        <div class="card">
+          <h2>Configuration required</h2>
+          <p>No <code>board.json</code> found or it’s invalid.<br/>Open <b>Admin</b> (password: <code>legislate</code>) to calibrate and export.</p>
+          <button id="open-admin-from-error" class="btn">Open Admin</button>
+        </div>
+      </div>
+      <div id="card-modal" class="overlay hidden" aria-modal="true" role="dialog">
+        <div class="card card-modal">
+          <div id="card-header" class="card-header">Deck</div>
+          <div id="card-text" class="card-text">Card text goes here.</div>
+          <button id="card-ok" class="btn">OK</button>
+        </div>
+      </div>
+      <div id="dice-overlay" class="overlay hidden" aria-modal="true" role="dialog">
+        <div id="big-die" class="die big"></div>
+        <div id="die-result" class="die-result"></div>
+      </div>
+      <button id="floating-die" class="die floating" title="Roll"></button>
+    </div>
+  </main>
+
+  <footer id="footer">
+    <button id="admin-toggle" class="btn subtle">Admin</button>
+    <div id="admin-panel" class="admin-panel hidden">
+      <div class="admin-header">
+        <h3>Admin Tools</h3>
+        <button id="admin-close" class="btn subtle">Close</button>
+      </div>
+      <div id="admin-auth">
+        <label>Password: <input type="password" id="admin-pass" placeholder="legislate"/></label>
+        <button id="admin-login" class="btn">Unlock</button>
+        <div id="admin-auth-msg" class="muted"></div>
+      </div>
+      <div id="admin-tools" class="hidden">
+        <section>
+          <h4>Calibration</h4>
+          <p>Click <b>Start</b>, then click the 58 spaces in order on the board. Crosshairs will appear.</p>
+          <button id="calib-start" class="btn">Start Calibration</button>
+          <button id="calib-stop" class="btn subtle">Stop</button>
+          <div id="calib-status" class="muted"></div>
+        </section>
+        <section>
+          <h4>Stage Tagger</h4>
+          <div id="stage-table"></div>
+        </section>
+        <section>
+          <h4>Deck Mapper</h4>
+          <div id="deckmap-table"></div>
+        </section>
+        <section>
+          <h4>Export</h4>
+          <button id="export-board" class="btn">Download board.json</button>
+          <div class="muted small">Commit to <code>apps/legislate/data/board.json</code>.</div>
+        </section>
+      </div>
+    </div>
+    <div id="status-msg" class="muted"></div>
+  </footer>
+
+  <script src="js/util.js"></script>
+  <script src="js/state.js"></script>
+  <script src="js/board.js"></script>
+  <script src="js/cards.js"></script>
+  <script src="js/dice.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
