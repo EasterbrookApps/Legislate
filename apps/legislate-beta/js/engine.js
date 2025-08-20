@@ -1,53 +1,146 @@
+// engine.js — Clean rules integration (no shims), v1.2-pro
+// Assumes GameState, renderTokens(), lastIndex(), stageAt(), nextActiveIdx(), currentPlayer() exist.
+// Effects supported: move:+N/-N, miss_turn, extra_roll, move:start, move:end, move:previous:<stage>, move:nearest:<stage>, pingpong.
 
-let Engine={busy:false,waiting:false};
-Engine.isBusy = ()=> Engine.busy || Engine.waiting;
+let Engine = { busy:false, waiting:false, pending:null };
+Engine.isBusy = function(){ return Engine.busy || Engine.waiting; };
+
 Engine.afterRoll = function(n){
-    const p = GameState.players[GameState.activeIdx];
-
-    // If player is at start (index 0), skip counting that as a step
-    let steps = (p.index === 0) ? n + 1 : n;
-
-    moveSteps(p, steps, () =>{
-        const sp = GameState.board.spaces[p.index];
-        if(sp && sp.deck && sp.deck !== 'none'){
-            const card = drawFrom(sp.deck);
-            if(card){ 
-                Engine.waiting=true; 
-                showCard(sp.deck, card); 
-                Engine._pending=[p,card]; 
-                return;
-            }
-        }
-        advanceTurn();
-    });
+  if(Engine.isBusy()) return;
+  const p = GameState.players[GameState.activeIdx];
+  moveSteps(p, n, ()=>{
+    // On landing: check for card
+    const sp = GameState.board?.spaces?.[p.index];
+    const deck = sp && sp.deck;
+    if(deck && window.Cards && Cards.decks && Cards.decks[deck]){
+      const card = drawFrom(deck);
+      if(card){
+        Engine.waiting = true;
+        Engine.pending = { pid: p.id, effect: String(card.effect||'').trim() };
+        showCard(deck, card);  // blocks progression until OK
+        return;
+      }
+    }
+    finalizeTurn();
+  });
 };
 
 Engine.onCardAcknowledged = function(){
-  Engine.waiting=false;
-  const {p, card} = Engine._pending || {};
-  if(p && card && card.effect){ applyEffect(p, card.effect, ()=>advanceTurn()); }
-  else advanceTurn();
-  Engine._pending=null;
-}
+  // Called by cards.js when OK is pressed
+  if(!Engine.pending){ finalizeTurn(); return; }
+  const { pid, effect } = Engine.pending;
+  Engine.pending = null;
+  applyEffect(pid, effect, ()=>{ finalizeTurn(); });
+};
+
 function moveSteps(player, steps, done){
-  Engine.busy=true; let remaining=steps;
-  function step(){ if(remaining<=0){ Engine.busy=false; renderTokens(); done&&done(); return; }
-    player.index = clamp(player.index+1, 0, lastIndex()); renderTokens(); remaining--; setTimeout(step, 220); }
+  Engine.busy = true;
+  const per = steps >= 0 ? 1 : -1;
+  let remaining = Math.abs(steps);
+  function step(){
+    if(remaining <= 0){
+      Engine.busy = false;
+      renderTokens();
+      done && done();
+      return;
+    }
+    const nextIdx = clamp(player.index + per, 0, lastIndex());
+    player.index = nextIdx;
+    renderTokens();
+    remaining -= 1;
+    setTimeout(step, 250); // board-game cadence
+  }
   step();
 }
-function applyEffect(player, effect, cb){
-  if(effect==='miss_turn'){ player.skipNext=true; return cb(); }
-  if(effect==='extra_roll'){ player.extraRoll=true; return cb(); }
-  if(effect.startsWith('move:')){ const n=parseInt(effect.split(':')[1],10); player.index=clamp(player.index+n,0,lastIndex()); renderTokens(); return cb(); }
-  cb();
+
+function applyEffect(playerId, effect, cb){
+  const p = GameState.players.find(x=>x.id===playerId);
+  if(!p){ cb && cb(); return; }
+  Engine.waiting = false; // we are resolving a card now
+
+  const e = String(effect||'').trim().toLowerCase();
+  if(!e){ cb && cb(); return; }
+
+  // Direct flags
+  if(e === 'miss_turn'){ p.skipNext = true; cb && cb(); return; }
+  if(e === 'extra_roll'){ p.extraRoll = true; cb && cb(); return; }
+
+  // Absolute jumps
+  if(e === 'move:start'){ p.index = 0; renderTokens(); cb && cb(); return; }
+  if(e === 'move:end'){ p.index = lastIndex(); renderTokens(); cb && cb(); return; }
+
+  // Ping-pong back to previous stage boundary
+  if(e === 'pingpong'){
+    const st = stageAt(p.index);
+    const prev = previousStage(st);
+    const idx  = findPreviousStageIndex(p.index, prev);
+    p.index = idx; renderTokens(); cb && cb(); return;
+  }
+
+  // Relative moves: accept "move:2" or "move 2" or +/- forms
+  if(e.startsWith('move:') || e.startsWith('move ')){
+    const parts = e.split(/[: ]/);
+    let val = parseInt(parts[1], 10);
+    if(!isNaN(val)){
+      moveSteps(p, val, ()=> cb && cb());
+      return;
+    }
+  }
+
+  // Stage-directed moves
+  if(e.startsWith('move:previous:')){
+    const stage = e.split(':')[2];
+    const idx = findPreviousStageIndex(p.index, stage);
+    p.index = idx; renderTokens(); cb && cb(); return;
+  }
+  if(e.startsWith('move:nearest:')){
+    const stage = e.split(':')[2];
+    const idx = findNearestStageIndex(p.index, stage);
+    p.index = idx; renderTokens(); cb && cb(); return;
+  }
+
+  // Default: no-op
+  cb && cb();
 }
+
+// ---- Helpers (stage navigation) ----
+function previousStage(stage){
+  const order = ['start','early','commons','lords','implementation','end'];
+  const i = order.indexOf(stage);
+  return (i > 0 ? order[i-1] : stage);
+}
+
+function findPreviousStageIndex(fromIdx, stage){
+  for(let i = fromIdx-1; i >= 0; i--){
+    if(GameState.board.spaces[i].stage === stage) return i;
+  }
+  return 0;
+}
+
+function findNearestStageIndex(fromIdx, stage){
+  for(let i = fromIdx-1; i >= 0; i--){
+    if(GameState.board.spaces[i].stage === stage) return i;
+  }
+  for(let i = fromIdx+1; i < GameState.board.spaces.length; i++){
+    if(GameState.board.spaces[i].stage === stage) return i;
+  }
+  return fromIdx;
+}
+
+// ---- Turn advancement ----
+function finalizeTurn(){
+  const p = currentPlayer();
+  if(p.extraRoll){ p.extraRoll = false; return; } // same player rolls again
+  if(p.skipNext){ p.skipNext = false; advanceTurn(); return; }
+  advanceTurn();
+}
+
 function advanceTurn(){
-  const p=currentPlayer();
-  if(p.extraRoll){ p.extraRoll=false; return; } // stays same player; next roll uses same activeIdx
-  GameState.activeIdx = (GameState.activeIdx+1) % GameState.players.length;
+  GameState.activeIdx = nextActiveIdx();
+  const np = currentPlayer();
+  const nameEl = document.getElementById('active-name');
+  const dotEl  = document.getElementById('active-color');
+  if(nameEl) nameEl.textContent = np.name;
+  if(dotEl)  dotEl.style.background = tokenColor(np.color);
   renderTokens();
-}
-function showWinners(w){ const overlay=$('#error-overlay'); overlay.classList.remove('hidden'); const names=w.map(x=>x.name).join(', ');
-  overlay.innerHTML=`<div class="card"><h2>🏆 ${names} wins!</h2><button id="restart-btn2" class="btn">Restart</button></div>`;
-  $('#restart-btn2').addEventListener('click', ()=> location.reload());
 }
