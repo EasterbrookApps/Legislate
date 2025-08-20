@@ -1,0 +1,14 @@
+[
+  {
+    "text": "Filibuster! You miss your next turn.",
+    "effect": "miss_turn"
+  },
+  {
+    "text": "Select Committee praise. Roll again.",
+    "effect": "extra_roll"
+  },
+  {
+    "text": "Backbench support builds. Move forward 2.",
+    "effect": "move:+2"
+  }
+]

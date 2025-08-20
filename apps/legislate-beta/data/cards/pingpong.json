@@ -1,0 +1,10 @@
+[
+  {
+    "text": "Ping pong! Back to Commons boundary.",
+    "effect": "pingpong"
+  },
+  {
+    "text": "Stalemate\u2014stay put until next turn.",
+    "effect": "skip_move"
+  }
+]

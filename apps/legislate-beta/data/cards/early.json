@@ -1,0 +1,14 @@
+[
+  {
+    "text": "Stakeholder backlash delays drafting. Go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "text": "Policy team nails the brief. Roll again.",
+    "effect": "extra_roll"
+  },
+  {
+    "text": "Minister reshuffle. Miss a turn.",
+    "effect": "miss_turn"
+  }
+]
