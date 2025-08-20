@@ -1,10 +1,11 @@
 # Changelog
 
-## v1.2.0 (2025-08-20)
-- Admin UX overhaul: mini-editor per space, Walk Mode (Prev/Next), highlight ring on active space.
-- Progress bar with exact counts; Export disabled until 58/58 configured.
-- Combined `board.json`: per-space `deck` field (legacy `decks` map still supported when loading).
-- Removed admin password tooltip/hint; unlocking admin closes config overlay.
+## v1.2 (2025-08-20)
+- Admin: replaced mapping UI with a **wizard-style calibration** (click → set stage+deck → Confirm & Next).
+- Big, colour-coded, numbered markers during calibration only; **Back** button to undo last.
+- Progress shows **placed/total**, export unlocks when all placed and tagged.
+- Panel collapsed by default; password `legislate` (no tooltip/hints).
+- Loader accepts any board length ≥2.
 
-## v1.1.0
-- (Not deployed) Admin login UX fixes, combined Stage+Deck table, click-the-board editing.
+## v1.1 (previous, not deployed)
+- Admin fixes, modal card flow, etc.

@@ -6,5 +6,5 @@ function downloadJSON(filename, data){
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
   document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
 }
-function shuffle(array, rng=Math.random){ for(let i=array.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [array[i],array[j]]=[array[j],array[i]];} return array; }
 function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+function shuffle(array, rng=Math.random){ for(let i=array.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [array[i],array[j]]=[array[j],array[i]];} return array; }

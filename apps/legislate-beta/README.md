@@ -1,9 +1,9 @@
-# Legislate?! v1.2
+# Legislate?! v1.2 (stable)
 
-- White UI, SVG board wrapper, tokens move **one space at a time**.
-- Floating black & white die with ~2.5s animation.
-- Cards: 5 decks with blocking modal (OK-to-continue).
-- Admin (password: `legislate`): calibration (58 points), **mini-editor per space**, **Walk Mode**, **highlight ring**, and a **progress bar with exact counts**; Export disabled until 58/58 are configured.
-- Combined export: `board.json` now stores `deck` inside each space item.
+- White UI, SVG board wrapper; tokens move one space at a time.
+- Blocking card modal; OK required to continue.
+- Admin panel (collapsed by default, password `legislate` — no visible hints).
+- **Wizard-style calibration**: step-by-step, stage+deck inline, big numbered colour markers, Back button, progress tracking.
+- Export generates a single `board.json` (`index,x,y,stage,deck`) using your chosen **Total spaces**.
 
-Current board source: uploaded Legislate.jpeg.
+> We do **not** ship your `assets/board.png` to avoid overwriting your existing calibrated board. Keep your current file in place.

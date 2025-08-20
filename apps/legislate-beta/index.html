@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Legislate?! v1.2.3</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Legislate?! v1.2</title>
+  <link rel="stylesheet" href="css/style.css"/>
 </head>
 <body>
   <header id="topbar">
@@ -21,16 +21,18 @@
       <svg id="board-svg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
         <image id="board-image" href="assets/board.png" x="0" y="0"></image>
         <g id="tokens-layer"></g>
-        <g id="calibration-crosshairs" style="display:none;"></g>
+        <g id="markers-layer"></g>
         <g id="active-ring-layer"></g>
       </svg>
+
       <div id="error-overlay" class="overlay hidden">
         <div class="card">
           <h2>Configuration required</h2>
-          <p>No <code>board.json</code> found or it’s invalid.<br/>Open <b>Admin</b> (password: <code>legislate</code>) to calibrate and export.</p>
+          <p>No <code>board.json</code> found or it’s invalid.<br/>Open <b>Admin</b> to calibrate and export.</p>
           <button id="open-admin-from-error" class="btn">Open Admin</button>
         </div>
       </div>
+
       <div id="card-modal" class="overlay hidden" aria-modal="true" role="dialog">
         <div class="card card-modal">
           <div id="card-header" class="card-header">Deck</div>
@@ -38,6 +40,7 @@
           <button id="card-ok" class="btn">OK</button>
         </div>
       </div>
+
       <div id="dice-overlay" class="overlay hidden" aria-modal="true" role="dialog">
         <div id="big-die" class="die big"></div>
         <div id="die-result" class="die-result"></div>
@@ -58,34 +61,24 @@
         <button id="admin-login" class="btn">Unlock</button>
         <div id="admin-auth-msg" class="muted"></div>
       </div>
+
       <div id="admin-tools" class="hidden">
-        <section>
-          <h4>Calibration</h4>
-          <p>Click <b>Start</b>, then click each space in order on the board.</p>
-          <button id="calib-start" class="btn">Start Calibration</button>
-          <button id="calib-stop" class="btn subtle">Stop</button>
-          <button id="calib-back" class="btn subtle">Back one</button>
-          <div id="calib-status" class="muted"></div>
+        <section id="wiz-section">
+          <h4>Calibration Wizard</h4>
+          <div class="row">
+            <label>Total spaces: <input id="wiz-total" type="number" min="2" value="58" style="width:90px;"></label>
+            <button id="wiz-start" class="btn">Start</button>
+            <button id="wiz-back" class="btn subtle" disabled>Back</button>
+            <span id="wiz-progress" class="muted">0/58</span>
+          </div>
+          <div id="wiz-prompt" class="prompt muted">Click Start to begin.</div>
+          <div id="wiz-mini" class="card mini hidden"></div>
         </section>
 
-        <section id="mapping-section">
-          <h4>Mapping</h4>
-          <div id="count-controls">Total spaces: <input id="total-spaces" type="number" min="2" value="58" style="width:80px;margin-left:6px;" /></div>
-          <div id="progress-wrap">
-            <div id="progress-bar"><span id="progress-label">0/58 complete</span></div>
-          </div>
-          <div id="walk-controls">
-            <label><input type="checkbox" id="walk-mode"/> Walk Mode</label>
-            <button id="walk-prev" class="btn subtle">◀ Prev</button>
-            <button id="walk-next" class="btn subtle">Next ▶</button>
-          </div>
-          <div id="mini-editor" class="card mini hidden"></div>
-        </section>
-
-        <section>
+        <section id="export-section">
           <h4>Export</h4>
           <button id="export-board" class="btn" disabled>Download board.json</button>
-          <div class="muted small">Commit to <code>apps/legislate/data/board.json</code>.</div>
+          <div class="muted small">Place at <code>apps/legislate/data/board.json</code>.</div>
         </section>
       </div>
     </div>

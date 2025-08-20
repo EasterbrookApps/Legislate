@@ -3,16 +3,22 @@ let Engine={busy:false,pendingEffect:null,waitingForCardOk:false}; function isBu
 function startGame(){ renderPlayersUI(); renderTokens(); }
 function renderPlayersUI(){
   const container=$('#players'); container.innerHTML='';
-  GameState.players.forEach((p,i)=>{ const el=document.createElement('div'); el.className='player';
+  GameState.players.forEach((p,i)=>{
+    const el=document.createElement('div'); el.className='player';
     const dot=document.createElement('span'); dot.className='dot'; dot.style.background=tokenColor(p.color);
     const input=document.createElement('input'); input.value=p.name; input.addEventListener('input',()=>{ p.name=input.value; if(i===GameState.activeIdx){ $('#active-name').textContent=p.name||`Player ${i+1}`; }});
-    el.appendChild(dot); el.appendChild(input); container.appendChild(el); });
+    el.appendChild(dot); el.appendChild(input); container.appendChild(el);
+  });
 }
 function afterRoll(n){
   const p=currentPlayer(); if(p.eliminated){ advanceTurn(); return; }
   moveSteps(p, n, ()=>{
     if(p.index>=lastIndex()){ markFinished(p); endOrContinueRound(); return; }
-    if(isCardSpace(p.index)){ const deckId=GameState.board.spaces[p.index].deck || GameState.board.decks[String(p.index)]; const card=drawFrom(deckId); if(card){ Engine.waitingForCardOk=true; showCard(deckId, card); Engine.pendingEffect={playerId:p.id, effect: card.effect||null}; return; } }
+    if(isCardSpace(p.index)){
+      const deckId=GameState.board.spaces[p.index].deck || GameState.board.decks[String(p.index)];
+      const card=drawFrom(deckId);
+      if(card){ Engine.waitingForCardOk=true; showCard(deckId, card); Engine.pendingEffect={playerId:p.id, effect: card.effect||null}; return; }
+    }
     finalizeTurn();
   });
 }
@@ -30,8 +36,10 @@ function advanceTurn(){
 function moveSteps(player, steps, onDone){
   Engine.busy=true; const forward=steps>=0; const per=forward?1:-1; let remaining=Math.abs(steps);
   function step(){ if(remaining<=0){ Engine.busy=false; renderTokens(); onDone&&onDone(); return; }
-    const nextIdx=clamp(player.index+per,0,lastIndex()); const prevStage=stageAt(player.index); player.index=nextIdx; const newStage=stageAt(player.index);
-    if(!forward && prevStage!==newStage){ const snapIdx=boundarySnapIndex(newStage); player.index=snapIdx; remaining=0; } else { remaining-=1; }
+    const nextIdx=Math.max(0, Math.min(lastIndex(), player.index+per));
+    const prevStage=stageAt(player.index); player.index=nextIdx; const newStage=stageAt(player.index);
+    if(!forward && prevStage!==newStage){ const snapIdx=boundarySnapIndex(newStage); player.index=snapIdx; remaining=0; }
+    else { remaining-=1; }
     renderTokens(); setTimeout(step, 250); }
   step();
 }
