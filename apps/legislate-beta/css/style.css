@@ -27,7 +27,7 @@ header#topbar{height:var(--header-h);display:flex;align-items:center;justify-con
 .die.p6::before{box-shadow:-30px -30px 0 0 var(--die-pip), -30px 0 0 0 var(--die-pip), -30px 30px 0 0 var(--die-pip), 30px -30px 0 0 var(--die-pip), 30px 0 0 0 var(--die-pip), 30px 30px 0 0 var(--die-pip);}
 #dice-overlay .die-result{margin-top:12px;font-size:1.2rem;font-weight:700;}
 #footer{position:sticky;bottom:0;border-top:1px solid #e5e7eb;background:#fff;padding:8px 12px;display:flex;gap:12px;align-items:center;}
-.admin-panel{position:fixed;right:16px;bottom:56px;width:min(94vw,640px);background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;box-shadow:0 12px 40px var(--shadow);z-index:100;} .admin-panel.hidden{display:none;}
+.admin-panel{position:fixed;right:16px;top:16px;width:min(94vw,640px);background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;box-shadow:0 12px 40px var(--shadow);z-index:100;} .admin-panel.hidden{display:none;}
 .admin-header{display:flex;align-items:center;justify-content:space-between;}
 .muted{color:var(--muted);} .small{font-size:.85rem;} .hidden{display:none!important;}
 .deck-early .card-header{background:#f59e0b22;border:1px solid #f59e0b;}
@@ -37,8 +37,6 @@ header#topbar{height:var(--header-h);display:flex;align-items:center;justify-con
 .deck-pingpong .card-header{background:#64748b22;border:1px solid #64748b;}
 .token{stroke:#111;stroke-width:1.5;} .token.red{fill:#ef4444;} .token.blue{fill:#3b82f6;} .token.green{fill:#22c55e;} .token.yellow{fill:#f59e0b;} .token.purple{fill:#a855f7;} .token.orange{fill:#f97316;}
 .crosshair line{stroke:#111;stroke-width:1;} .crosshair circle{fill:none;stroke:#111;stroke-width:1;}
-
-/* Progress bar + mini editor */
 #progress-wrap{margin:8px 0 12px;}
 #progress-bar{position:relative;height:14px;border-radius:999px;background:#e5e7eb;overflow:hidden;}
 #progress-bar::after{content:"";position:absolute;left:0;top:0;bottom:0;width:0%;background:#ef4444;transition:width .2s;}
@@ -47,6 +45,4 @@ header#topbar{height:var(--header-h);display:flex;align-items:center;justify-con
 #progress-label{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:12px;color:#111;font-weight:700;}
 #walk-controls{display:flex;gap:8px;align-items:center;margin:8px 0;}
 .card.mini{width:100%;}
-
-/* Active highlight ring */
 #active-ring-layer circle{ fill:none; stroke:#f59e0b; stroke-width:3; stroke-dasharray:6 4; opacity:0.9; }

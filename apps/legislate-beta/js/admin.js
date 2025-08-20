@@ -22,7 +22,7 @@ function setupAdmin(){
     if(!src) return;
     const pt = Board.svg.createSVGPoint(); pt.x=evt.clientX; pt.y=evt.clientY;
     const ctm=Board.svg.getScreenCTM().inverse(); const loc=pt.matrixTransform(ctm);
-    // find nearest
+    // find nearest among available points
     let best={i:-1,d2:1e12};
     for(let i=0;i<src.length;i++){
       const sx=src[i].x/100*Board.viewW, sy=src[i].y/100*Board.viewH;
@@ -38,9 +38,7 @@ function onAdminLogin(){
   if(pass==='legislate'){
     Admin.unlocked=true;
     $('#admin-auth').classList.add('hidden'); $('#admin-tools').classList.remove('hidden'); $('#admin-auth-msg').textContent='';
-    // Hide config overlay if visible
     $('#error-overlay').classList.add('hidden');
-    // Initialize mapping UI
     loadExistingToAdminMemory();
     updateProgress();
     ensureMiniEditorVisible();
@@ -50,31 +48,17 @@ function onAdminLogin(){
 }
 
 function loadExistingToAdminMemory(){
-  const src = currentSpacesSource();
-  if(!src && GameState.board && GameState.board.spaces){
-    // Use board spaces as source (read-only positions)
-  }
-  // Seed stages from board if not present
   if(GameState.board && GameState.board.spaces && Admin.stages.length!==58){
     Admin.stages = GameState.board.spaces.map(s => s.stage || 'early');
-  }else if(Admin.clicks.length===58 && Admin.stages.length!==58){
-    Admin.stages = Admin.clicks.map(c => c.stage || 'early');
-  }
-  // Seed deckmap from combined or deck map
-  if(GameState.board && GameState.board.spaces){
+    // seed deckmap from combined or legacy map
     Admin.deckmap = {};
-    GameState.board.spaces.forEach(sp => {
-      if(sp.deck && sp.deck!=='none') Admin.deckmap[String(sp.index)] = sp.deck;
-    });
-    // Fallback to legacy decks map
-    if(Object.keys(Admin.deckmap).length===0 && GameState.board.decks){
-      Admin.deckmap = {...GameState.board.decks};
-    }
+    GameState.board.spaces.forEach(sp => { if(sp.deck && sp.deck!=='none') Admin.deckmap[String(sp.index)] = sp.deck; });
+    if(Object.keys(Admin.deckmap).length===0 && GameState.board.decks){ Admin.deckmap = {...GameState.board.decks}; }
   }
 }
 
 function currentSpacesSource(){
-  if(Admin.clicks.length===58) return Admin.clicks;
+  if(Admin.clicks.length>0) return Admin.clicks;  // allow partial calibration
   if(GameState.board && GameState.board.spaces && GameState.board.spaces.length===58) return GameState.board.spaces;
   return null;
 }
@@ -87,21 +71,15 @@ function startCalibration(){
 function stopCalibration(){
   Admin.calibrating=false; Board.crosshairsLayer.style.display='none'; Board.svg.removeEventListener('click', onBoardClickCalibrate);
   $('#calib-status').textContent=`Captured ${Admin.clicks.length} points.`;
-  if(Admin.clicks.length===58){
-    Admin.stages = Admin.clicks.map(c => c.stage || 'early');
-    Admin.selectedIndex = 0;
-    updateProgress(); ensureMiniEditorVisible();
-  }
+  if(Admin.clicks.length>0){ Admin.selectedIndex = Math.min(Admin.selectedIndex, Admin.clicks.length-1); ensureMiniEditorVisible(); updateProgress(); }
 }
 
 function onBoardClickCalibrate(evt){
   const pt=Board.svg.createSVGPoint(); pt.x=evt.clientX; pt.y=evt.clientY; const ctm=Board.svg.getScreenCTM().inverse(); const loc=pt.matrixTransform(ctm);
   const xPct=(loc.x/Board.viewW)*100, yPct=(loc.y/Board.viewH)*100;
-  if(Admin.clicks.length<58){
-    Admin.clicks.push({index:Admin.clicks.length, x:xPct, y:yPct, stage:'early'});
-    $('#calib-status').textContent=`Captured ${Admin.clicks.length}/58`; renderCrosshairs();
-    if(Admin.clicks.length===58){ stopCalibration(); }
-  }
+  Admin.clicks.push({index:Admin.clicks.length, x:xPct, y:yPct, stage:'early'});
+  $('#calib-status').textContent=`Captured ${Admin.clicks.length} point${Admin.clicks.length===1?'':'s'}.`;
+  renderCrosshairs(); ensureMiniEditorVisible(); updateProgress();
 }
 
 function renderCrosshairs(){ const g=Board.crosshairsLayer; g.innerHTML=''; Admin.clicks.forEach((p)=>{ const gh=document.createElementNS('http://www.w3.org/2000/svg','g'); gh.setAttribute('class','crosshair');
@@ -111,15 +89,14 @@ function renderCrosshairs(){ const g=Board.crosshairsLayer; g.innerHTML=''; Admi
   circ.setAttribute('cx', p.x/100*Board.viewW); circ.setAttribute('cy', p.y/100*Board.viewH); circ.setAttribute('r', 6); gh.appendChild(lh); gh.appendChild(lv); gh.appendChild(circ); g.appendChild(gh); }); }
 
 function ensureMiniEditorVisible(){
-  const mini=$('#mini-editor');
-  const src=currentSpacesSource();
-  if(!src){ mini.classList.add('hidden'); return; }
+  const mini=$('#mini-editor'); const src=currentSpacesSource(); if(!src){ mini.classList.add('hidden'); return; }
+  if(Admin.selectedIndex >= src.length) Admin.selectedIndex = Math.max(0, src.length-1);
   mini.classList.remove('hidden');
   renderMiniEditor(Admin.selectedIndex);
 }
 
 function renderMiniEditor(i){
-  const mini=$('#mini-editor'); const src=currentSpacesSource(); if(!src){ mini.classList.add('hidden'); return; }
+  const mini=$('#mini-editor'); const src=currentSpacesSource(); if(!src || i<0 || i>=src.length){ mini.classList.add('hidden'); return; }
   const decks=['none','early','commons','lords','implementation','pingpong']; const options=['start','early','commons','lords','implementation','end'];
   const stg=(Admin.stages[i]||'early'); const curDeck=(Admin.deckmap[String(i)]||'none');
   mini.innerHTML = `<h4>Editing space #${i}</h4>
@@ -138,11 +115,9 @@ function renderMiniEditor(i){
       <button id="mini-savenext" class="btn">Save & Next ▶</button>
       <button id="mini-next" class="btn subtle">Next ▶</button>
     </div>`;
-  // Highlight ring on board
   drawActiveRing(i);
-  // Wire actions
   $('#mini-prev').addEventListener('click', ()=> stepTo(Math.max(0,i-1)));
-  $('#mini-next').addEventListener('click', ()=> stepTo(Math.min(57,i+1)));
+  $('#mini-next').addEventListener('click', ()=> stepTo(Math.min((currentSpacesSource()?.length||58)-1,i+1)));
   $('#mini-save').addEventListener('click', ()=> saveEditor(i, false));
   $('#mini-savenext').addEventListener('click', ()=> saveEditor(i, true));
   $('#mini-set0').addEventListener('click', ()=> setAsZero(i));
@@ -154,64 +129,46 @@ function saveEditor(i, andNext){
   const ns=$('#mini-stage').value; const nd=$('#mini-deck').value;
   Admin.stages[i]=ns; if(nd==='none') delete Admin.deckmap[String(i)]; else Admin.deckmap[String(i)]=nd;
   updateProgress();
-  if(andNext){ stepTo(Math.min(57, i+1)); } else { renderMiniEditor(i); }
+  if(andNext){ stepTo(Math.min((currentSpacesSource()?.length||58)-1, i+1)); } else { renderMiniEditor(i); }
 }
 
 function stepTo(i){ Admin.selectedIndex=i; renderMiniEditor(i); }
 
 function updateProgress(){
-  // Count spaces that have stage + deck set
-  let total=58, complete=0;
-  for(let i=0;i<58;i++){
-    const st = Admin.stages[i];
-    const dk = Admin.deckmap[String(i)];
-    if(st && typeof st==='string' && dk && dk!=='none') complete++;
-  }
-  const pct = Math.round(100*complete/total);
+  const available = currentSpacesSource(); const cap = available ? available.length : 0; let complete=0;
+  for(let i=0;i<cap;i++){ const st=Admin.stages[i]; const dk=Admin.deckmap[String(i)]; if(st && typeof st==='string' && dk && dk!=='none') complete++; }
+  const pct = cap? Math.round(100*complete/58) : 0;
   const bar = $('#progress-bar'); const label=$('#progress-label');
   label.textContent = `${complete}/58 complete`;
-  bar.style.setProperty('--w', pct+'%');
-  bar.style.position='relative';
-  bar.style.setProperty('background-size', pct+'% 100%');
-  bar.style.setProperty('overflow', 'hidden');
-  // Set width via ::after by data attr
-  bar.setAttribute('data-fill', pct);
-  bar.querySelector ? null : null;
-  bar.style.setProperty('--pct', pct);
-  // Colour bands
   bar.setAttribute('data-level', pct<34 ? 'red' : (pct<67 ? 'yellow' : 'green'));
-  // Enable export only when 58/58
-  const canExport = (complete===total);
-  $('#export-board').disabled = !canExport;
-  // Also update board preview ring
+  bar.style.setProperty('--pct', pct); bar.style.setProperty('position','relative');
+  bar.style.setProperty('background-image', `linear-gradient(to right, currentColor 0, currentColor ${pct}%, transparent ${pct}%, transparent 100%)`);
+  $('#export-board').disabled = !(cap===58 && complete===58);
   drawActiveRing(Admin.selectedIndex);
 }
 
 function setAsZero(i){
-  // Only possible when we have Admin.clicks (fresh calibration). Rotate clicks so i becomes 0.
-  if(Admin.clicks.length!==58){ alert('Set as 0 is available after a fresh calibration.'); return; }
+  if(Admin.clicks.length===0){ alert('Set as 0 is available after you start calibration.'); return; }
+  const cap = Admin.clicks.length;
   const a = Admin.clicks.slice(i).concat(Admin.clicks.slice(0,i));
-  Admin.clicks = a.map((c, idx)=> ({...c, index: idx}));
-  // Rotate stages and deckmap to match
-  const s = Admin.stages.slice(i).concat(Admin.stages.slice(0,i));
-  Admin.stages = s;
+  for(let k=0;k<a.length;k++){ a[k].index=k; }
+  Admin.clicks = a;
+  const s = Admin.stages.slice(i, i+cap).concat(Admin.stages.slice(0, i));
+  Admin.stages = s.concat(Admin.stages.slice(cap));
   const newDeck = {};
-  for(let k=0;k<58;k++){
-    const oldIdx = (i + k) % 58;
+  for(let k=0;k<cap;k++){
+    const oldIdx = (i + k) % cap;
     const val = Admin.deckmap[String(oldIdx)];
     if(val) newDeck[String(k)] = val;
   }
   Admin.deckmap = newDeck;
   Admin.selectedIndex = 0;
-  renderCrosshairs();
-  renderMiniEditor(0);
-  updateProgress();
+  renderCrosshairs(); renderMiniEditor(0); updateProgress();
 }
 
 function exportBoard(){
   const src = currentSpacesSource();
   if(!src || src.length!==58){ alert('Please calibrate first (58 points).'); return; }
-  // Build combined spaces with deck per space
   const spaces = src.map((c,i)=>({ index:i, x:+c.x, y:+c.y, stage: Admin.stages[i] || 'early', deck: (Admin.deckmap[String(i)] || 'none') }));
   const data={ asset:'assets/board.png', spaces: spaces };
   downloadJSON('board.json', data);
