@@ -1,4 +1,4 @@
-// cards.js — Modal shows and calls back into Engine (no shims), v1.2-pro
+// cards.js — unchanged modal flow, v1.4
 let Cards = { decks:{}, current:null };
 
 async function loadDecks(){
@@ -14,7 +14,6 @@ async function loadDecks(){
     }
   }
 }
-
 function drawFrom(deckId){
   const d = Cards.decks[deckId]; if(!d) return null;
   if(d.draw.length === 0){ d.draw = d.discard.slice(); d.discard = []; }
@@ -22,7 +21,6 @@ function drawFrom(deckId){
   if(card) d.discard.push(card);
   return card;
 }
-
 function showCard(deckId, card){
   Cards.current = { deckId, card };
   let modal = document.getElementById('card-modal');
@@ -52,7 +50,6 @@ function showCard(deckId, card){
     };
   }
 }
-
 function hideCard(){
   const m = document.getElementById('card-modal');
   if(m) m.classList.add('hidden');
