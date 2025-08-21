@@ -1,37 +1,48 @@
-
-let Board={svg:null,img:null,tokensLayer:null,activeRingLayer:null,viewW:1600,viewH:1000,calibrated:false};
-async function loadBoardConfig(){
-  try{ const res=await fetch('assets/board.json?cache='+Date.now()); if(!res.ok) throw new Error('Missing'); const data=await res.json(); validateBoard(data); GameState.board=data; Board.calibrated=true; $('#error-overlay').classList.add('hidden'); }
-  catch(e){ console.warn('Board config error:', e.message); GameState.board=null; Board.calibrated=false; $('#error-overlay').classList.remove('hidden'); }
-}
-function validateBoard(data){
-  if(!data || !Array.isArray(data.spaces) || data.spaces.length<2) throw new Error('Invalid spaces');
-  if(!data.asset) data.asset='assets/board.png';
-}
-function setupBoardSVG(){
-  Board.svg=$('#board-svg'); Board.img=$('#board-image'); Board.tokensLayer=$('#tokens-layer'); Board.activeRingLayer=$('#active-ring-layer');
-  const probe=new Image(); probe.onload=()=>{ Board.viewW=probe.naturalWidth||1600; Board.viewH=probe.naturalHeight||1000; Board.svg.setAttribute('viewBox',`0 0 ${Board.viewW} ${Board.viewH}`); Board.img.setAttribute('width',Board.viewW); Board.img.setAttribute('height',Board.viewH); renderTokens(); }; probe.src=Board.img.getAttribute('href');
-}
+// board.js — renders player UI w/ add/remove before start (mobile layout unchanged)
 function renderPlayersUI(){
-  const container=$('#players'); container.innerHTML='';
-  GameState.players.forEach((p,i)=>{ const el=document.createElement('div'); el.className='player';
-    const dot=document.createElement('span'); dot.className='dot'; dot.style.background=tokenColor(p.color);
-    const input=document.createElement('input'); input.value=p.name; input.addEventListener('input',()=>{ p.name=input.value; if(i===GameState.activeIdx){ $('#active-name').textContent=p.name||`Player ${i+1}`; }});
-    el.appendChild(dot); el.appendChild(input); container.appendChild(el); });
-}
-function tokenColor(c){return c==='red'?'#ef4444':c==='blue'?'#3b82f6':c==='green'?'#22c55e':c==='yellow'?'#f59e0b':c==='purple'?'#a855f7':c==='orange'?'#f97316':'#111';}
-function renderTokens(){
-  Board.tokensLayer.innerHTML='';
-  const countByIndex={};
-  GameState.players.forEach(p=>{ const idx=clamp(p.index,0,lastIndex()); countByIndex[idx]=(countByIndex[idx]||0)+1; });
-  const stackIndex={};
-  GameState.players.forEach(p=>{
-    const idx=clamp(p.index,0,lastIndex()); const s=GameState.board && GameState.board.spaces[idx]; if(!s) return;
-    stackIndex[idx]=(stackIndex[idx]||0)+1; const k=stackIndex[idx]-1; const total=countByIndex[idx];
-    const spread = total>1 ? 16 : 0; const angle=(k-(total-1)/2)*(Math.PI/10); const dx=spread*Math.cos(angle), dy=spread*Math.sin(angle);
-    const c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx',(s.x/100*Board.viewW+dx).toFixed(2)); c.setAttribute('cy',(s.y/100*Board.viewH+dy).toFixed(2)); c.setAttribute('r',14);
-    c.setAttribute('class',`token ${p.color}`); Board.tokensLayer.appendChild(c);
+  const container = document.getElementById('players');
+  if(!container) return;
+  container.innerHTML = '';
+
+  // Controls (only before start)
+  if(!GameState.started){
+    const controls = document.createElement('div');
+    controls.className = 'actions';
+    const minus = document.createElement('button'); minus.className='btn subtle'; minus.textContent='– Player';
+    const plus  = document.createElement('button'); plus.className='btn subtle'; plus.id='add-player-btn'; plus.textContent='+ Player';
+    minus.onclick = ()=> setPlayerCount(GameState.players.length - 1);
+    plus.onclick  = ()=> setPlayerCount(GameState.players.length + 1);
+    container.appendChild(controls);
+    controls.appendChild(minus); controls.appendChild(plus);
+    // grey out at limits
+    if(GameState.players.length <= 2){ minus.disabled = true; minus.classList.add('disabled'); }
+    if(GameState.players.length >= GameState.maxPlayers){ plus.disabled = true; plus.classList.add('disabled'); }
+  }
+
+  // Player list (keeps your existing styling; names editable)
+  const list = document.createElement('div');
+  list.className = 'players-grid';
+  GameState.players.forEach((p,i)=>{
+    const el = document.createElement('div');
+    el.className = 'player';
+    el.innerHTML = `<span class="dot" style="background:${p.color}"></span>
+                    <input class="player-name" data-idx="${i}" value="${p.name}" />`;
+    list.appendChild(el);
   });
-  const ap=GameState.players[GameState.activeIdx]; $('#active-color').style.background=tokenColor(ap.color); $('#active-name').textContent=ap.name;
+  container.appendChild(list);
+
+  // Name edits update state + active banner
+  list.querySelectorAll('.player-name').forEach(inp=>{
+    inp.addEventListener('focus', e=> e.target.select());
+    inp.addEventListener('change', e=>{
+      const i = +e.target.dataset.idx;
+      GameState.players[i].name = e.target.value.trim() || ('Player ' + (i+1));
+      if(i === GameState.activeIdx){
+        const nameEl = document.getElementById('active-name');
+        if(nameEl) nameEl.textContent = GameState.players[i].name;
+      }
+    });
+  });
 }
-window.addEventListener('resize', ()=> renderTokens());
+
+window.renderPlayersUI = renderPlayersUI;
