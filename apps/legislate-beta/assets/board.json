@@ -389,12 +389,16 @@
     {
       "index": 55,
       "x": 33.374999515594,
-      "y": 45.66666860429067
+      "y": 45.66666860429067,
+      "stage": "implementation",
+      "deck": "implementation"
     },
     {
       "index": 56,
       "x": 32.54166618226066,
-      "y": 54.249999031188004
+      "y": 54.249999031188004,
+      "stage": "implementation",
+      "deck": "implementation"
     },
     {
       "index": 57,
