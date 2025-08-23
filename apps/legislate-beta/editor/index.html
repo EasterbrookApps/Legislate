@@ -1,0 +1,60 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Legislate UI Editor</title>
+  <link rel="stylesheet" href="../css/editor.css"/>
+</head>
+<body>
+  <div id="editor-app">
+    <header class="toolbar">
+      <div class="left">
+        <button id="break-desktop" class="btn">Desktop</button>
+        <button id="break-tablet" class="btn">Tablet</button>
+        <button id="break-mobile" class="btn">Mobile</button>
+      </div>
+      <div class="right">
+        <button id="import" class="btn">Import</button>
+        <button id="export" class="btn primary">Export</button>
+      </div>
+    </header>
+    <div class="editor-body">
+      <aside class="sidebar components">
+        <h3>Components</h3>
+        <div class="component" data-type="players">Players Panel</div>
+        <div class="component" data-type="dice">Dice / Roll</div>
+        <div class="component" data-type="banner">Turn Banner</div>
+        <div class="component" data-type="cards">Card Modal</div>
+        <div class="component" data-type="admin">Admin Toggle</div>
+        <div class="component" data-type="end">End Screen</div>
+        <hr/>
+        <h3>Styles</h3>
+        <label>Background <input type="color" id="bg-color" value="#ffffff"/></label>
+        <label>Accent <input type="color" id="accent-color" value="#000000"/></label>
+        <label>Text <input type="color" id="text-color" value="#111111"/></label>
+        <label>Radius <input type="range" id="radius" min="0" max="24" value="10"/></label>
+        <label>Shadow <input type="checkbox" id="shadow" checked/></label>
+        <h3>Fonts</h3>
+        <select id="font-heading">
+          <option>Inter</option><option>Roboto</option><option>Lato</option><option>Merriweather</option>
+        </select>
+        <select id="font-body">
+          <option>Inter</option><option>Roboto</option><option>Lato</option><option>Merriweather</option>
+        </select>
+      </aside>
+      <main class="canvas-wrap">
+        <div id="grid" class="grid">
+          <!-- draggable frames will appear here -->
+          <div class="hint">Drop components here. (Board stays fixed beneath.)</div>
+        </div>
+      </main>
+      <aside class="sidebar inspector">
+        <h3>Inspector</h3>
+        <div id="inspector-content">Select an element to edit its properties.</div>
+      </aside>
+    </div>
+  </div>
+  <script src="editor.js"></script>
+</body>
+</html>
