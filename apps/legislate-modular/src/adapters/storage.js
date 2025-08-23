@@ -1,1 +1,0 @@
-export function saveGame(d){try{localStorage.setItem('legislate.v1.save',JSON.stringify(d))}catch{}} export function loadGame(){try{const raw=localStorage.getItem('legislate.v1.save'); return raw?JSON.parse(raw):null}catch{return null}} export function clearSave(){try{localStorage.removeItem('legislate.v1.save')}catch{}}

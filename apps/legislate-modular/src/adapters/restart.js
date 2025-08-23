@@ -1,1 +1,0 @@
-import { clearSave } from './storage.js'; export function wireRestart(btn,onConfirm,playful=true){btn.addEventListener('click',()=>{const msg=playful?'Do you really want to scrap all these bills and start again?':'Are you sure you want to restart?'; if(confirm(msg)){clearSave(); onConfirm();}})}

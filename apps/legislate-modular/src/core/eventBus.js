@@ -1,1 +1,0 @@
-export function createEventBus(){const m=new Map();return{on(t,f){if(!m.has(t))m.set(t,new Set());m.get(t).add(f);return()=>m.get(t)?.delete(f)},emit(t,p){(m.get(t)||[]).forEach(fn=>fn(p));(m.get('*')||[]).forEach(fn=>fn(t,p));}}}
