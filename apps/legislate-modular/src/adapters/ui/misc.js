@@ -1,0 +1,46 @@
+export function setAlt(imgEl, alt){ imgEl.setAttribute('alt', alt || ''); }
+export function setSrc(imgEl, src){ imgEl.src = src; }
+
+export function setTurnIndicator(el, name){
+  const txt = `${name}'s turn`;
+  el.textContent = txt.replace(/\s+'s/, "'s"); // guard accidental extra space
+}
+
+export function renderPlayers(container, players, activeId, opts = {}) {
+  const { editable = false, onEdit = () => {}, locked = false } = opts;
+  container.innerHTML = '';
+  for (const p of players) {
+    const pill = document.createElement('div');
+    pill.className = 'player-pill';
+    const dot = document.createElement('span');
+    dot.className = 'player-dot';
+    dot.style.background = p.color;
+    pill.appendChild(dot);
+
+    if (editable) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = p.name;
+      input.size = Math.max(8, Math.min(24, p.name.length));
+      input.setAttribute('aria-label', `Edit name for ${p.name}`);
+      input.dataset.role = 'player-name';
+      if (locked) input.setAttribute('disabled', 'disabled');
+      input.addEventListener('input', () => {
+        onEdit(p.id, input.value);
+        input.size = Math.max(8, Math.min(24, input.value.length || 1));
+      });
+      // Prevent space/enter triggering roll while typing
+      input.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.stopPropagation();
+        }
+      });
+      pill.appendChild(input);
+    } else {
+      const t = document.createElement('span');
+      t.textContent = p.name;
+      pill.appendChild(t);
+    }
+    container.appendChild(pill);
+  }
+}
