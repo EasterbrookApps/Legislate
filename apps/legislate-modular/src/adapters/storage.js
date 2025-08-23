@@ -1,18 +1,1 @@
-import { Config } from '../config/index.js';
-
-export function saveGame(data) {
-  try {
-    localStorage.setItem(Config.autosaveKey, JSON.stringify(data));
-  } catch {}
-}
-
-export function loadGame() {
-  try {
-    const raw = localStorage.getItem(Config.autosaveKey);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
-}
-
-export function clearSave() {
-  try { localStorage.removeItem(Config.autosaveKey); } catch {}
-}
+export function saveGame(d){try{localStorage.setItem('legislate.v1.save',JSON.stringify(d))}catch{}} export function loadGame(){try{const raw=localStorage.getItem('legislate.v1.save'); return raw?JSON.parse(raw):null}catch{return null}} export function clearSave(){try{localStorage.removeItem('legislate.v1.save')}catch{}}
