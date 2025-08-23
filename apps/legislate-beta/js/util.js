@@ -1,10 +1,9 @@
-
-function $(sel, parent=document){ return parent.querySelector(sel); }
-function $all(sel, parent=document){ return Array.from(parent.querySelectorAll(sel)); }
-function downloadJSON(filename, data){
-  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+export const DEBUG = (new URLSearchParams(location.search).get('debug') === '1');
+export async function fetchJSON(path){
+  const dev = DEBUG;
+  const url = dev ? (path + (path.includes('?') ? '&' : '?') + 'c=' + Date.now()) : path;
+  const res = await fetch(url, {cache: dev ? 'no-store' : 'default'});
+  if(!res.ok) throw new Error('Fetch failed: '+path+' ['+res.status+']');
+  return res.json();
 }
-function shuffle(array, rng=Math.random){ for(let i=array.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [array[i],array[j]]=[array[j],array[i]];} return array; }
-function clamp(n,min,max){ return Math.max(min, Math.min(max, n)); }
+export function $(sel, root){ return (root||document).querySelector(sel); }

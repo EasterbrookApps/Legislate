@@ -1,0 +1,2 @@
+import { VERSION } from './version.js'; import { loadSettings, initPlayers } from '../js/state.js'; import { setupBoardSVG, loadBoardConfig, showFatal } from '../js/board.js'; import { loadDecks } from '../js/cards.js'; import { setupDice } from '../js/dice.js';
+export async function bootstrap(){ console.log('Legislate', VERSION); try{ setupBoardSVG(); await loadSettings(); initPlayers(4); await loadBoardConfig(); await loadDecks(); setupDice(); }catch(e){ showFatal('Startup failed. See console for details.'); } }
