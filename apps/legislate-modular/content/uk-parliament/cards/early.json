@@ -1,0 +1,107 @@
+[
+  {
+    "id": "Early01",
+    "text": "SpAd reminds you that part of your idea is contrary to a manifesto commitment. Go back 1 space.",
+    "effect": "move:-1"
+  },
+  {
+    "id": "Early02",
+    "text": "Simplify idea in response to White Paper consultation responses. Go forward 1 space.",
+    "effect": "move:1"
+  },
+  {
+    "id": "Early03",
+    "text": "BEIS says your idea will result in UK failing to meet CO2 emissions targets. Miss a turn while it is re-designed.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Early04",
+    "text": "No. 10 are not prepared to support your idea. Go back to square 1.",
+    "effect": ""
+  },
+  {
+    "id": "Early05",
+    "text": "AGO inform you that your idea is not ECHR-compliant. Go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "id": "Early06",
+    "text": "Welsh Govt lawyers say idea will involve legislating in area of devolved competence. Go back 1 space.",
+    "effect": "move:-1"
+  },
+  {
+    "id": "Early07",
+    "text": "Realise that Queen's Consent will be needed. Miss a turn while write to Palace.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Early08",
+    "text": "Scope of Bill will be wider than expected. Go back 1 space.",
+    "effect": "move:-1"
+  },
+  {
+    "id": "Early09",
+    "text": "House Authorities say Bill potentially hybrid. Go back to square 1.",
+    "effect": ""
+  },
+  {
+    "id": "Early10",
+    "text": "No.10 says it wants the Bill introduced before Party Conference. Go forward 3 spaces.",
+    "effect": "move:3"
+  },
+  {
+    "id": "Early11",
+    "text": "Supreme Court decision means that large part of policy needs rethinking. Go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "id": "Early12",
+    "text": "PC advise that two different limbs of the policy conflict. Miss a turn while deciding what to do.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Early13",
+    "text": "Complicated policy turns out simpler than expected once drafted, reducing clause count. Go forward 1 space.",
+    "effect": "move:1"
+  },
+  {
+    "id": "Early14",
+    "text": "Your legal team syndicate win the Lottery and resign en masse – miss a turn.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Early15",
+    "text": "Treasury say proposed funding mechanism breaches government accounting conventions – need to re-design. Miss a turn.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Early16",
+    "text": "Stakeholders respond positively to the policy on consultation. Roll again.",
+    "effect": "extra_roll"
+  },
+  {
+    "id": "Early17",
+    "text": "Another department's Part of the Bill is dropped. Shorter Bill means handling will be easier. Go forward 2 spaces.",
+    "effect": "move:2"
+  },
+  {
+    "id": "Early18",
+    "text": "New criminal offences in the Bill are cleared by HA. Go forward 1 space.",
+    "effect": "move:1"
+  },
+  {
+    "id": "Early19",
+    "text": "Your Minister is on holiday and so can't sign the section 19 HRA statement. Miss a turn waiting for her return.",
+    "effect": "miss_turn"
+  },
+  {
+    "id": "Early20",
+    "text": "PBL Committee decide that the Bill will be introduced in Commons; handling strategy was based on introduction in Lords. Go back 2 spaces.",
+    "effect": "move:-2"
+  },
+  {
+    "id": "Early21",
+    "text": "Chief Whip reminds you that part of your idea is contrary to a DUP manifesto commitment.Roll the dice: roll 4 to 6, you have enough votes for the Bill to proceed, move forward 2 spaces; roll 1 to 3, you do not have the votes, move back 2 spaces.",
+    "effect": "move:2"
+  }
+]
