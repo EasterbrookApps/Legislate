@@ -1,10 +1,37 @@
-import { fetchJSON, $ } from './util.js'; import { GameState } from './state.js';
-let layer; let scheduled=false; function scheduleRender(){ if(scheduled) return; scheduled=true; requestAnimationFrame(()=>{ scheduled=false; renderTokens(); }); }
-export async function loadBoardConfig(){ try{ const data = await fetchJSON('data/board.json'); if(!data||!Array.isArray(data.spaces)||data.spaces.length<58) throw new Error('Invalid board.json'); GameState.board=data; }catch(e){ showFatal('Board not found or invalid. Ensure apps/legislate-beta/data/board.json exists and is valid.'); throw e; } }
-export function setupBoardSVG(){ const svg=$('#board-svg'), img=$('#board-image'); layer=$('#tokens-layer'); if(!svg||!img||!layer){ showFatal('Board SVG elements missing from DOM.'); } }
-export function renderTokens(){ if(!layer||!GameState.board) return; layer.innerHTML=''; const counts={}; GameState.players.forEach(p=>{ const i=Math.max(0,Math.min(p.index,GameState.board.spaces.length-1)); counts[i]=(counts[i]||0)+1; });
-  const at={}; const R=14; GameState.players.forEach(p=>{ const i=Math.max(0,Math.min(p.index,GameState.board.spaces.length-1)); const s=GameState.board.spaces[i]; if(!s) return; at[i]=(at[i]||0)+1; const k=at[i]-1; const n=counts[i];
-    const spread=n>1? R*0.9:0; const angle=(k-(n-1)/2)*(Math.PI/6); const dx=spread*Math.cos(angle), dy=spread*Math.sin(angle); const cx=(s.x/100*1600+dx).toFixed(2), cy=(s.y/100*1000+dy).toFixed(2);
-    const c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx',cx); c.setAttribute('cy',cy); c.setAttribute('r',R.toFixed(2));
-    const active=(GameState.players[GameState.activeIdx]===p); c.setAttribute('class','token '+p.color+(active?' active':'')); layer.appendChild(c); }); }
-export function showFatal(msg){ let el=document.getElementById('error-overlay'); if(!el){ el=document.createElement('div'); el.id='error-overlay'; el.style.cssText='position:fixed;inset:0;background:#fff;padding:24px;z-index:9999;font-family:sans-serif;color:#111'; el.innerHTML='<h2>Unable to start</h2><p id="fatal-msg"></p>'; document.body.appendChild(el);} document.getElementById('fatal-msg').textContent=msg; console.error('[fatal]', msg); }
+
+let Board={svg:null,img:null,tokensLayer:null,activeRingLayer:null,viewW:1600,viewH:1000,calibrated:false};
+async function loadBoardConfig(){
+  try{ const res=await fetch('assets/board.json?cache='+Date.now()); if(!res.ok) throw new Error('Missing'); const data=await res.json(); validateBoard(data); GameState.board=data; Board.calibrated=true; $('#error-overlay').classList.add('hidden'); }
+  catch(e){ console.warn('Board config error:', e.message); GameState.board=null; Board.calibrated=false; $('#error-overlay').classList.remove('hidden'); }
+}
+function validateBoard(data){
+  if(!data || !Array.isArray(data.spaces) || data.spaces.length<2) throw new Error('Invalid spaces');
+  if(!data.asset) data.asset='assets/board.png';
+}
+function setupBoardSVG(){
+  Board.svg=$('#board-svg'); Board.img=$('#board-image'); Board.tokensLayer=$('#tokens-layer'); Board.activeRingLayer=$('#active-ring-layer');
+  const probe=new Image(); probe.onload=()=>{ Board.viewW=probe.naturalWidth||1600; Board.viewH=probe.naturalHeight||1000; Board.svg.setAttribute('viewBox',`0 0 ${Board.viewW} ${Board.viewH}`); Board.img.setAttribute('width',Board.viewW); Board.img.setAttribute('height',Board.viewH); renderTokens(); }; probe.src=Board.img.getAttribute('href');
+}
+function renderPlayersUI(){
+  const container=$('#players'); container.innerHTML='';
+  GameState.players.forEach((p,i)=>{ const el=document.createElement('div'); el.className='player';
+    const dot=document.createElement('span'); dot.className='dot'; dot.style.background=tokenColor(p.color);
+    const input=document.createElement('input'); input.value=p.name; input.addEventListener('input',()=>{ p.name=input.value; if(i===GameState.activeIdx){ $('#active-name').textContent=p.name||`Player ${i+1}`; }});
+    el.appendChild(dot); el.appendChild(input); container.appendChild(el); });
+}
+function tokenColor(c){return c==='red'?'#ef4444':c==='blue'?'#3b82f6':c==='green'?'#22c55e':c==='yellow'?'#f59e0b':c==='purple'?'#a855f7':c==='orange'?'#f97316':'#111';}
+function renderTokens(){
+  Board.tokensLayer.innerHTML='';
+  const countByIndex={};
+  GameState.players.forEach(p=>{ const idx=clamp(p.index,0,lastIndex()); countByIndex[idx]=(countByIndex[idx]||0)+1; });
+  const stackIndex={};
+  GameState.players.forEach(p=>{
+    const idx=clamp(p.index,0,lastIndex()); const s=GameState.board && GameState.board.spaces[idx]; if(!s) return;
+    stackIndex[idx]=(stackIndex[idx]||0)+1; const k=stackIndex[idx]-1; const total=countByIndex[idx];
+    const spread = total>1 ? 16 : 0; const angle=(k-(total-1)/2)*(Math.PI/10); const dx=spread*Math.cos(angle), dy=spread*Math.sin(angle);
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle'); c.setAttribute('cx',(s.x/100*Board.viewW+dx).toFixed(2)); c.setAttribute('cy',(s.y/100*Board.viewH+dy).toFixed(2)); c.setAttribute('r',14);
+    c.setAttribute('class',`token ${p.color}`); Board.tokensLayer.appendChild(c);
+  });
+  const ap=GameState.players[GameState.activeIdx]; $('#active-color').style.background=tokenColor(ap.color); $('#active-name').textContent=ap.name;
+}
+window.addEventListener('resize', ()=> renderTokens());
