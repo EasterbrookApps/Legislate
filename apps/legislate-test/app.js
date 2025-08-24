@@ -1,4 +1,4 @@
-// app.js — stable mobile repaint + resilient name editors (pre-roll only)
+// app.js — mobile-stable repaint + dual-mode name editors + bus diagnostics (console)
 (function () {
   const UI        = window.LegislateUI        || window.UI;
   const Loader    = window.LegislateLoader    || window.Loader;
@@ -36,17 +36,20 @@
 
   // Build simple name editor row if the template doesn't provide one (pre-roll only)
   function ensureNameEditors() {
-    if (namesLocked) return;
+    if (namesLocked || !engine) return;
+
     const container =
       document.getElementById('playersSection') ||
       document.querySelector('.players-section');
+
     if (!container) return;
 
-    // if inputs OR contenteditable already exist, keep them
-    if (container.querySelector('.player-name-input,[contenteditable][data-role="player-name"]')) return;
+    // If inputs OR contenteditable already exist, leave them (supports both styles)
+    if (container.querySelector('.player-name-input,[contenteditable][data-role="player-name"],.player-name[contenteditable]')) {
+      return;
+    }
 
-    // render minimal editors for each player (pre-roll only)
-    container.innerHTML = ''; // only fills if there were none
+    // Render minimal editors for each player (pre-roll only)
     const frag = document.createDocumentFragment();
     engine.state.players.forEach(p => {
       const pill = document.createElement('div');
@@ -65,6 +68,7 @@
       pill.appendChild(input);
       frag.appendChild(pill);
     });
+
     container.appendChild(frag);
   }
 
@@ -110,20 +114,21 @@
         UI.setTurnIndicator(turnIndicator, cur?.name || 'Player');
       }
 
-      // Optional debug
+      // Optional debug attach
       try {
         const on = (new URLSearchParams(location.search).get('debug') === '1') ||
                    (localStorage.getItem('legislate.debug') === '1');
         if (on && window.LegislateDebug) window.LegislateDebug.attach(engine, board, decks);
       } catch (_) {}
 
-      // Initial render
+      // Initial render and editors
       updateUI();
       ensureNameEditors();
 
-      // Named handlers to avoid GC losing them (mobile Safari can be picky)
-      function onTurnBegin() { updateUI(); }
-      function onMoveStep()  { updateUI(); }
+      // Named handlers to ensure they persist on mobile Safari
+      function onTurnBegin(ev)  { console.log('[bus] TURN_BEGIN', ev); updateUI(); }
+      function onMoveStep(ev)   { console.log('[bus] MOVE_STEP', ev); requestAnimationFrame(updateUI); }
+      function onCardDrawn(ev)  { console.log('[bus] CARD_DRAWN', ev); }
 
       // Start first turn & wire events
       engine.bus.emit('TURN_BEGIN', {
@@ -132,13 +137,16 @@
       });
       engine.bus.on('TURN_BEGIN', onTurnBegin);
       engine.bus.on('MOVE_STEP',   onMoveStep);
+      engine.bus.on('CARD_DRAWN',  onCardDrawn);
+
+      // Wildcard log (so we see events even if the debug panel is off)
+      if (engine.bus.on) {
+        try { engine.bus.on('*', (type, payload) => console.log('[bus:*]', type, payload)); } catch (_) {}
+      }
 
       // Resize/orientation reflow — repaint tokens
       window.addEventListener('resize', updateUI);
-      window.addEventListener('orientationchange', () => {
-        // Safari sometimes reports 0×0 briefly — repaint after a tick
-        setTimeout(updateUI, 200);
-      });
+      window.addEventListener('orientationchange', () => setTimeout(updateUI, 200));
 
       // Show card modals when a card is drawn
       engine.bus.on('CARD_DRAWN', async ({ deck, card }) => {
@@ -165,7 +173,7 @@
       // Name editing: prevent shortcuts in both modes (input / contenteditable)
       document.addEventListener('keydown', (ev) => {
         const t = ev.target;
-        if (t && t.matches && (t.matches('.player-name-input') || t.matches('[contenteditable][data-role="player-name"]'))) {
+        if (t && t.matches && (t.matches('.player-name-input') || t.matches('[contenteditable][data-role="player-name"]') || t.matches('.player-name[contenteditable]'))) {
           ev.stopPropagation();
         }
       }, true);
@@ -186,10 +194,10 @@
         }
       });
 
-      // Contenteditable spans
+      // Contenteditable spans: either [data-role="player-name"] or .player-name[contenteditable]
       document.addEventListener('blur', (ev) => {
         const t = ev.target;
-        if (!t || !t.matches || !t.matches('[contenteditable][data-role="player-name"]')) return;
+        if (!t || !t.matches || !(t.matches('[contenteditable][data-role="player-name"]') || t.matches('.player-name[contenteditable]'))) return;
         if (namesLocked) { t.blur(); return; }
         const pid   = t.getAttribute('data-player-id');
         const value = (t.textContent || '').trimEnd();
@@ -205,11 +213,13 @@
       // Roll
       rollBtn?.addEventListener('click', async () => {
         const r = dice();
+        console.log('[roll] value', r);
         namesLocked = true;
         if (playerCountSel) playerCountSel.disabled = true;
         if (UI.showDiceRoll) await UI.showDiceRoll(r, 1600);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
         await engine.takeTurn(r);
+        console.log('[roll] complete');
         Storage.save(engine.serialize());
         updateUI();
       });
