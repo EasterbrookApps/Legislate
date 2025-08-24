@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legislate?! — Learn the UK legislative process</title>
+  <link rel="icon" href="./public/favicon.ico" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="page-header" role="banner">
+    <div class="brand">Legislate?!</div>
+    <div class="controls">
+      <label for="playerCount">Players:</label>
+      <select id="playerCount" aria-label="Number of players">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+      <button id="rollBtn" class="button">Roll</button>
+      <button id="restartBtn" class="button button--secondary">Restart</button>
+    </div>
+  </header>
+
+  <main id="main" class="page-main" role="main">
+    <div class="turn" id="turnIndicator" aria-live="polite">Loading…</div>
+
+    <section class="board-section" aria-label="Game board">
+      <div class="board-wrap">
+        <img id="boardImg" alt="" />
+        <div id="tokensLayer" class="tokens-layer"></div>
+      </div>
+    </section>
+
+    <section class="players-section" aria-label="Players">
+      <div id="players"></div>
+    </section>
+
+    <p id="footerAttrib" class="attrib"></p>
+  </main>
+
+  <!-- Modal -->
+  <div id="modalRoot" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true" hidden>
+    <div class="modal" role="document">
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button id="modalOk" class="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="./storage.js"></script>
+  <script src="./loader.js"></script>
+  <script src="./engine.js"></script>
+  <script src="./ui.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

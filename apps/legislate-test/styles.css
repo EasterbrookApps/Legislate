@@ -1,0 +1,29 @@
+
+:root {
+  --border: #b1b4b6;
+  --text: #0b0c0c;
+  --muted: #505a5f;
+  --bg: #fff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: var(--text); background: var(--bg); }
+.page-header, .page-main { max-width: 1100px; margin: 0 auto; padding: 1rem; }
+.brand { font-weight: 700; font-size: 1.25rem; }
+.controls { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.button { border: 1px solid var(--border); background: #f3f2f1; padding: .4rem .8rem; border-radius: .35rem; cursor: pointer; }
+.button--secondary { background: #fff; }
+.turn { margin: .5rem 0 1rem; font-weight: 600; }
+.board-wrap { position: relative; }
+#boardImg { display: block; width: 100%; height: auto; }
+.tokens-layer { position: absolute; inset: 0; }
+.players-section { margin-top: .5rem; }
+.player-pill { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid var(--border); border-radius: 999px; padding: .25rem .5rem; margin: .25rem .25rem 0 0; }
+.player-dot { display: inline-block; width: .8rem; height: .8rem; border-radius: 50%; }
+.player-name { border: 1px solid transparent; padding: .1rem .25rem; min-width: 6ch; }
+.player-name:focus { outline: 2px solid #1d70b8; background: #fff; border-color: #1d70b8; }
+.attrib { color: var(--muted); margin-top: 1rem; }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: flex-start; justify-content: center; padding: 10vh 1rem; }
+.modal { background: #fff; max-width: 640px; width: 100%; border-radius: .5rem; padding: 1rem; }
+.modal-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+[hidden] { display: none !important; }

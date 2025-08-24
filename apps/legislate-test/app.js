@@ -1,0 +1,158 @@
+
+(function(){
+  const $ = (id)=> document.getElementById(id);
+
+  const Storage = window.LegislateStorage;
+  const Loader = window.LegislateLoader;
+  const UI = window.LegislateUI;
+  const EngineLib = window.LegislateEngine;
+
+  const playerCountSel = $('playerCount');
+  const rollBtn = $('rollBtn');
+  const restartBtn = $('restartBtn');
+  const boardImg = $('boardImg');
+  const tokensLayer = $('tokensLayer');
+  const playersContainer = $('players');
+  const turnIndicator = $('turnIndicator');
+  const footerAttrib = $('footerAttrib');
+  const modal = UI.createModal('modalRoot');
+
+  let namesLocked = false;
+  let dice, engine, board;
+
+  function friendlyError(){
+    const main = $('main');
+    const div = document.createElement('div');
+    div.style.padding='1rem'; div.style.background='#f3f2f1'; div.style.border='2px solid #d4351c'; div.style.marginTop='1rem';
+    div.innerHTML = '<h2>There\'s a problem loading the game</h2><p>Please check the content files and try again.</p>';
+    main.prepend(div);
+  }
+
+  function updateUI(boardUI){
+    const active = engine.state.players[engine.state.turnIndex];
+    UI.renderPlayers(playersContainer, engine.state.players, {
+      editable: true,
+      locked: namesLocked,
+      onEditName: (id, value)=>{
+        const p = engine.state.players.find(pp=>pp.id===id);
+        if (p){ p.name = value; Storage.save(engine.serialize()); }
+      }
+    });
+    UI.setTurnIndicator(turnIndicator, active.name);
+    boardUI.placeTokens(engine.state.players);
+  }
+
+  async function bootstrap(){
+    try{
+      const registry = await Loader.loadRegistry();
+      const packId = (new URL(location.href)).searchParams.get('pack') || registry[0].id;
+      const payload = await Loader.loadPack(packId, registry);
+      const meta = payload.meta; board = payload.board; const decks = payload.decks;
+
+      UI.setAlt(boardImg, meta.alt);
+      UI.setSrc(boardImg, Loader.withBase(meta.boardImage));
+      footerAttrib.textContent = meta.attribution || 'Contains public sector information licensed under the Open Government Licence v3.0.';
+
+      const seed = Math.floor(Math.random()*Math.pow(2,31));
+      const rng = EngineLib.makeRng(seed);
+      dice = EngineLib.makeDice(rng);
+
+      const saved = Storage.load();
+      const startCount = (saved && saved.players) ? Math.min(6, Math.max(2, saved.players.length)) : 4;
+      playerCountSel.value = String(startCount);
+
+      engine = EngineLib.createEngine({ board, decks, rng, playerCount: Number(playerCountSel.value) });
+      const boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
+
+      if (saved && saved.packId === engine.state.packId){
+        if (confirm('Resume your previous game?')){
+          engine.hydrate(saved);
+          namesLocked = true;
+          playerCountSel.disabled = true;
+        } else {
+          Storage.clear();
+        }
+      }
+
+      engine.bus.on('TURN_BEGIN', ()=> updateUI(boardUI));
+      engine.bus.on('MOVE_STEP', ()=> updateUI(boardUI));
+      engine.bus.on('CARD_DRAWN', async ({deck, card})=>{
+        if (!card) return;
+        await modal.open({ title: `Card: ${deck}`, body: card.text || '' });
+        updateUI(boardUI);
+      });
+      engine.bus.on('TURN_SKIPPED', async ()=>{
+        await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' });
+      });
+      engine.bus.on('GAME_END', async ({ winners })=>{
+        const names = winners.map(w=>w.name).join(', ');
+        await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` });
+        namesLocked = false;
+        engine.reset();
+        Storage.save(engine.serialize());
+        playerCountSel.disabled = false;
+        updateUI(boardUI);
+      });
+
+      playerCountSel.addEventListener('change', ()=>{
+        if (namesLocked){ playerCountSel.value = String(engine.state.players.length); return; }
+        engine.setPlayerCount(Number(playerCountSel.value));
+        Storage.save(engine.serialize());
+        updateUI(boardUI);
+      });
+
+      rollBtn.addEventListener('click', async ()=>{
+        const activeEl = document.activeElement;
+        if (activeEl && activeEl.tagName === 'INPUT' && activeEl.classList.contains('player-name')) return;
+        const r = dice();
+        namesLocked = true;
+        playerCountSel.disabled = true;
+        await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
+        engine.takeTurn(r);
+        Storage.save(engine.serialize());
+        updateUI(boardUI);
+      });
+      rollBtn.addEventListener('keydown', (e)=>{
+        if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); rollBtn.click(); }
+      });
+
+      restartBtn.addEventListener('click', ()=>{
+        const msg = 'Do you really want to scrap all these bills and start again?';
+        if (confirm(msg)){
+          const n = engine.state.players.length;
+          namesLocked = false;
+          engine = EngineLib.createEngine({ board, decks, rng, playerCount: n });
+          Storage.save(engine.serialize());
+          playerCountSel.disabled = false;
+          playerCountSel.value = String(n);
+          const boardUI2 = UI.createBoardRenderer(boardImg, tokensLayer, board);
+          engine.bus.on('TURN_BEGIN', ()=> updateUI(boardUI2));
+          engine.bus.on('MOVE_STEP', ()=> updateUI(boardUI2));
+          engine.bus.on('CARD_DRAWN', async ({deck, card})=>{
+            if (!card) return;
+            await modal.open({ title: `Card: ${deck}`, body: card.text || '' });
+            updateUI(boardUI2);
+          });
+          engine.bus.on('TURN_SKIPPED', async ()=>{
+            await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' });
+          });
+          engine.bus.on('GAME_END', async ({ winners })=>{
+            const names = winners.map(w=>w.name).join(', ');
+            await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` });
+            namesLocked = false; engine.reset(); Storage.save(engine.serialize()); playerCountSel.disabled = false; updateUI(boardUI2);
+          });
+          engine.bus.emit('TURN_BEGIN', {});
+          updateUI(boardUI2);
+        }
+      });
+
+      engine.bus.emit('TURN_BEGIN', {});
+      updateUI(boardUI);
+    } catch (err){
+      console.error(err);
+      friendlyError();
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', bootstrap);
+})();
