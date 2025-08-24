@@ -1,161 +1,171 @@
-
+// app.js — drop-in replacement
 (function(){
-  const $ = (id)=> document.getElementById(id);
+  // Resolve libs defensively
+  const UI = window.LegislateUI || window.UI;
+  const Loader = window.LegislateLoader || window.Loader;
+  const Storage = window.LegislateStorage || window.Storage;
+  const EngineLib = window.LegislateEngine || window.EngineLib || window.Engine;
 
-  const Storage = window.LegislateStorage;
-  const Loader = window.LegislateLoader;
-  const UI = window.LegislateUI;
-  const EngineLib = window.LegislateEngine;
-
-  const playerCountSel = $('playerCount');
-  const rollBtn = $('rollBtn');
-  const restartBtn = $('restartBtn');
-  const boardImg = $('boardImg');
-  const tokensLayer = $('tokensLayer');
-  const playersContainer = $('players');
-  const turnIndicator = $('turnIndicator');
-  const footerAttrib = $('footerAttrib');
-  const modal = UI.createModal('modalRoot');
-
-  let namesLocked = false;
-  let dice, engine, board;
-
-  function friendlyError(){
-    const main = $('main');
-    const div = document.createElement('div');
-    div.style.padding='1rem'; div.style.background='#f3f2f1'; div.style.border='2px solid #d4351c'; div.style.marginTop='1rem';
-    div.innerHTML = '<h2>There\'s a problem loading the game</h2><p>Please check the content files and try again.</p>';
-    main.prepend(div);
+  if (!UI || !Loader || !Storage || !EngineLib) {
+    console.error('[BOOT] Missing core libraries', { hasUI: !!UI, hasLoader: !!Loader, hasStorage: !!Storage, hasEngine: !!EngineLib });
   }
 
-  function updateUI(boardUI){
-    const active = engine.state.players[engine.state.turnIndex];
-    UI.renderPlayers(playersContainer, engine.state.players, {
-      editable: true,
-      locked: namesLocked,
-      onEditName: (id, value)=>{
-        const p = engine.state.players.find(pp=>pp.id===id);
-        if (p){ p.name = value; Storage.save(engine.serialize()); }
-      }
+  // Elements
+  const boardImg = document.getElementById('board-img');
+  const tokensLayer = document.getElementById('tokens-layer');
+  const turnIndicator = document.getElementById('turn-indicator');
+  const playerCountSel = document.getElementById('player-count');
+  const footerAttrib = document.getElementById('footer-attribution');
+  const rollBtn = document.getElementById('roll-btn');
+  const restartBtn = document.getElementById('restart-btn');
+
+  // Helpers
+  function waitForImage(img){
+    return new Promise((resolve)=>{
+      if (!img) return resolve();
+      if (img.complete && img.naturalWidth > 0) return resolve();
+      img.addEventListener('load', ()=> resolve(), { once:true });
+      img.addEventListener('error', ()=> resolve(), { once:true });
     });
-    UI.setTurnIndicator(turnIndicator, active.name);
-    boardUI.placeTokens(engine.state.players);
   }
+  function dice(){ return 1 + Math.floor(Math.random()*6); }
+
+  let engine, board, decks, modal, boardUI;
+  let namesLocked = false;
 
   async function bootstrap(){
-    try{
-      const registry = await Loader.loadRegistry();
-      const packId = (new URL(location.href)).searchParams.get('pack') || registry[0].id;
-      const payload = await Loader.loadPack(packId, registry);
-      const meta = payload.meta; board = payload.board; const decks = payload.decks;
+    try {
+      // Load registry & selected board (UK for now)
+      const registry = await Loader.loadJSON('./content/registry.json');
+      const key = registry?.default || 'uk-parliament';
+      const meta = await Loader.loadJSON(`./content/${key}/meta.json`);
+      board = await Loader.loadJSON(`./content/${key}/board.json`);
+      decks = await Loader.loadDecks(`./content/${key}/cards`);
 
-      UI.setAlt(boardImg, meta.alt);
-      UI.setSrc(boardImg, Loader.withBase(meta.boardImage));
+      // Wire assets
+      UI.setSrc(boardImg, Loader.withBase(meta.boardImage || 'public/board.png'));
+      UI.setAlt(boardImg, meta.alt || 'UK Parliament board');
       footerAttrib.textContent = meta.attribution || 'Contains public sector information licensed under the Open Government Licence v3.0.';
 
-      const seed = Math.floor(Math.random()*Math.pow(2,31));
-      const rng = EngineLib.makeRng(seed);
-      dice = EngineLib.makeDice(rng);
+      // Wait for image so token math has real dimensions
+      await waitForImage(boardImg);
 
+      // UI components
+      modal = UI.createModal();
+      boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
+
+      // Restore or init state
       const saved = Storage.load();
-      const startCount = (saved && saved.players) ? Math.min(6, Math.max(2, saved.players.length)) : 4;
-      playerCountSel.value = String(startCount);
+      const initialCount = Number(playerCountSel?.value || 4);
+      const engineFactory = typeof EngineLib.createEngine === 'function'
+        ? (opts)=>EngineLib.createEngine(opts)
+        : (opts)=>EngineLib(opts);
+      engine = engineFactory({
+        board,
+        decks,
+        rng: Math.random,
+        playerCount: saved?.players?.length || initialCount,
+        savedState: saved || null
+      });
 
-      engine = EngineLib.createEngine({ board, decks, rng, playerCount: Number(playerCountSel.value) });
-      try { if (window.LegislateDebug && (new URLSearchParams(location.search).get('debug')==='1' || localStorage.getItem('legislate.debug')==='1')) { window.LegislateDebug.attach(engine, board, decks); } } catch(e) { console.error('debug attach failed', e); }
-      const boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
-
-      if (saved && saved.packId === engine.state.packId){
-        if (confirm('Resume your previous game?')){
-          engine.hydrate(saved);
-          namesLocked = true;
-          playerCountSel.disabled = true;
-        } else {
-          Storage.clear();
+      // Expose for debug panel
+      try {
+        if (window.LegislateDebug && (new URLSearchParams(location.search).get('debug')==='1' || localStorage.getItem('legislate.debug')==='1')){
+          window.LegislateDebug.attach(engine, board, decks);
         }
+      } catch(e){ console.warn('debug attach failed', e); }
+
+      // Initial render
+      updateUI();
+      // Kick off turn
+      engine.bus.emit('TURN_BEGIN', { playerId: engine.state.players[engine.state.turnIndex].id, index: engine.state.turnIndex });
+
+      // Event wiring
+      engine.bus.on('TURN_BEGIN', () => updateUI());
+      engine.bus.on('MOVE_STEP', () => updateUI());
+      window.addEventListener('resize', () => updateUI());
+
+      // Player count change (only before first roll)
+      if (playerCountSel){
+        playerCountSel.addEventListener('change', (e)=>{
+          if (namesLocked) { e.preventDefault(); playerCountSel.value = String(engine.state.players.length); return; }
+          const n = Math.max(2, Math.min(6, Number(playerCountSel.value)||4));
+          engine.setPlayerCount(n);
+          updateUI();
+          Storage.save(engine.serialize());
+        });
       }
 
-      engine.bus.on('TURN_BEGIN', ()=> updateUI(boardUI));
-      engine.bus.on('MOVE_STEP', ()=> updateUI(boardUI));
-      engine.bus.on('CARD_DRAWN', async ({deck, card})=>{
-        if (!card) return;
-        await modal.open({ title: `Card: ${deck}`, body: card.text || '' });
-        updateUI(boardUI);
-      });
-      engine.bus.on('TURN_SKIPPED', async ()=>{
-        await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' });
-      });
-      engine.bus.on('GAME_END', async ({ winners })=>{
-        const names = winners.map(w=>w.name).join(', ');
-        await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` });
-        namesLocked = false;
-        engine.reset();
-        Storage.save(engine.serialize());
-        playerCountSel.disabled = false;
-        updateUI(boardUI);
-      });
-
-      playerCountSel.addEventListener('change', ()=>{
-        if (namesLocked){ playerCountSel.value = String(engine.state.players.length); return; }
-        engine.setPlayerCount(Number(playerCountSel.value));
-        Storage.save(engine.serialize());
-        updateUI(boardUI);
+      // Inline name editing: prevent shortcuts while typing; update banner on commit
+      document.addEventListener('input', (ev)=>{
+        const t = ev.target;
+        if (!t || !t.matches || !t.matches('.player-name-input')) return;
+        if (namesLocked) { t.blur(); return; }
+      }, true);
+      document.addEventListener('keydown', (ev)=>{
+        const t = ev.target;
+        if (t && t.matches && t.matches('.player-name-input')){
+          ev.stopPropagation(); // prevent shortcuts while typing
+        }
+      }, true);
+      document.addEventListener('change', (ev)=>{
+        const t = ev.target;
+        if (!t || !t.matches || !t.matches('.player-name-input')) return;
+        const pid = t.getAttribute('data-player-id');
+        const value = (t.value || '').trimEnd();
+        const p = engine.state.players.find(p=>p.id===pid);
+        if (p){ p.name = value; UI.setTurnIndicator(turnIndicator, engine.state.players[engine.state.turnIndex].name); Storage.save(engine.serialize()); updateUI(); }
       });
 
-      rollBtn.addEventListener('click', async ()=>{
-        const activeEl = document.activeElement;
-        if (activeEl && activeEl.tagName === 'INPUT' && activeEl.classList.contains('player-name')) return;
+      // Roll flow
+      rollBtn?.addEventListener('click', async ()=>{
         const r = dice();
-        console.log('[ROLL]', r);
         namesLocked = true;
-        playerCountSel.disabled = true;
-        await UI.showDiceRoll(r, 1800);
+        if (playerCountSel) playerCountSel.disabled = true;
+        if (UI.showDiceRoll) await UI.showDiceRoll(r, 1800);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
         await engine.takeTurn(r);
         Storage.save(engine.serialize());
-        updateUI(boardUI);
-      });
-      rollBtn.addEventListener('keydown', (e)=>{
-        if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); rollBtn.click(); }
+        updateUI();
       });
 
-      restartBtn.addEventListener('click', ()=>{
-        const msg = 'Do you really want to scrap all these bills and start again?';
-        if (confirm(msg)){
-          const n = engine.state.players.length;
+      // Restart with confirmation
+      restartBtn?.addEventListener('click', async ()=>{
+        const body = document.createElement('div');
+        body.innerHTML = `<p>Are you sure you want to restart and scrap all these bills?</p>`;
+        await modal.open({ title: 'Play again?', body });
+        // After modal closes, confirm via native confirm (subtle)
+        if (confirm('Restart the game and keep player names?')){
+          const keepNames = engine.state.players.map(p=>p.name);
+          engine.reset({ keepNames });
           namesLocked = false;
-          engine = EngineLib.createEngine({ board, decks, rng, playerCount: n });
-          Storage.save(engine.serialize());
-          playerCountSel.disabled = false;
-          playerCountSel.value = String(n);
-          const boardUI2 = UI.createBoardRenderer(boardImg, tokensLayer, board);
-          engine.bus.on('TURN_BEGIN', ()=> updateUI(boardUI2));
-          engine.bus.on('MOVE_STEP', ()=> updateUI(boardUI2));
-          engine.bus.on('CARD_DRAWN', async ({deck, card})=>{
-            if (!card) return;
-            await modal.open({ title: `Card: ${deck}`, body: card.text || '' });
-            updateUI(boardUI2);
-          });
-          engine.bus.on('TURN_SKIPPED', async ()=>{
-            await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' });
-          });
-          engine.bus.on('GAME_END', async ({ winners })=>{
-            const names = winners.map(w=>w.name).join(', ');
-            await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` });
-            namesLocked = false; engine.reset(); Storage.save(engine.serialize()); playerCountSel.disabled = false; updateUI(boardUI2);
-          });
-          engine.bus.emit('TURN_BEGIN', {});
-          updateUI(boardUI2);
+          if (playerCountSel){ playerCountSel.disabled = false; playerCountSel.value = String(keepNames.length); }
+          Storage.clear();
+          updateUI();
+          engine.bus.emit('TURN_BEGIN', { playerId: engine.state.players[engine.state.turnIndex].id, index: engine.state.turnIndex });
         }
       });
 
-      engine.bus.emit('TURN_BEGIN', {});
-      updateUI(boardUI);
     } catch (err){
-      console.error(err);
-      friendlyError();
+      console.error('[BOOT] Failed to start', err);
+      const errBox = document.getElementById('error-box');
+      if (errBox){ errBox.style.display = 'block'; errBox.textContent = 'There\'s a problem loading the game. Please refresh.'; }
     }
   }
 
+  function updateUI(){
+    try {
+      if (!engine || !boardUI) return;
+      // Turn banner
+      const current = engine.state.players[engine.state.turnIndex];
+      UI.setTurnIndicator(turnIndicator, current?.name || 'Player');
+      // Tokens
+      boardUI.renderPlayers(engine.state.players);
+    } catch(e){
+      console.error('[UI] update failed', e);
+    }
+  }
+
+  // Start
   document.addEventListener('DOMContentLoaded', bootstrap);
-})();
+})(); 
