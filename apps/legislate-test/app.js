@@ -1,4 +1,4 @@
-// app.js — stable wiring: MOVE_STEP repaint + dual-mode name editing (input or contenteditable)
+// app.js — stable mobile repaint + resilient name editors (pre-roll only)
 (function () {
   const UI        = window.LegislateUI        || window.UI;
   const Loader    = window.LegislateLoader    || window.Loader;
@@ -11,7 +11,7 @@
     });
   }
 
-  // DOM refs (match your index.html camelCase IDs)
+  // DOM refs (camelCase IDs per your index.html)
   const boardImg       = document.getElementById('boardImg');
   const tokensLayer    = document.getElementById('tokensLayer');
   const turnIndicator  = document.getElementById('turnIndicator');
@@ -33,6 +33,40 @@
 
   let engine, board, decks, modal, boardUI;
   let namesLocked = false;
+
+  // Build simple name editor row if the template doesn't provide one (pre-roll only)
+  function ensureNameEditors() {
+    if (namesLocked) return;
+    const container =
+      document.getElementById('playersSection') ||
+      document.querySelector('.players-section');
+    if (!container) return;
+
+    // if inputs OR contenteditable already exist, keep them
+    if (container.querySelector('.player-name-input,[contenteditable][data-role="player-name"]')) return;
+
+    // render minimal editors for each player (pre-roll only)
+    container.innerHTML = ''; // only fills if there were none
+    const frag = document.createDocumentFragment();
+    engine.state.players.forEach(p => {
+      const pill = document.createElement('div');
+      pill.className = 'player-pill';
+
+      const dot = document.createElement('span');
+      dot.className = 'player-dot';
+      dot.style.background = p.color || p.colour || '#1d70b8';
+
+      const input = document.createElement('input');
+      input.className = 'player-name-input';
+      input.setAttribute('data-player-id', p.id);
+      input.value = p.name;
+
+      pill.appendChild(dot);
+      pill.appendChild(input);
+      frag.appendChild(pill);
+    });
+    container.appendChild(frag);
+  }
 
   async function bootstrap() {
     try {
@@ -70,13 +104,13 @@
         savedState: saved || null
       });
 
-      // Clear "Loading…" immediately
+      // Immediate banner clear
       if (turnIndicator) {
         const cur = engine.state.players[engine.state.turnIndex];
         UI.setTurnIndicator(turnIndicator, cur?.name || 'Player');
       }
 
-      // Debug (optional)
+      // Optional debug
       try {
         const on = (new URLSearchParams(location.search).get('debug') === '1') ||
                    (localStorage.getItem('legislate.debug') === '1');
@@ -85,8 +119,9 @@
 
       // Initial render
       updateUI();
+      ensureNameEditors();
 
-      // Named handlers so they can't be GC'd or overwritten
+      // Named handlers to avoid GC losing them (mobile Safari can be picky)
       function onTurnBegin() { updateUI(); }
       function onMoveStep()  { updateUI(); }
 
@@ -97,7 +132,13 @@
       });
       engine.bus.on('TURN_BEGIN', onTurnBegin);
       engine.bus.on('MOVE_STEP',   onMoveStep);
+
+      // Resize/orientation reflow — repaint tokens
       window.addEventListener('resize', updateUI);
+      window.addEventListener('orientationchange', () => {
+        // Safari sometimes reports 0×0 briefly — repaint after a tick
+        setTimeout(updateUI, 200);
+      });
 
       // Show card modals when a card is drawn
       engine.bus.on('CARD_DRAWN', async ({ deck, card }) => {
@@ -116,19 +157,20 @@
           const n = Math.max(2, Math.min(6, Number(playerCountSel.value) || 4));
           engine.setPlayerCount(n);
           updateUI();
+          ensureNameEditors();
           Storage.save(engine.serialize());
         });
       }
 
-      // ----- Dual-mode name editing -----
-      // A) INPUT elements with class .player-name-input
+      // Name editing: prevent shortcuts in both modes (input / contenteditable)
       document.addEventListener('keydown', (ev) => {
         const t = ev.target;
         if (t && t.matches && (t.matches('.player-name-input') || t.matches('[contenteditable][data-role="player-name"]'))) {
-          ev.stopPropagation(); // prevent keyboard shortcuts while typing
+          ev.stopPropagation();
         }
       }, true);
 
+      // Inputs
       document.addEventListener('change', (ev) => {
         const t = ev.target;
         if (!t || !t.matches || !t.matches('.player-name-input')) return;
@@ -144,7 +186,7 @@
         }
       });
 
-      // B) CONTENTEDITABLE spans: [contenteditable][data-role="player-name"]
+      // Contenteditable spans
       document.addEventListener('blur', (ev) => {
         const t = ev.target;
         if (!t || !t.matches || !t.matches('[contenteditable][data-role="player-name"]')) return;
@@ -167,7 +209,7 @@
         if (playerCountSel) playerCountSel.disabled = true;
         if (UI.showDiceRoll) await UI.showDiceRoll(r, 1600);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
-        await engine.takeTurn(r); // engine emits MOVE_STEP, LANDED, next TURN_BEGIN
+        await engine.takeTurn(r);
         Storage.save(engine.serialize());
         updateUI();
       });
@@ -184,6 +226,7 @@
           if (playerCountSel) { playerCountSel.disabled = false; playerCountSel.value = String(keepNames.length); }
           Storage.clear();
           updateUI();
+          ensureNameEditors();
           engine.bus.emit('TURN_BEGIN', {
             playerId: engine.state.players[engine.state.turnIndex].id,
             index:    engine.state.turnIndex
