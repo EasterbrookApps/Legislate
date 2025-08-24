@@ -1,30 +1,26 @@
-/* ui.js */
+/* ui.js — token colour fix + robust modal root */
 window.LegislateUI = (function () {
-  // --- small helpers ---
   function $(sel, root = document) { return root.querySelector(sel); }
 
-  // --- required API: basic setters ---
-  function setAlt(img, alt)   { if (img) img.alt = alt || ""; }
-  function setSrc(img, src)   { if (img) img.src = src || ""; }
+  // basic setters
+  function setAlt(img, alt) { if (img) img.alt = alt || ""; }
+  function setSrc(img, src) { if (img) img.src = src || ""; }
 
-  // e.g. "Alice's turn" (trims trailing spaces before the apostrophe)
   function setTurnIndicator(el, name) {
     if (!el) return;
     const cleaned = (name || "").replace(/\s+$/, "");
     el.textContent = `${cleaned}'s turn`;
   }
 
-  // --- Modal (OK-only) ---
-  // Assumes a <div id="modal-root"> exists in index.html (we add it if missing)
+  // Modal: support both #modalRoot and #modal-root
   function createModal() {
-    let root = $("#modal-root");
+    let root = $("#modalRoot") || $("#modal-root");
     if (!root) {
       root = document.createElement("div");
-      root.id = "modal-root";
+      root.id = "modalRoot";
       document.body.appendChild(root);
     }
 
-    // lazy init structure once
     if (!root._wired) {
       root._wired = true;
       Object.assign(root.style, {
@@ -85,7 +81,6 @@ window.LegislateUI = (function () {
       root._els = { dialog, title, body, ok };
     }
 
-    // focus trap (very light)
     function trapFocus(e) {
       if (e.key !== "Tab") return;
       const focusables = root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
@@ -104,7 +99,6 @@ window.LegislateUI = (function () {
 
       root.style.display = "flex";
       document.addEventListener("keydown", trapFocus);
-      // initial focus
       setTimeout(() => ok.focus(), 0);
 
       return new Promise((resolve) => {
@@ -122,9 +116,8 @@ window.LegislateUI = (function () {
     return { open };
   }
 
-  // --- Board renderer / token placement ---
+  // Board renderer
   function createBoardRenderer(boardImg, tokensLayer, board) {
-    // Ensure the tokens layer is positioned over the board
     if (tokensLayer && getComputedStyle(tokensLayer).position === "static") {
       tokensLayer.style.position = "absolute";
       tokensLayer.style.inset = "0";
@@ -138,7 +131,6 @@ window.LegislateUI = (function () {
       const w = rect.width, h = rect.height;
       tokensLayer.innerHTML = "";
 
-      // group by board index
       const by = new Map();
       for (const p of players) {
         const k = Number(p.position) || 0;
@@ -153,7 +145,6 @@ window.LegislateUI = (function () {
         const cx = (Number(space.x) / 100) * w;
         const cy = (Number(space.y) / 100) * h;
 
-        // token radius relative to board
         const r = Math.max(6, Math.min(18, Math.round(Math.min(w, h) / 30)));
         const ring = Math.max(0, group.length - 1);
 
@@ -164,6 +155,7 @@ window.LegislateUI = (function () {
 
           const dot = document.createElement("div");
           dot.className = "player-dot";
+          const colour = pl.color || pl.colour || "#1d70b8"; // support both spellings
           Object.assign(dot.style, {
             position: "absolute",
             left: `${x - r}px`,
@@ -171,7 +163,7 @@ window.LegislateUI = (function () {
             width: `${r * 2}px`,
             height: `${r * 2}px`,
             borderRadius: "50%",
-            background: pl.colour || "#1d70b8",
+            background: colour,
             border: "2px solid #fff",
             boxShadow: "0 1px 6px rgba(0,0,0,.25)",
             pointerEvents: "none"
@@ -181,28 +173,23 @@ window.LegislateUI = (function () {
         });
       }
 
-      // optional: let debug panel know a placement happened
       if (window.LegislateDebug && window.LegislateDebug.tokensPlaced) {
         try {
           const summary = [...by.entries()].map(([k, v]) => ({ index: Number(k), count: v.length }));
           window.LegislateDebug.tokensPlaced({ summary });
-        } catch { /* no-op */ }
+        } catch {}
       }
     }
 
     return { renderPlayers };
   }
 
-  // convenience no-op (API completeness)
-  function renderPlayers() {}
-
-  // --- Full-screen dice overlay (uses #diceOverlay + #dice in index.html) ---
+  // Dice overlay
   function showDiceRoll(value, durationMs) {
     return new Promise((resolve) => {
       const overlay = $("#diceOverlay");
       const dice = $("#dice");
       if (!overlay || !dice) {
-        // graceful fallback
         alert(`You rolled a ${value}.`);
         return resolve();
       }
@@ -230,14 +217,13 @@ window.LegislateUI = (function () {
     });
   }
 
-  // --- public API ---
   return {
     setAlt,
     setSrc,
     setTurnIndicator,
     createModal,
     createBoardRenderer,
-    renderPlayers,
+    renderPlayers: () => {}, // API placeholder (renderer exposes real one)
     showDiceRoll
   };
 })();
