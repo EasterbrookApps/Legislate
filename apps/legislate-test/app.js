@@ -1,28 +1,26 @@
-// app.js — wired for Loader.loadRegistry / Loader.loadPack and renderPlayers
+// app.js — stable: camelCase IDs + banner set immediately + TURN_BEGIN listener
 (function () {
   const UI        = window.LegislateUI        || window.UI;
   const Loader    = window.LegislateLoader    || window.Loader;
   const Storage   = window.LegislateStorage   || window.Storage;
-  const EngineLib = window.LegislateEngine    || window.EngineLib || window.Engine;
+  const EngineMod = window.LegislateEngine    || window.EngineLib || window.Engine;
 
-  if (!UI || !Loader || !Storage || !EngineLib) {
+  if (!UI || !Loader || !Storage || !EngineMod) {
     console.error('[BOOT] Missing core libraries', {
-      hasUI: !!UI, hasLoader: !!Loader, hasStorage: !!Storage, hasEngine: !!EngineLib
+      hasUI: !!UI, hasLoader: !!Loader, hasStorage: !!Storage, hasEngine: !!EngineMod
     });
   }
 
-  // --- element refs (robust to legacy IDs) ---
-  const boardImg       = document.getElementById('board-img');
-  const tokensLayer    = document.getElementById('tokens-layer');
-  const turnIndicator  = document.getElementById('turn-indicator');
-  const playerCountSel = document.getElementById('player-count');
-  const footerAttrib   =
-    document.getElementById('footer-attribution') ||
-    document.getElementById('footer-attrib'); // legacy id
-  const rollBtn        = document.getElementById('roll-btn');
-  const restartBtn     = document.getElementById('restart-btn');
+  // ——— DOM refs (match your index.html exactly) ———
+  const boardImg       = document.getElementById('boardImg');
+  const tokensLayer    = document.getElementById('tokensLayer');
+  const turnIndicator  = document.getElementById('turnIndicator');
+  const playerCountSel = document.getElementById('playerCount');
+  const footerAttrib   = document.getElementById('footerAttrib');
+  const rollBtn        = document.getElementById('rollBtn');
+  const restartBtn     = document.getElementById('restartBtn');
 
-  // --- helpers ---
+  // ——— helpers ———
   function waitForImage(img) {
     return new Promise((resolve) => {
       if (!img) return resolve();
@@ -31,26 +29,23 @@
       img.addEventListener('error', () => resolve(), { once: true });
     });
   }
-  function dice() { return 1 + Math.floor(Math.random() * 6); }
+  const dice = () => 1 + Math.floor(Math.random() * 6);
 
   let engine, board, decks, modal, boardUI;
   let namesLocked = false;
 
   async function bootstrap() {
     try {
-      // 1) Load registry and select content pack (prefer UK, else first)
+      // 1) Load registry and pack (prefer UK)
       const registry = await Loader.loadRegistry();
-      const wantId = 'uk-parliament';
-      const pack = (registry || []).find(p => p.id === wantId) || (registry && registry[0]);
+      const pack = (registry || []).find(p => p.id === 'uk-parliament') || (registry && registry[0]);
       if (!pack) throw new Error('No content packs found in registry');
 
-      // 2) Load meta / board / decks
-      const loaded = await Loader.loadPack(pack.id, registry);
-      const meta = loaded.meta || {};
-      board = loaded.board;
-      decks = loaded.decks;
+      // 2) Load meta/board/decks
+      const { meta = {}, board: bd, decks: dx } = await Loader.loadPack(pack.id, registry);
+      board = bd; decks = dx;
 
-      // 3) Wire assets & attribution (guard footer)
+      // 3) Wire assets/attribution
       UI.setSrc(boardImg, Loader.withBase(meta.boardImage || 'public/board.png'));
       UI.setAlt(boardImg, meta.alt || 'UK Parliament board');
       if (footerAttrib) {
@@ -59,20 +54,20 @@
           'Contains public sector information licensed under the Open Government Licence v3.0.';
       }
 
-      // Ensure board dimensions before first placement
+      // 4) Wait for board image (ensures correct token coords)
       await waitForImage(boardImg);
 
-      // 4) UI pieces
-      modal  = UI.createModal();
+      // 5) UI components
+      modal   = UI.createModal();
       boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
 
-      // 5) Engine (restore save if present)
+      // 6) Engine (restore save or start fresh)
       const saved = Storage.load();
       const initialCount = Number(playerCountSel?.value || 4);
-      const engineFactory = typeof EngineLib.createEngine === 'function'
-        ? (opts) => EngineLib.createEngine(opts)
-        : (opts) => EngineLib(opts);
-      engine = engineFactory({
+      const factory = typeof EngineMod.createEngine === 'function'
+        ? EngineMod.createEngine
+        : EngineMod;
+      engine = factory({
         board,
         decks,
         rng: Math.random,
@@ -80,26 +75,32 @@
         savedState: saved || null
       });
 
-      // 6) Debug attach (feature-flagged)
+      // ——— IMPORTANT: clear “Loading…” immediately ———
+      if (turnIndicator) {
+        const cur = engine.state.players[engine.state.turnIndex];
+        UI.setTurnIndicator(turnIndicator, cur?.name || 'Player');
+      }
+
+      // 7) Debug hook (optional)
       try {
         const on = (new URLSearchParams(location.search).get('debug') === '1') ||
                    (localStorage.getItem('legislate.debug') === '1');
         if (on && window.LegislateDebug) window.LegislateDebug.attach(engine, board, decks);
-      } catch (e) { console.warn('debug attach failed', e); }
+      } catch (e) { /* no-op */ }
 
-      // 7) Initial render & start turn
+      // 8) Initial render & start turn
       updateUI();
       engine.bus.emit('TURN_BEGIN', {
         playerId: engine.state.players[engine.state.turnIndex].id,
         index:    engine.state.turnIndex
       });
 
-      // 8) Event wiring
+      // 9) Wire events — ensure banner updates on every new turn
       engine.bus.on('TURN_BEGIN', () => updateUI());
       engine.bus.on('MOVE_STEP',   () => updateUI());
       window.addEventListener('resize', () => updateUI());
 
-      // 9) Player count (editable before first roll only)
+      // 10) Player count (only before first roll)
       if (playerCountSel) {
         playerCountSel.addEventListener('change', (e) => {
           if (namesLocked) { e.preventDefault(); playerCountSel.value = String(engine.state.players.length); return; }
@@ -110,7 +111,7 @@
         });
       }
 
-      // 10) Name inputs: prevent shortcuts while typing; update banner pre-roll
+      // 11) Name edits: block shortcuts; update banner pre-roll
       document.addEventListener('keydown', (ev) => {
         const t = ev.target;
         if (t && t.matches && t.matches('.player-name-input')) ev.stopPropagation();
@@ -130,19 +131,19 @@
         }
       });
 
-      // 11) Roll turn
+      // 12) Roll flow
       rollBtn?.addEventListener('click', async () => {
         const r = dice();
         namesLocked = true;
         if (playerCountSel) playerCountSel.disabled = true;
         if (UI.showDiceRoll) await UI.showDiceRoll(r, 1800);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
-        await engine.takeTurn(r);           // step-by-step move in engine
+        await engine.takeTurn(r); // engine emits MOVE_STEP, LANDED, next TURN_BEGIN
         Storage.save(engine.serialize());
         updateUI();
       });
 
-      // 12) Restart (confirmation; keep names)
+      // 13) Restart (confirm; keep names)
       restartBtn?.addEventListener('click', async () => {
         const body = document.createElement('div');
         body.innerHTML = `<p>Are you sure you want to restart and scrap all these bills?</p>`;
