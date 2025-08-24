@@ -1,4 +1,4 @@
-// app.js — stable: camelCase IDs + banner set immediately + TURN_BEGIN listener
+// app.js — stable: camelCase IDs + CARD_DRAWN modal + existing behaviour
 (function () {
   const UI        = window.LegislateUI        || window.UI;
   const Loader    = window.LegislateLoader    || window.Loader;
@@ -11,7 +11,7 @@
     });
   }
 
-  // ——— DOM refs (match your index.html exactly) ———
+  // DOM refs (match your index.html)
   const boardImg       = document.getElementById('boardImg');
   const tokensLayer    = document.getElementById('tokensLayer');
   const turnIndicator  = document.getElementById('turnIndicator');
@@ -20,7 +20,7 @@
   const rollBtn        = document.getElementById('rollBtn');
   const restartBtn     = document.getElementById('restartBtn');
 
-  // ——— helpers ———
+  // helpers
   function waitForImage(img) {
     return new Promise((resolve) => {
       if (!img) return resolve();
@@ -36,16 +36,15 @@
 
   async function bootstrap() {
     try {
-      // 1) Load registry and pack (prefer UK)
+      // Content
       const registry = await Loader.loadRegistry();
       const pack = (registry || []).find(p => p.id === 'uk-parliament') || (registry && registry[0]);
       if (!pack) throw new Error('No content packs found in registry');
 
-      // 2) Load meta/board/decks
       const { meta = {}, board: bd, decks: dx } = await Loader.loadPack(pack.id, registry);
       board = bd; decks = dx;
 
-      // 3) Wire assets/attribution
+      // Assets
       UI.setSrc(boardImg, Loader.withBase(meta.boardImage || 'public/board.png'));
       UI.setAlt(boardImg, meta.alt || 'UK Parliament board');
       if (footerAttrib) {
@@ -54,19 +53,15 @@
           'Contains public sector information licensed under the Open Government Licence v3.0.';
       }
 
-      // 4) Wait for board image (ensures correct token coords)
       await waitForImage(boardImg);
 
-      // 5) UI components
+      // UI + engine
       modal   = UI.createModal();
       boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
 
-      // 6) Engine (restore save or start fresh)
       const saved = Storage.load();
       const initialCount = Number(playerCountSel?.value || 4);
-      const factory = typeof EngineMod.createEngine === 'function'
-        ? EngineMod.createEngine
-        : EngineMod;
+      const factory = typeof EngineMod.createEngine === 'function' ? EngineMod.createEngine : EngineMod;
       engine = factory({
         board,
         decks,
@@ -75,32 +70,44 @@
         savedState: saved || null
       });
 
-      // ——— IMPORTANT: clear “Loading…” immediately ———
+      // Clear "Loading…" immediately
       if (turnIndicator) {
         const cur = engine.state.players[engine.state.turnIndex];
         UI.setTurnIndicator(turnIndicator, cur?.name || 'Player');
       }
 
-      // 7) Debug hook (optional)
+      // Debug
       try {
         const on = (new URLSearchParams(location.search).get('debug') === '1') ||
                    (localStorage.getItem('legislate.debug') === '1');
         if (on && window.LegislateDebug) window.LegislateDebug.attach(engine, board, decks);
-      } catch (e) { /* no-op */ }
+      } catch (_) {}
 
-      // 8) Initial render & start turn
+      // Initial render + start
       updateUI();
       engine.bus.emit('TURN_BEGIN', {
         playerId: engine.state.players[engine.state.turnIndex].id,
         index:    engine.state.turnIndex
       });
 
-      // 9) Wire events — ensure banner updates on every new turn
+      // Event wiring
       engine.bus.on('TURN_BEGIN', () => updateUI());
       engine.bus.on('MOVE_STEP',   () => updateUI());
+
+      // NEW: Show card modals when a card is drawn (fix for “modals not showing”)
+      engine.bus.on('CARD_DRAWN', async ({ deck, card }) => {
+        if (!card) return;
+        // Basic fields used by your card JSON (title/body may be named slightly differently per pack)
+        const title = card.title || card.name || `Card from ${deck}`;
+        const body  = card.body  || card.text || '';
+        try {
+          await modal.open({ title, body: typeof body === 'string' ? body : String(body) });
+        } catch (_) { /* no-op: modal close */ }
+      });
+
       window.addEventListener('resize', () => updateUI());
 
-      // 10) Player count (only before first roll)
+      // Player count (pre-roll only)
       if (playerCountSel) {
         playerCountSel.addEventListener('change', (e) => {
           if (namesLocked) { e.preventDefault(); playerCountSel.value = String(engine.state.players.length); return; }
@@ -111,7 +118,7 @@
         });
       }
 
-      // 11) Name edits: block shortcuts; update banner pre-roll
+      // Name edits: block shortcuts; update banner pre-roll
       document.addEventListener('keydown', (ev) => {
         const t = ev.target;
         if (t && t.matches && t.matches('.player-name-input')) ev.stopPropagation();
@@ -131,19 +138,19 @@
         }
       });
 
-      // 12) Roll flow
+      // Roll
       rollBtn?.addEventListener('click', async () => {
         const r = dice();
         namesLocked = true;
         if (playerCountSel) playerCountSel.disabled = true;
         if (UI.showDiceRoll) await UI.showDiceRoll(r, 1800);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
-        await engine.takeTurn(r); // engine emits MOVE_STEP, LANDED, next TURN_BEGIN
+        await engine.takeTurn(r);
         Storage.save(engine.serialize());
         updateUI();
       });
 
-      // 13) Restart (confirm; keep names)
+      // Restart
       restartBtn?.addEventListener('click', async () => {
         const body = document.createElement('div');
         body.innerHTML = `<p>Are you sure you want to restart and scrap all these bills?</p>`;
