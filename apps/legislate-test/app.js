@@ -1,4 +1,4 @@
-// app.js — corrected
+// app.js — corrected to use Loader.fetchJSON(...)
 (function(){
   const UI = window.LegislateUI || window.UI;
   const Loader = window.LegislateLoader || window.Loader;
@@ -33,13 +33,13 @@
   async function bootstrap(){
     try {
       // Load registry & selected board
-      const registry = await Loader.load('./content/registry.json');
+      const registry = await Loader.fetchJSON('./content/registry.json');
       const key = registry?.default || 'uk-parliament';
-      const meta = await Loader.load(`./content/${key}/meta.json`);
-      board = await Loader.load(`./content/${key}/board.json`);
+      const meta = await Loader.fetchJSON(`./content/${key}/meta.json`);
+      board = await Loader.fetchJSON(`./content/${key}/board.json`);
       decks = await Loader.loadDecks(`./content/${key}/cards`);
 
-      UI.setSrc(boardImg, Loader.withBase(meta.boardImage || 'public/board.png'));
+      UI.setSrc(boardImg, Loader.withBase ? Loader.withBase(meta.boardImage || 'public/board.png') : (meta.boardImage || 'public/board.png'));
       UI.setAlt(boardImg, meta.alt || 'UK Parliament board');
       footerAttrib.textContent = meta.attribution || 'Contains public sector information licensed under the Open Government Licence v3.0.';
 
@@ -84,6 +84,7 @@
         });
       }
 
+      // Name inputs: keep shortcuts from firing & update banner immediately (before first roll)
       document.addEventListener('input', (ev)=>{
         const t = ev.target;
         if (!t || !t.matches || !t.matches('.player-name-input')) return;
