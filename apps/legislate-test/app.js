@@ -1,7 +1,5 @@
 
 (function(){
-  const DEBUG = (new URL(location.href)).searchParams.get('debug') === '1' || localStorage.getItem('legislate.debug') === '1';
-  function waitForImage(img){ return new Promise((resolve)=>{ if (!img) return resolve(); if (img.complete && img.naturalWidth>0) return resolve(); img.addEventListener('load', ()=> resolve(), { once:true }); img.addEventListener('error', ()=> resolve(), { once:true }); }); }
   const $ = (id)=> document.getElementById(id);
 
   const Storage = window.LegislateStorage;
@@ -30,14 +28,14 @@
     main.prepend(div);
   }
 
-  window.updateUI = function(boardUI){
+  function updateUI(boardUI){
     const active = engine.state.players[engine.state.turnIndex];
     UI.renderPlayers(playersContainer, engine.state.players, {
       editable: true,
       locked: namesLocked,
       onEditName: (id, value)=>{
         const p = engine.state.players.find(pp=>pp.id===id);
-        if (p){ p.name = value; Storage.save(engine.serialize()); UI.setTurnIndicator(turnIndicator, engine.state.players[engine.state.turnIndex].name); }
+        if (p){ p.name = value; Storage.save(engine.serialize()); }
       }
     });
     UI.setTurnIndicator(turnIndicator, active.name);
@@ -55,8 +53,6 @@
       UI.setSrc(boardImg, Loader.withBase(meta.boardImage));
       footerAttrib.textContent = meta.attribution || 'Contains public sector information licensed under the Open Government Licence v3.0.';
 
-      await waitForImage(boardImg);
-
       const seed = Math.floor(Math.random()*Math.pow(2,31));
       const rng = EngineLib.makeRng(seed);
       dice = EngineLib.makeDice(rng);
@@ -66,9 +62,8 @@
       playerCountSel.value = String(startCount);
 
       engine = EngineLib.createEngine({ board, decks, rng, playerCount: Number(playerCountSel.value) });
+      try { if (window.LegislateDebug && (new URLSearchParams(location.search).get('debug')==='1' || localStorage.getItem('legislate.debug')==='1')) { window.LegislateDebug.attach(engine, board, decks); } } catch(e) { console.error('debug attach failed', e); }
       const boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
-
-      if (DEBUG && window.LegislateDebug && window.LegislateDebug.enabled){ window.engine=engine; window.board=board; window.decks=decks; }
 
       if (saved && saved.packId === engine.state.packId){
         if (confirm('Resume your previous game?')){
@@ -111,6 +106,7 @@
         const activeEl = document.activeElement;
         if (activeEl && activeEl.tagName === 'INPUT' && activeEl.classList.contains('player-name')) return;
         const r = dice();
+        console.log('[ROLL]', r);
         namesLocked = true;
         playerCountSel.disabled = true;
         await UI.showDiceRoll(r, 1800);
@@ -135,16 +131,26 @@
           const boardUI2 = UI.createBoardRenderer(boardImg, tokensLayer, board);
           engine.bus.on('TURN_BEGIN', ()=> updateUI(boardUI2));
           engine.bus.on('MOVE_STEP', ()=> updateUI(boardUI2));
-          engine.bus.on('CARD_DRAWN', async ({deck, card})=>{ if (!card) return; await modal.open({ title: `Card: ${deck}`, body: card.text || '' }); updateUI(boardUI2); });
-          engine.bus.on('TURN_SKIPPED', async ()=>{ await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' }); });
-          engine.bus.on('GAME_END', async ({ winners })=>{ const names = winners.map(w=>w.name).join(', '); await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` }); namesLocked = false; engine.reset(); Storage.save(engine.serialize()); playerCountSel.disabled = false; updateUI(boardUI2); });
+          engine.bus.on('CARD_DRAWN', async ({deck, card})=>{
+            if (!card) return;
+            await modal.open({ title: `Card: ${deck}`, body: card.text || '' });
+            updateUI(boardUI2);
+          });
+          engine.bus.on('TURN_SKIPPED', async ()=>{
+            await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' });
+          });
+          engine.bus.on('GAME_END', async ({ winners })=>{
+            const names = winners.map(w=>w.name).join(', ');
+            await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` });
+            namesLocked = false; engine.reset(); Storage.save(engine.serialize()); playerCountSel.disabled = false; updateUI(boardUI2);
+          });
           engine.bus.emit('TURN_BEGIN', {});
           updateUI(boardUI2);
         }
       });
 
-      updateUI(boardUI);
       engine.bus.emit('TURN_BEGIN', {});
+      updateUI(boardUI);
     } catch (err){
       console.error(err);
       friendlyError();

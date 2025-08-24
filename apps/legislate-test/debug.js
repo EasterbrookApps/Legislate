@@ -1,76 +1,145 @@
 
 (function(){
-  const FLAG = (new URL(location.href)).searchParams.get('debug') === '1' || localStorage.getItem('legislate.debug') === '1';
-  const lsKey = 'legislate.debug';
-  function setFlag(on){ try{ localStorage.setItem(lsKey, on?'1':'0'); }catch(e){} }
-  if (!FLAG){ window.LegislateDebug = { enabled:false }; return; }
-  const logs = []; const startTime = Date.now(); function now(){ return Date.now() - startTime; }
-  function addLog(type, msg, extra){ logs.push({ t: now(), type, msg, extra }); renderRow({ t: now(), type, msg, extra }); }
-  const root = document.createElement('div');
-  root.innerHTML = `
-  <style>
-  .dbg-btn{position:fixed;right:.75rem;bottom:.75rem;z-index:9999;background:#0b0c0c;color:#fff;padding:.4rem .6rem;border-radius:.4rem;font:600 12px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial;box-shadow:0 2px 8px rgba(0,0,0,.3)}
-  .dbg-wrap{position:fixed;right:.5rem;bottom:2.6rem;width:min(92vw,520px);max-height:70vh;background:#fff;border:1px solid #b1b4b6;border-radius:.5rem;box-shadow:0 6px 20px rgba(0,0,0,.25);display:none;flex-direction:column;z-index:9999}
-  .dbg-wrap.open{display:flex}
-  .dbg-h{display:flex;align-items:center;justify-content:space-between;padding:.4rem .6rem;background:#f3f2f1;border-bottom:1px solid #b1b4b6}
-  .dbg-tabs{display:flex;gap:.25rem}
-  .dbg-tab{padding:.25rem .5rem;border:1px solid #b1b4b6;background:#fff;border-radius:.35rem;cursor:pointer;font-size:12px}
-  .dbg-tab.active{background:#1d70b8;color:#fff;border-color:#1d70b8}
-  .dbg-body{padding:.5rem;overflow:auto;font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace}
-  .dbg-row{border-bottom:1px dashed #eee;padding:.2rem 0}
-  .dbg-meta{color:#505a5f}
-  .dbg-actions{display:flex;gap:.25rem}
-  .dbg-actions button{border:1px solid #b1b4b6;background:#fff;border-radius:.35rem;padding:.25rem .5rem;font-size:12px;cursor:pointer}
-  .dbg-badge{display:inline-block;padding:.1rem .3rem;border-radius:.35rem;font-weight:600}
-  .dbg-OK{background:#00703c;color:#fff}
-  .dbg-ERR{background:#d4351c;color:#fff}
-  </style>
-  <button class="dbg-btn" aria-expanded="false">DEBUG</button>
-  <div class="dbg-wrap" role="dialog" aria-label="Debug panel" aria-modal="false">
-    <div class="dbg-h">
-      <div class="dbg-tabs">
-        <button class="dbg-tab active" data-tab="log">Logs</button>
-        <button class="dbg-tab" data-tab="net">Network</button>
-        <button class="dbg-tab" data-tab="state">State</button>
-      </div>
-      <div class="dbg-actions">
-        <button data-act="download">Download</button>
-        <button data-act="clear">Clear</button>
-        <button data-act="reset">Reset Save</button>
-        <button data-act="off">Turn Off</button>
-      </div>
-    </div>
-    <div class="dbg-body" data-pane="log"></div>
-    <div class="dbg-body" data-pane="net" style="display:none"></div>
-    <div class="dbg-body" data-pane="state" style="display:none"></div>
-  </div>`;
-  document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(root), { once:true });
-  const waitBody = setInterval(()=>{ if (document.body){ clearInterval(waitBody); document.body.appendChild(root); } }, 10);
-  const btn = () => root.querySelector('.dbg-btn');
-  const wrap = () => root.querySelector('.dbg-wrap');
-  const panes = {
-    log: () => root.querySelector('[data-pane="log"]'),
-    net: () => root.querySelector('[data-pane="net"]'),
-    state: () => root.querySelector('[data-pane="state"]')
+  const qs = new URLSearchParams(location.search);
+  const FLAG = (qs.get('debug') === '1') || (localStorage.getItem('legislate.debug') === '1');
+  const DBG = window.LegislateDebug = window.LegislateDebug || {};
+
+  const logs = [];
+  function ts(){ return new Date().toISOString(); }
+  function push(kind, msg, data){
+    logs.push({ t: ts(), kind, msg, data });
+    if (panel && panelOpen) appendRow({ t: ts(), kind, msg, data });
+  }
+  DBG.dump = () => logs.slice();
+  DBG.clear = () => { logs.length = 0; };
+  DBG.download = () => {
+    const blob = new Blob([JSON.stringify({ua:navigator.userAgent, logs}, null, 2)], {type:'application/json'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'legislate-debug-log.json'; a.click(); URL.revokeObjectURL(a.href);
   };
-  function setOpen(on){ wrap().classList.toggle('open', on); btn().setAttribute('aria-expanded', String(on)); if(on) refreshState(); }
-  root.addEventListener('click', (e)=>{
-    const t = e.target;
-    if (t.classList.contains('dbg-btn')){ setOpen(!wrap().classList.contains('open')); }
-    if (t.classList.contains('dbg-tab')){ root.querySelectorAll('.dbg-tab').forEach(b=> b.classList.remove('active')); t.classList.add('active'); const key=t.getAttribute('data-tab'); Object.keys(panes).forEach(k=> panes[k]().style.display = (k===key)?'block':'none'); if (key==='state') refreshState(); }
-    if (t.dataset.act==='download'){ const blob=new Blob([JSON.stringify({ when:new Date().toISOString(), url:location.href, logs }, null, 2)], {type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='legislate-debug-log.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),500); }
-    if (t.dataset.act==='clear'){ logs.length=0; panes.log().innerHTML=''; panes.net().innerHTML=''; addLog('info','[cleared]'); }
-    if (t.dataset.act==='reset'){ try{ localStorage.removeItem('legislate.v1.save'); addLog('info','[save cleared]'); }catch(e){} }
-    if (t.dataset.act==='off'){ setFlag(false); location.reload(); }
-  });
-  function renderRow(entry){ const line=document.createElement('div'); line.className='dbg-row'; const msg=typeof entry.msg==='string'?entry.msg:JSON.stringify(entry.msg); line.innerHTML=`<span class="dbg-meta">[${entry.t}ms] ${entry.type}</span> ${msg}`; panes.log().prepend(line); }
-  ['log','warn','error'].forEach(k=>{ const orig=console[k].bind(console); console[k]=function(...args){ try{ addLog(k, args.map(a => (typeof a==='string'?a:JSON.stringify(a))).join(' ')); }catch(e){}; orig(...args); }; });
-  window.addEventListener('error', (e)=> addLog('error', (e.message||'error'), {src:e.filename, line:e.lineno} ));
-  window.addEventListener('unhandledrejection', (e)=> addLog('error', 'unhandledrejection', {reason: (e.reason && (e.reason.stack || e.reason.message || String(e.reason))) }));
-  const origFetch = window.fetch.bind(window);
-  window.fetch = async function(input, init){ const url=(typeof input==='string')?input:(input&&input.url)||''; const t0=performance.now(); try{ const res=await origFetch(input, init); const dt=Math.round(performance.now()-t0); const ok=res.ok?'OK':'ERR'; const row=document.createElement('div'); row.className='dbg-row'; row.innerHTML=`<span class="dbg-badge dbg-${ok}">${ok}</span> <code>${url.replace(location.origin,'')}</code> <span class="dbg-meta">${res.status} • ${dt}ms</span>`; panes.net().prepend(row); if(!res.ok){ addLog('error', `FETCH ${ok} ${url}`, {status:res.status}); } return res; } catch(err){ const dt=Math.round(performance.now()-t0); const row=document.createElement('div'); row.className='dbg-row'; row.innerHTML=`<span class="dbg-badge dbg-ERR">ERR</span> <code>${url.replace(location.origin,'')}</code> <span class="dbg-meta">thrown • ${dt}ms</span>`; panes.net().prepend(row); addLog('error', `FETCH ERR ${url}`, {err:String(err)}); throw err; } };
-  function refreshState(){ try{ const s=window.engine&&window.engine.state; if(!s){ panes.state().innerHTML='<div class="dbg-row">engine not initialised</div>'; return; } const players=s.players.map(p=>`${p.name} <small>(pos ${p.position})</small>`).join('<br/>');
-    panes.state().innerHTML = `<div class="dbg-row"><b>Turn:</b> ${s.turnIndex+1}/${s.players.length}</div><div class="dbg-row"><b>Players:</b><br/>${players}</div>`; }catch(e){} }
-  addLog('info','[debug enabled] '+location.href); setOpen(true);
-  window.LegislateDebug = { enabled:true, logs, refreshState };
-})(); 
+
+  let badge, panel, panelOpen = false;
+  function ensureUI(){
+    if (badge) return;
+    badge = document.createElement('button');
+    badge.textContent = 'DEBUG';
+    badge.setAttribute('aria-label','Open debug panel');
+    Object.assign(badge.style, { position:'fixed', right:'12px', bottom:'12px', zIndex: 2000, background:'#0b0c0c', color:'#fff',
+      border:'none', borderRadius:'9999px', padding:'6px 10px', fontWeight:'700', letterSpacing:'0.03em', cursor:'pointer', boxShadow:'0 2px 8px rgba(0,0,0,.3)'});
+    badge.onclick = ()=>{ panelOpen ? closePanel() : openPanel(); };
+    document.body.appendChild(badge);
+
+    panel = document.createElement('div');
+    Object.assign(panel.style, { position:'fixed', right:'12px', bottom:'56px', width:'min(96vw, 520px)', maxHeight:'75vh', overflow:'auto',
+      background:'#fff', color:'#0b0c0c', border:'1px solid #b1b4b6', borderRadius:'8px', boxShadow:'0 6px 24px rgba(0,0,0,.25)', zIndex: 2000, display:'none' });
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #e5e5e5">
+        <strong>Legislate Debug</strong>
+        <div>
+          <button id="dbg-download" style="margin-right:6px">Download</button>
+          <button id="dbg-clear" style="margin-right:6px">Clear</button>
+          <button id="dbg-off">Turn Off</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;padding:8px 10px;border-bottom:1px solid #e5e5e5;flex-wrap:wrap">
+        <button id="dbg-step">Step +1 (active)</button>
+        <label>Move active to index <input id="dbg-move" type="number" style="width:80px" min="0"></label>
+        <button id="dbg-advance">Force next turn</button>
+        <button id="dbg-reset">Reset Save</button>
+        <button id="dbg-refresh">Refresh State</button>
+      </div>
+      <div id="dbg-state" style="padding:8px 10px;border-bottom:1px solid #e5e5e5;font-family:monospace;font-size:12px"></div>
+      <div id="dbg-log" style="padding:8px 10px;font-family:monospace;font-size:12px"></div>
+    `;
+    document.body.appendChild(panel);
+
+    panel.querySelector('#dbg-download').onclick = ()=> DBG.download();
+    panel.querySelector('#dbg-clear').onclick = ()=> { DBG.clear(); panel.querySelector('#dbg-log').innerHTML=''; };
+    panel.querySelector('#dbg-off').onclick = ()=> { localStorage.removeItem('legislate.debug'); location.reload(); };
+    panel.querySelector('#dbg-reset').onclick = ()=> { try{ localStorage.removeItem('legislate.v1.save'); push('info','save cleared'); }catch(e){} };
+    panel.querySelector('#dbg-refresh').onclick = ()=> updateState();
+    panel.querySelector('#dbg-step').onclick = async ()=> {
+      if (!DBG.engine) return;
+      try { await DBG.engine.takeTurn(1); push('action','engine.takeTurn(1)'); updateState(); } catch(e){ push('error','takeTurn(1) failed', String(e)); }
+    };
+    panel.querySelector('#dbg-advance').onclick = ()=> {
+      if (!DBG.engine) return;
+      const s = DBG.engine.state;
+      s.turnIndex = (s.turnIndex + 1) % s.players.length;
+      try { DBG.engine.bus.emit('TURN_BEGIN', { playerId: s.players[s.turnIndex].id, index: s.turnIndex }); } catch(e){}
+      push('action','force next turn', s.turnIndex);
+      updateState();
+    };
+    panel.querySelector('#dbg-move').addEventListener('change', (e)=>{
+      if (!DBG.engine) return;
+      const idx = Math.max(0, Math.floor(Number(e.target.value)||0));
+      const s = DBG.engine.state;
+      const p = s.players[s.turnIndex];
+      p.position = idx;
+      try { DBG.engine.bus.emit('MOVE_STEP', { playerId:p.id, to: p.position }); } catch(e){}
+      push('action','move active to index', idx);
+      updateState();
+    });
+  }
+  function openPanel(){ ensureUI(); panel.style.display='block'; panelOpen = true; updateState(); renderExistingLogs(); }
+  function closePanel(){ panel.style.display='none'; panelOpen = false; }
+  function renderExistingLogs(){ const logEl = panel.querySelector('#dbg-log'); logEl.innerHTML = ''; logs.forEach(appendRow); }
+  function updateState(){
+    if (!panel) return;
+    const stateEl = panel.querySelector('#dbg-state');
+    if (!DBG.engine){ stateEl.textContent = '(engine not attached yet)'; return; }
+    const s = DBG.engine.state;
+    const decks = Object.fromEntries(Object.entries(s.decks||{}).map(([k,v])=>[k, (v&&v.length)||0]));
+    stateEl.textContent = JSON.stringify({ turnIndex: s.turnIndex, players: s.players.map(p=>({id:p.id,name:p.name,pos:p.position})), decks }, null, 2);
+  }
+  function appendRow(rec){
+    const logEl = panel.querySelector('#dbg-log'); if (!logEl) return;
+    const div = document.createElement('div');
+    div.textContent = `[${rec.t}] ${rec.kind.toUpperCase()} ${rec.msg}${rec.data!==undefined? ' ' + (typeof rec.data==='string'? rec.data : JSON.stringify(rec.data)) : ''}`;
+    if (rec.kind==='error') div.style.color = '#d4351c';
+    else if (rec.kind==='warn') div.style.color = '#d97a00';
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function wireConsole(){
+    const orig = { log:console.log, warn:console.warn, error:console.error };
+    console.log = function(){ push('log', Array.from(arguments).join(' ')); return orig.log.apply(console, arguments); };
+    console.warn = function(){ push('warn', Array.from(arguments).join(' ')); return orig.warn.apply(console, arguments); };
+    console.error = function(){ push('error', Array.from(arguments).join(' ')); return orig.error.apply(console, arguments); };
+    window.addEventListener('error', (e)=> push('error', 'window.onerror', e.message||String(e)), true);
+    window.addEventListener('unhandledrejection', (e)=> push('error','unhandledrejection', String(e.reason||e)), true);
+  }
+  function wireFetch(){
+    const origFetch = window.fetch;
+    window.fetch = async function(url, opts){
+      const t0 = performance.now();
+      try{
+        const res = await origFetch(url, opts);
+        const t1 = performance.now();
+        push(res.ok ? 'net' : 'error', res.ok ? `FETCH OK ${res.status}` : `FETCH ERR ${res.status}`, { url: String(url), ms: Math.round(t1-t0) });
+        return res;
+      } catch (err){
+        const t1 = performance.now();
+        push('error', 'FETCH THROW', { url: String(url), ms: Math.round(t1-t0), err: String(err) });
+        throw err;
+      }
+    };
+  }
+
+  // Allow UI to report token placements if it wants
+  DBG.tokensPlaced = function(info){ push('ui','TOKENS', info); };
+
+  DBG.attach = function(engine, board, decks){
+    DBG.engine = engine; DBG.board = board; DBG.decks = decks;
+    ensureUI(); updateState();
+    try {
+      engine.bus.on('*', (type, payload)=>{
+        push('bus', type, payload);
+        if (type==='MOVE_STEP' || type==='TURN_BEGIN') updateState();
+      });
+      push('info','[debug attached]');
+    } catch(e){ push('error','attach bus failed', String(e)); }
+  };
+
+  if (FLAG){ wireConsole(); wireFetch(); ensureUI(); push('info','[debug enabled]'); }
+})();
