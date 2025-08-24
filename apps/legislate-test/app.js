@@ -1,4 +1,4 @@
-// app.js — stable: camelCase IDs + CARD_DRAWN modal + existing behaviour
+// app.js — stable wiring: MOVE_STEP repaint + dual-mode name editing (input or contenteditable)
 (function () {
   const UI        = window.LegislateUI        || window.UI;
   const Loader    = window.LegislateLoader    || window.Loader;
@@ -11,7 +11,7 @@
     });
   }
 
-  // DOM refs (match your index.html)
+  // DOM refs (match your index.html camelCase IDs)
   const boardImg       = document.getElementById('boardImg');
   const tokensLayer    = document.getElementById('tokensLayer');
   const turnIndicator  = document.getElementById('turnIndicator');
@@ -76,36 +76,38 @@
         UI.setTurnIndicator(turnIndicator, cur?.name || 'Player');
       }
 
-      // Debug
+      // Debug (optional)
       try {
         const on = (new URLSearchParams(location.search).get('debug') === '1') ||
                    (localStorage.getItem('legislate.debug') === '1');
         if (on && window.LegislateDebug) window.LegislateDebug.attach(engine, board, decks);
       } catch (_) {}
 
-      // Initial render + start
+      // Initial render
       updateUI();
+
+      // Named handlers so they can't be GC'd or overwritten
+      function onTurnBegin() { updateUI(); }
+      function onMoveStep()  { updateUI(); }
+
+      // Start first turn & wire events
       engine.bus.emit('TURN_BEGIN', {
         playerId: engine.state.players[engine.state.turnIndex].id,
         index:    engine.state.turnIndex
       });
+      engine.bus.on('TURN_BEGIN', onTurnBegin);
+      engine.bus.on('MOVE_STEP',   onMoveStep);
+      window.addEventListener('resize', updateUI);
 
-      // Event wiring
-      engine.bus.on('TURN_BEGIN', () => updateUI());
-      engine.bus.on('MOVE_STEP',   () => updateUI());
-
-      // NEW: Show card modals when a card is drawn (fix for “modals not showing”)
+      // Show card modals when a card is drawn
       engine.bus.on('CARD_DRAWN', async ({ deck, card }) => {
         if (!card) return;
-        // Basic fields used by your card JSON (title/body may be named slightly differently per pack)
         const title = card.title || card.name || `Card from ${deck}`;
         const body  = card.body  || card.text || '';
         try {
           await modal.open({ title, body: typeof body === 'string' ? body : String(body) });
-        } catch (_) { /* no-op: modal close */ }
+        } catch (_) {}
       });
-
-      window.addEventListener('resize', () => updateUI());
 
       // Player count (pre-roll only)
       if (playerCountSel) {
@@ -118,11 +120,15 @@
         });
       }
 
-      // Name edits: block shortcuts; update banner pre-roll
+      // ----- Dual-mode name editing -----
+      // A) INPUT elements with class .player-name-input
       document.addEventListener('keydown', (ev) => {
         const t = ev.target;
-        if (t && t.matches && t.matches('.player-name-input')) ev.stopPropagation();
+        if (t && t.matches && (t.matches('.player-name-input') || t.matches('[contenteditable][data-role="player-name"]'))) {
+          ev.stopPropagation(); // prevent keyboard shortcuts while typing
+        }
       }, true);
+
       document.addEventListener('change', (ev) => {
         const t = ev.target;
         if (!t || !t.matches || !t.matches('.player-name-input')) return;
@@ -138,14 +144,30 @@
         }
       });
 
+      // B) CONTENTEDITABLE spans: [contenteditable][data-role="player-name"]
+      document.addEventListener('blur', (ev) => {
+        const t = ev.target;
+        if (!t || !t.matches || !t.matches('[contenteditable][data-role="player-name"]')) return;
+        if (namesLocked) { t.blur(); return; }
+        const pid   = t.getAttribute('data-player-id');
+        const value = (t.textContent || '').trimEnd();
+        const p = engine.state.players.find(p => p.id === pid);
+        if (p) {
+          p.name = value;
+          UI.setTurnIndicator(turnIndicator, engine.state.players[engine.state.turnIndex].name);
+          Storage.save(engine.serialize());
+          updateUI();
+        }
+      }, true);
+
       // Roll
       rollBtn?.addEventListener('click', async () => {
         const r = dice();
         namesLocked = true;
         if (playerCountSel) playerCountSel.disabled = true;
-        if (UI.showDiceRoll) await UI.showDiceRoll(r, 1800);
+        if (UI.showDiceRoll) await UI.showDiceRoll(r, 1600);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
-        await engine.takeTurn(r);
+        await engine.takeTurn(r); // engine emits MOVE_STEP, LANDED, next TURN_BEGIN
         Storage.save(engine.serialize());
         updateUI();
       });
