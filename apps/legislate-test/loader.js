@@ -1,16 +1,10 @@
 
 window.LegislateLoader = (function(){
-  function basePath(){
-    const u = new URL('.', window.location.href);
-    return u.pathname.endsWith('/') ? u.pathname : (u.pathname + '/');
-  }
-  function withBase(rel){
-    const clean = (rel||'').replace(/^\//,'');
-    return window.location.origin + basePath() + clean;
-  }
+  function basePath(){ const u = new URL('.', window.location.href); return u.pathname.endsWith('/') ? u.pathname : (u.pathname + '/'); }
+  function withBase(rel){ const clean = (rel||'').replace(/^\//,''); return window.location.origin + basePath() + clean; }
   async function getJSON(rel){
     const res = await fetch(withBase(rel + '?cb=' + Date.now()));
-    if (!res.ok) throw new Error('Failed to load ' + rel);
+    if (!res.ok) throw new Error('Failed to load ' + rel + ' ('+res.status+')');
     return res.json();
   }
   async function loadRegistry(){ return getJSON('content/registry.json'); }

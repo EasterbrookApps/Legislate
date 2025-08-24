@@ -1,14 +1,7 @@
 
 (function(){
-  const DEBUG = true;
-  function waitForImage(img){
-    return new Promise((resolve)=>{
-      if (!img) return resolve();
-      if (img.complete && img.naturalWidth>0) return resolve();
-      img.addEventListener('load', ()=> resolve(), { once:true });
-      img.addEventListener('error', ()=> resolve(), { once:true });
-    });
-  }
+  const DEBUG = (new URL(location.href)).searchParams.get('debug') === '1' || localStorage.getItem('legislate.debug') === '1';
+  function waitForImage(img){ return new Promise((resolve)=>{ if (!img) return resolve(); if (img.complete && img.naturalWidth>0) return resolve(); img.addEventListener('load', ()=> resolve(), { once:true }); img.addEventListener('error', ()=> resolve(), { once:true }); }); }
   const $ = (id)=> document.getElementById(id);
 
   const Storage = window.LegislateStorage;
@@ -37,7 +30,7 @@
     main.prepend(div);
   }
 
-  function updateUI(boardUI){
+  window.updateUI = function(boardUI){
     const active = engine.state.players[engine.state.turnIndex];
     UI.renderPlayers(playersContainer, engine.state.players, {
       editable: true,
@@ -62,7 +55,6 @@
       UI.setSrc(boardImg, Loader.withBase(meta.boardImage));
       footerAttrib.textContent = meta.attribution || 'Contains public sector information licensed under the Open Government Licence v3.0.';
 
-      // Wait for board image to size before any token placement
       await waitForImage(boardImg);
 
       const seed = Math.floor(Math.random()*Math.pow(2,31));
@@ -76,9 +68,7 @@
       engine = EngineLib.createEngine({ board, decks, rng, playerCount: Number(playerCountSel.value) });
       const boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
 
-      // Ensure tokens render after image dimensions are known
-      boardImg.addEventListener('load', ()=> updateUI(boardUI));
-      if (boardImg.complete) { updateUI(boardUI); }
+      if (DEBUG && window.LegislateDebug && window.LegislateDebug.enabled){ window.engine=engine; window.board=board; window.decks=decks; }
 
       if (saved && saved.packId === engine.state.packId){
         if (confirm('Resume your previous game?')){
@@ -121,13 +111,11 @@
         const activeEl = document.activeElement;
         if (activeEl && activeEl.tagName === 'INPUT' && activeEl.classList.contains('player-name')) return;
         const r = dice();
-        if (DEBUG) console.log('[ROLL]', r);
         namesLocked = true;
         playerCountSel.disabled = true;
         await UI.showDiceRoll(r, 1800);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
         await engine.takeTurn(r);
-        if (DEBUG) console.log('[STATE after turn]', JSON.stringify(engine.state.players.map(p=>({id:p.id,name:p.name,pos:p.position}))))
         Storage.save(engine.serialize());
         updateUI(boardUI);
       });
@@ -147,19 +135,9 @@
           const boardUI2 = UI.createBoardRenderer(boardImg, tokensLayer, board);
           engine.bus.on('TURN_BEGIN', ()=> updateUI(boardUI2));
           engine.bus.on('MOVE_STEP', ()=> updateUI(boardUI2));
-          engine.bus.on('CARD_DRAWN', async ({deck, card})=>{
-            if (!card) return;
-            await modal.open({ title: `Card: ${deck}`, body: card.text || '' });
-            updateUI(boardUI2);
-          });
-          engine.bus.on('TURN_SKIPPED', async ()=>{
-            await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' });
-          });
-          engine.bus.on('GAME_END', async ({ winners })=>{
-            const names = winners.map(w=>w.name).join(', ');
-            await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` });
-            namesLocked = false; engine.reset(); Storage.save(engine.serialize()); playerCountSel.disabled = false; updateUI(boardUI2);
-          });
+          engine.bus.on('CARD_DRAWN', async ({deck, card})=>{ if (!card) return; await modal.open({ title: `Card: ${deck}`, body: card.text || '' }); updateUI(boardUI2); });
+          engine.bus.on('TURN_SKIPPED', async ()=>{ await modal.open({ title: 'Turn skipped', body: 'You miss a turn.' }); });
+          engine.bus.on('GAME_END', async ({ winners })=>{ const names = winners.map(w=>w.name).join(', '); await modal.open({ title: 'We have a winner!', body: `${names} reached the end. Play again?` }); namesLocked = false; engine.reset(); Storage.save(engine.serialize()); playerCountSel.disabled = false; updateUI(boardUI2); });
           engine.bus.emit('TURN_BEGIN', {});
           updateUI(boardUI2);
         }
@@ -167,7 +145,6 @@
 
       updateUI(boardUI);
       engine.bus.emit('TURN_BEGIN', {});
-      updateUI(boardUI);
     } catch (err){
       console.error(err);
       friendlyError();
