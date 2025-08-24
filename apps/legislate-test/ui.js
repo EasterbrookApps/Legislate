@@ -1,8 +1,8 @@
-/* ui.js — token colour fix + robust modal root */
+/* ui.js — mobile-safe token placement + robust modal root */
 window.LegislateUI = (function () {
   function $(sel, root = document) { return root.querySelector(sel); }
 
-  // basic setters
+  // setters
   function setAlt(img, alt) { if (img) img.alt = alt || ""; }
   function setSrc(img, src) { if (img) img.src = src || ""; }
 
@@ -12,7 +12,7 @@ window.LegislateUI = (function () {
     el.textContent = `${cleaned}'s turn`;
   }
 
-  // Modal: support both #modalRoot and #modal-root
+  // Modal supporting #modalRoot and #modal-root
   function createModal() {
     let root = $("#modalRoot") || $("#modal-root");
     if (!root) {
@@ -62,7 +62,7 @@ window.LegislateUI = (function () {
 
       const ok = document.createElement("button");
       ok.textContent = "OK";
-      ok.className = "btn";
+      ok.className = "button";
       Object.assign(ok.style, {
         padding: ".5rem 1rem",
         borderRadius: "4px",
@@ -116,19 +116,44 @@ window.LegislateUI = (function () {
     return { open };
   }
 
-  // Board renderer
+  // Board renderer — robust sizing for Safari mobile
   function createBoardRenderer(boardImg, tokensLayer, board) {
+    // Ensure the layer can absolutely position over the image
     if (tokensLayer && getComputedStyle(tokensLayer).position === "static") {
       tokensLayer.style.position = "absolute";
       tokensLayer.style.inset = "0";
       tokensLayer.style.pointerEvents = "none";
     }
 
+    function sizeOfBoard() {
+      // Primary: live layout box
+      let w = boardImg?.clientWidth || 0;
+      let h = boardImg?.clientHeight || 0;
+
+      // Safari sometimes reports 0 briefly; fallback to natural size with CSS scale ratio
+      if ((w === 0 || h === 0) && boardImg && boardImg.naturalWidth && boardImg.naturalHeight) {
+        const ratio = boardImg.naturalWidth ? (boardImg.naturalHeight / boardImg.naturalWidth) : 1;
+        // Try to infer width from parent box
+        const pw = boardImg.parentElement ? boardImg.parentElement.clientWidth : 0;
+        if (pw > 0) {
+          w = pw;
+          h = Math.round(pw * ratio);
+        }
+      }
+
+      return { w, h };
+    }
+
     function renderPlayers(players) {
       if (!boardImg || !tokensLayer || !board || !Array.isArray(board.spaces)) return;
 
-      const rect = boardImg.getBoundingClientRect();
-      const w = rect.width, h = rect.height;
+      const { w, h } = sizeOfBoard();
+      if (w === 0 || h === 0) {
+        // retry once on the next frame — mobile Safari layout quirk
+        requestAnimationFrame(() => renderPlayers(players));
+        return;
+      }
+
       tokensLayer.innerHTML = "";
 
       const by = new Map();
@@ -155,7 +180,7 @@ window.LegislateUI = (function () {
 
           const dot = document.createElement("div");
           dot.className = "player-dot";
-          const colour = pl.color || pl.colour || "#1d70b8"; // support both spellings
+          const colour = pl.color || pl.colour || "#1d70b8";
           Object.assign(dot.style, {
             position: "absolute",
             left: `${x - r}px`,
@@ -184,11 +209,11 @@ window.LegislateUI = (function () {
     return { renderPlayers };
   }
 
-  // Dice overlay
+  // Dice overlay (IDs #diceOverlay/#dice)
   function showDiceRoll(value, durationMs) {
     return new Promise((resolve) => {
-      const overlay = $("#diceOverlay");
-      const dice = $("#dice");
+      const overlay = document.getElementById('diceOverlay') || $('.dice-overlay');
+      const dice = document.getElementById('dice') || $('.dice');
       if (!overlay || !dice) {
         alert(`You rolled a ${value}.`);
         return resolve();
@@ -223,7 +248,7 @@ window.LegislateUI = (function () {
     setTurnIndicator,
     createModal,
     createBoardRenderer,
-    renderPlayers: () => {}, // API placeholder (renderer exposes real one)
+    renderPlayers: () => {}, // API placeholder
     showDiceRoll
   };
 })();
