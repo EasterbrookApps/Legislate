@@ -25,6 +25,7 @@ window.LegislateEngine = (function(){
       state.turnIndex = 0;
     }
     initPlayers(playerCount);
+    try { console.log('[ENGINE start]', state.players.map(p=>({id:p.id,pos:p.position}))); } catch(e){}
 
     function shuffle(a){ const arr=a.slice(); for(let i=arr.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
     for (const [name, cards] of Object.entries(decks||{})){ state.decks[name] = shuffle(cards); }

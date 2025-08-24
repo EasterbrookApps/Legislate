@@ -1,5 +1,14 @@
 
 (function(){
+  const DEBUG = true;
+  function waitForImage(img){
+    return new Promise((resolve)=>{
+      if (!img) return resolve();
+      if (img.complete && img.naturalWidth>0) return resolve();
+      img.addEventListener('load', ()=> resolve(), { once:true });
+      img.addEventListener('error', ()=> resolve(), { once:true });
+    });
+  }
   const $ = (id)=> document.getElementById(id);
 
   const Storage = window.LegislateStorage;
@@ -52,6 +61,9 @@
       UI.setAlt(boardImg, meta.alt);
       UI.setSrc(boardImg, Loader.withBase(meta.boardImage));
       footerAttrib.textContent = meta.attribution || 'Contains public sector information licensed under the Open Government Licence v3.0.';
+
+      // Wait for board image to size before any token placement
+      await waitForImage(boardImg);
 
       const seed = Math.floor(Math.random()*Math.pow(2,31));
       const rng = EngineLib.makeRng(seed);
@@ -109,10 +121,13 @@
         const activeEl = document.activeElement;
         if (activeEl && activeEl.tagName === 'INPUT' && activeEl.classList.contains('player-name')) return;
         const r = dice();
+        if (DEBUG) console.log('[ROLL]', r);
         namesLocked = true;
         playerCountSel.disabled = true;
+        await UI.showDiceRoll(r, 1800);
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
         await engine.takeTurn(r);
+        if (DEBUG) console.log('[STATE after turn]', JSON.stringify(engine.state.players.map(p=>({id:p.id,name:p.name,pos:p.position}))))
         Storage.save(engine.serialize());
         updateUI(boardUI);
       });
@@ -150,6 +165,7 @@
         }
       });
 
+      updateUI(boardUI);
       engine.bus.emit('TURN_BEGIN', {});
       updateUI(boardUI);
     } catch (err){

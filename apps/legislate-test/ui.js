@@ -1,5 +1,6 @@
 
 window.LegislateUI = (function(){
+  const DEBUG_UI = true;
   function setAlt(i,a){ i.setAttribute('alt', a||''); }
   function setSrc(i,s){ i.src = s; }
   function setTurnIndicator(el,name){ const txt = `${name}'s turn`; el.textContent = txt.replace(/\s+'s/, "'s"); }
@@ -31,8 +32,10 @@ window.LegislateUI = (function(){
       const by = new Map();
       for (const p of players){ const k = p.position; if(!by.has(k)) by.set(k, []); by.get(k).push(p); }
       for (const [idx, group] of by.entries()){
-        const space = board.spaces.find(s=>s.index===Number(idx)); if(!space) continue;
+        const space = board.spaces.find(s=>s.index===Number(idx));
+        if(!space){ if (DEBUG_UI) console.warn('[TOKENS] No space for index', idx); continue; }
         const cx = (space.x/100)*w, cy = (space.y/100)*h;
+        if (DEBUG_UI) console.log('[TOKENS]', 'idx', idx, 'players', group.map(g=>g.name), 'at', Math.round(cx), Math.round(cy));
         const count = group.length;
         for (let i=0;i<count;i++){
           const p = group[i];
@@ -77,5 +80,33 @@ window.LegislateUI = (function(){
     }
   }
 
-  return { setAlt, setSrc, setTurnIndicator, createModal, createBoardRenderer, renderPlayers };
+  return { setAlt, setSrc, setTurnIndicator, createModal, createBoardRenderer, renderPlayers, showDiceRoll };
 })();
+
+
+  function showDiceRoll(value, durationMs){
+    return new Promise((resolve)=>{
+      const overlay = document.getElementById('diceOverlay');
+      const dice = document.getElementById('dice');
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const dur = prefersReduced ? 300 : (durationMs||1600);
+      overlay.hidden = false;
+      overlay.setAttribute('aria-hidden','false');
+      dice.className = 'dice rolling';
+      let tick = 0;
+      const tempTimer = setInterval(()=>{
+        tick++;
+        const r = 1 + Math.floor(Math.random()*6);
+        dice.className = 'dice rolling show-' + r;
+      }, 120);
+      setTimeout(()=>{
+        clearInterval(tempTimer);
+        dice.className = 'dice show-' + value;
+        setTimeout(()=>{
+          overlay.hidden = true;
+          overlay.setAttribute('aria-hidden','true');
+          resolve();
+        }, 450);
+      }, dur);
+    });
+  }
