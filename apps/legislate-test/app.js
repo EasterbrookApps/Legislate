@@ -44,7 +44,7 @@
       locked: namesLocked,
       onEditName: (id, value)=>{
         const p = engine.state.players.find(pp=>pp.id===id);
-        if (p){ p.name = value; Storage.save(engine.serialize()); }
+        if (p){ p.name = value; Storage.save(engine.serialize()); UI.setTurnIndicator(turnIndicator, engine.state.players[engine.state.turnIndex].name); }
       }
     });
     UI.setTurnIndicator(turnIndicator, active.name);

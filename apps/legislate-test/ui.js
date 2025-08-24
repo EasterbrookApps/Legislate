@@ -3,7 +3,7 @@ window.LegislateUI = (function(){
   const DEBUG_UI = true;
   function setAlt(i,a){ i.setAttribute('alt', a||''); }
   function setSrc(i,s){ i.src = s; }
-  function setTurnIndicator(el,name){ const txt = `${name}'s turn`; el.textContent = txt.replace(/\s+'s/, "'s"); }
+  function setTurnIndicator(el,name){ const cleaned = (name||'').replace(/\s+$/,''); el.textContent = `${cleaned}'s turn`; }
 
   function createModal(rootId){
     const root = document.getElementById(rootId);

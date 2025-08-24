@@ -51,16 +51,18 @@ window.LegislateEngine = (function(){
       }
     }
 
-    async function moveSteps(n){
+    async async function moveSteps(n){
       const p=current(); const step=n>=0?1:-1; const count=Math.abs(n);
-      for (let k=0;k<count;k++){ p.position+=step; if(p.position<0)p.position=0; if(p.position> endIndex)p.position=endIndex; bus.emit('MOVE_STEP',{playerId:p.id,to:p.position}); }
+      for (let k=0;k<count;k++){ p.position+=step; if(p.position<0)p.position=0; if(p.position> endIndex)p.position=endIndex; bus.emit('MOVE_STEP',{playerId:p.id,to:p.position});
+      try{ console.log('[ENGINE move]', p.id, '→', p.position); }catch(e){}
+      await delay(250); }
     }
 
-    async function takeTurn(roll){
+    async async function takeTurn(roll){
       const p=current();
       if (p.skip && p.skip>0){ p.skip-=1; bus.emit('TURN_SKIPPED',{playerId:p.id}); return endTurn(false); }
       bus.emit('DICE_ROLL',{playerId:p.id,roll});
-      await moveSteps(roll);
+      await await moveSteps(roll);
       const landed=spaceFor(p.position);
       bus.emit('LANDED',{playerId:p.id,space:landed});
       if (p.position===endIndex){ bus.emit('GAME_END',{winners:[p]}); return; }
