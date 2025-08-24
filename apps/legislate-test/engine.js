@@ -55,18 +55,42 @@ window.LegislateEngine = (function(){
       for (let k=0;k<count;k++){ p.position+=step; if(p.position<0)p.position=0; if(p.position> endIndex)p.position=endIndex; bus.emit('MOVE_STEP',{playerId:p.id,to:p.position}); }
     }
 
-    async function takeTurn(roll){
-      const p=current();
-      if (p.skip && p.skip>0){ p.skip-=1; bus.emit('TURN_SKIPPED',{playerId:p.id}); return endTurn(false); }
-      bus.emit('DICE_ROLL',{playerId:p.id,roll});
-      await moveSteps(roll);
-      const landed=spaceFor(p.position);
-      bus.emit('LANDED',{playerId:p.id,space:landed});
-      if (p.position===endIndex){ bus.emit('GAME_END',{winners:[p]}); return; }
-      if (landed && landed.deck && landed.deck!=='none'){ const card=drawFrom(landed.deck); bus.emit('CARD_DRAWN',{deck:landed.deck,card}); applyCard(card); }
-      if (p.position===endIndex){ bus.emit('GAME_END',{winners:[p]}); return; }
-      const extra=!!p.extraRoll; p.extraRoll=false; endTurn(extra);
-    }
+// Accept an optional override for steps; if not given, use RNG
+async function takeTurn(stepsOverride) {
+  const state = engine.state; // or `this.state` depending on your file
+  const active = state.players[state.turnIndex];
+
+  // 1) Decide steps
+  const steps = Number.isFinite(Number(stepsOverride))
+    ? Number(stepsOverride)
+    : (1 + Math.floor(rng() * 6));
+
+  // 2) Announce the roll (single source of truth)
+  bus.emit('DICE_ROLL', { playerId: active.id, value: steps });
+
+  // 3) Move step-by-step
+  for (let i = 0; i < steps; i++) {
+    active.pos = Math.min(active.pos + 1, board.spaces.length - 1);
+    bus.emit('MOVE_STEP', { playerId: active.id, pos: active.pos, i, steps });
+    await tick(); // small delay if you have one; otherwise keep as sync
+  }
+
+  // 4) Landed
+  const space = board.spaces[active.pos];
+  bus.emit('LANDED', { playerId: active.id, space });
+
+  // 5) Draw/resolve a card if required (your existing logic)
+  if (space?.deck && space.deck !== 'none') {
+    const card = drawCard(space.deck);
+    bus.emit('CARD_DRAWN', { deck: space.deck, card });
+    await resolveCard(card, active, state, bus); // keep your current implementation
+  }
+
+  // 6) Next turn
+  state.turnIndex = (state.turnIndex + 1) % state.players.length;
+  bus.emit('TURN_BEGIN', { playerId: state.players[state.turnIndex].id, index: state.turnIndex });
+}
+
 
     function endTurn(extra){ if(!extra){ state.turnIndex=(state.turnIndex+1)%state.players.length; } bus.emit('TURN_BEGIN',{playerId:current().id,index:state.turnIndex}); }
 
