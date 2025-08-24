@@ -1,6 +1,5 @@
-// app.js — drop-in replacement
+// app.js — corrected
 (function(){
-  // Resolve libs defensively
   const UI = window.LegislateUI || window.UI;
   const Loader = window.LegislateLoader || window.Loader;
   const Storage = window.LegislateStorage || window.Storage;
@@ -10,7 +9,6 @@
     console.error('[BOOT] Missing core libraries', { hasUI: !!UI, hasLoader: !!Loader, hasStorage: !!Storage, hasEngine: !!EngineLib });
   }
 
-  // Elements
   const boardImg = document.getElementById('board-img');
   const tokensLayer = document.getElementById('tokens-layer');
   const turnIndicator = document.getElementById('turn-indicator');
@@ -19,7 +17,6 @@
   const rollBtn = document.getElementById('roll-btn');
   const restartBtn = document.getElementById('restart-btn');
 
-  // Helpers
   function waitForImage(img){
     return new Promise((resolve)=>{
       if (!img) return resolve();
@@ -35,26 +32,22 @@
 
   async function bootstrap(){
     try {
-      // Load registry & selected board (UK for now)
-      const registry = await Loader.loadJSON('./content/registry.json');
+      // Load registry & selected board
+      const registry = await Loader.load('./content/registry.json');
       const key = registry?.default || 'uk-parliament';
-      const meta = await Loader.loadJSON(`./content/${key}/meta.json`);
-      board = await Loader.loadJSON(`./content/${key}/board.json`);
+      const meta = await Loader.load(`./content/${key}/meta.json`);
+      board = await Loader.load(`./content/${key}/board.json`);
       decks = await Loader.loadDecks(`./content/${key}/cards`);
 
-      // Wire assets
       UI.setSrc(boardImg, Loader.withBase(meta.boardImage || 'public/board.png'));
       UI.setAlt(boardImg, meta.alt || 'UK Parliament board');
       footerAttrib.textContent = meta.attribution || 'Contains public sector information licensed under the Open Government Licence v3.0.';
 
-      // Wait for image so token math has real dimensions
       await waitForImage(boardImg);
 
-      // UI components
       modal = UI.createModal();
       boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
 
-      // Restore or init state
       const saved = Storage.load();
       const initialCount = Number(playerCountSel?.value || 4);
       const engineFactory = typeof EngineLib.createEngine === 'function'
@@ -68,24 +61,19 @@
         savedState: saved || null
       });
 
-      // Expose for debug panel
       try {
         if (window.LegislateDebug && (new URLSearchParams(location.search).get('debug')==='1' || localStorage.getItem('legislate.debug')==='1')){
           window.LegislateDebug.attach(engine, board, decks);
         }
       } catch(e){ console.warn('debug attach failed', e); }
 
-      // Initial render
       updateUI();
-      // Kick off turn
       engine.bus.emit('TURN_BEGIN', { playerId: engine.state.players[engine.state.turnIndex].id, index: engine.state.turnIndex });
 
-      // Event wiring
       engine.bus.on('TURN_BEGIN', () => updateUI());
       engine.bus.on('MOVE_STEP', () => updateUI());
       window.addEventListener('resize', () => updateUI());
 
-      // Player count change (only before first roll)
       if (playerCountSel){
         playerCountSel.addEventListener('change', (e)=>{
           if (namesLocked) { e.preventDefault(); playerCountSel.value = String(engine.state.players.length); return; }
@@ -96,7 +84,6 @@
         });
       }
 
-      // Inline name editing: prevent shortcuts while typing; update banner on commit
       document.addEventListener('input', (ev)=>{
         const t = ev.target;
         if (!t || !t.matches || !t.matches('.player-name-input')) return;
@@ -105,7 +92,7 @@
       document.addEventListener('keydown', (ev)=>{
         const t = ev.target;
         if (t && t.matches && t.matches('.player-name-input')){
-          ev.stopPropagation(); // prevent shortcuts while typing
+          ev.stopPropagation();
         }
       }, true);
       document.addEventListener('change', (ev)=>{
@@ -117,7 +104,6 @@
         if (p){ p.name = value; UI.setTurnIndicator(turnIndicator, engine.state.players[engine.state.turnIndex].name); Storage.save(engine.serialize()); updateUI(); }
       });
 
-      // Roll flow
       rollBtn?.addEventListener('click', async ()=>{
         const r = dice();
         namesLocked = true;
@@ -129,12 +115,10 @@
         updateUI();
       });
 
-      // Restart with confirmation
       restartBtn?.addEventListener('click', async ()=>{
         const body = document.createElement('div');
         body.innerHTML = `<p>Are you sure you want to restart and scrap all these bills?</p>`;
         await modal.open({ title: 'Play again?', body });
-        // After modal closes, confirm via native confirm (subtle)
         if (confirm('Restart the game and keep player names?')){
           const keepNames = engine.state.players.map(p=>p.name);
           engine.reset({ keepNames });
@@ -156,16 +140,13 @@
   function updateUI(){
     try {
       if (!engine || !boardUI) return;
-      // Turn banner
       const current = engine.state.players[engine.state.turnIndex];
       UI.setTurnIndicator(turnIndicator, current?.name || 'Player');
-      // Tokens
       boardUI.renderPlayers(engine.state.players);
     } catch(e){
       console.error('[UI] update failed', e);
     }
   }
 
-  // Start
   document.addEventListener('DOMContentLoaded', bootstrap);
-})(); 
+})();
