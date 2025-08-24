@@ -73,3 +73,15 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helve
 @keyframes dice-wobble { 0%{transform:rotate(0deg) scale(1);} 25%{transform:rotate(10deg) scale(1.02);} 50%{transform:rotate(-10deg) scale(1.04);} 75%{transform:rotate(6deg) scale(1.02);} 100%{transform:rotate(0deg) scale(1);} }
 .dice.rolling .face{animation:dice-wobble .35s ease-in-out infinite}
 @media (prefers-reduced-motion: reduce){ .dice.rolling .face{animation:none} }
+
+/* Ensure player name inputs remain visible and usable on mobile */
+.player-name-input {
+  display: inline-block;      /* prevent accidental collapse */
+  max-width: 12rem;           /* avoid overflowing small screens */
+  font-size: 1rem;            /* touch-friendly */
+}
+
+/* Make sure the modal always sits on top */
+#modalRoot, #modal-root {
+  z-index: 1500;
+}
