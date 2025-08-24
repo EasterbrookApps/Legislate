@@ -107,3 +107,5 @@ window.LegislateUI = (function(){
   }
 
   return { setAlt, setSrc, setTurnIndicator, createModal, createBoardRenderer, renderPlayers, showDiceRoll };
+
+})();
