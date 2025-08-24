@@ -64,6 +64,10 @@
       engine = EngineLib.createEngine({ board, decks, rng, playerCount: Number(playerCountSel.value) });
       const boardUI = UI.createBoardRenderer(boardImg, tokensLayer, board);
 
+      // Ensure tokens render after image dimensions are known
+      boardImg.addEventListener('load', ()=> updateUI(boardUI));
+      if (boardImg.complete) { updateUI(boardUI); }
+
       if (saved && saved.packId === engine.state.packId){
         if (confirm('Resume your previous game?')){
           engine.hydrate(saved);
@@ -108,7 +112,7 @@
         namesLocked = true;
         playerCountSel.disabled = true;
         await modal.open({ title: 'Dice roll', body: `You rolled a ${r}.` });
-        engine.takeTurn(r);
+        await engine.takeTurn(r);
         Storage.save(engine.serialize());
         updateUI(boardUI);
       });
