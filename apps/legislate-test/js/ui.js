@@ -1,4 +1,4 @@
-// Step 2.2 — UI renderer fix: compute path in token layer coords (mobile-safe)
+// Step 3 — UI helpers: roll acknowledgement modal + existing renderer
 window.LegislateUI = (function(){
   const byId = id => document.getElementById(id);
 
@@ -35,10 +35,47 @@ window.LegislateUI = (function(){
     }, dur);
   }
 
+  // --- Modal helpers ---
+  function showRollModal(text){
+    const root = byId('modalRoot');
+    const title = byId('modalTitle');
+    const body = byId('modalBody');
+    const ok = byId('modalOk');
+    if (!root || !title || !body || !ok) return;
+
+    title.textContent = 'Dice Roll';
+    body.textContent = text;
+    root.hidden = false;
+    root.style.display = 'flex';
+    root.setAttribute('aria-hidden', 'false');
+
+    // Prevent keyboard shortcuts while modal is open
+    function keyBlock(e){ e.stopPropagation(); }
+    root.addEventListener('keydown', keyBlock, { capture:true });
+
+    function close(){
+      root.hidden = true;
+      root.style.display = 'none';
+      root.setAttribute('aria-hidden', 'true');
+      root.removeEventListener('keydown', keyBlock, { capture:true });
+      ok.removeEventListener('click', close);
+    }
+    ok.addEventListener('click', close);
+  }
+
+  function dismissModal(){
+    const root = byId('modalRoot');
+    if (!root) return;
+    root.hidden = true;
+    root.style.display = 'none';
+    root.setAttribute('aria-hidden','true');
+  }
+
+  // --- Board renderer (same as Step 2.2) ---
   function createBoardRenderer(totalSpaces){
     const tokensLayer = byId('tokensLayer');
     const boardImg = byId('boardImg');
-    let tokenMap = new Map(); // playerId -> element
+    let tokenMap = new Map();
     let path = [];
     let lastW = 0, lastH = 0;
 
@@ -145,7 +182,6 @@ window.LegislateUI = (function(){
       players.forEach(p => placeToken(p, p.position || 0));
     }
 
-    // Keep path fresh when layout changes (mobile safe)
     const ro = ('ResizeObserver' in window) ? new ResizeObserver(()=>{ path = []; }) : null;
     if (ro) ro.observe(tokensLayer);
     window.addEventListener('resize', ()=>{ path=[]; });
@@ -154,5 +190,5 @@ window.LegislateUI = (function(){
     return { placeToken, renderAll, clearTokens };
   }
 
-  return { setTurnIndicator, showDiceRoll, createBoardRenderer };
-})();
+  return { setTurnIndicator, showDiceRoll, showRollModal, dismissModal, createBoardRenderer };
+})(); 
