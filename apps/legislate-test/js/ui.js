@@ -1,4 +1,4 @@
-// Step 3 — UI helpers: roll acknowledgement modal + existing renderer
+// Step 3.1 — UI helpers: roll acknowledgement modal AFTER dice; renderer unchanged
 window.LegislateUI = (function(){
   const byId = id => document.getElementById(id);
 
@@ -7,32 +7,37 @@ window.LegislateUI = (function(){
     if (el) el.textContent = text;
   }
 
+  // Show dice animation and resolve when the overlay hides
   function showDiceRoll(value, durationMs){
     const overlay = byId('diceOverlay');
     const dice    = byId('dice');
-    if (!dice || !overlay) return;
+    if (!dice || !overlay) return Promise.resolve();
+
     const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const dur = Math.max(300, prefersReduced ? 300 : (durationMs || 1000));
 
-    overlay.hidden = false;
-    overlay.style.display = 'flex';
-    overlay.setAttribute('aria-hidden','false');
+    return new Promise((resolve)=>{
+      overlay.hidden = false;
+      overlay.style.display = 'flex';
+      overlay.setAttribute('aria-hidden','false');
 
-    dice.className = 'dice rolling';
-    const anim = setInterval(()=>{
-      const r = 1 + Math.floor(Math.random()*6);
-      dice.className = 'dice rolling show-' + r;
-    }, 120);
+      dice.className = 'dice rolling';
+      const anim = setInterval(()=>{
+        const r = 1 + Math.floor(Math.random()*6);
+        dice.className = 'dice rolling show-' + r;
+      }, 120);
 
-    setTimeout(()=>{
-      clearInterval(anim);
-      dice.className = 'dice show-' + (value || 1);
       setTimeout(()=>{
-        overlay.hidden = true;
-        overlay.style.display = 'none';
-        overlay.setAttribute('aria-hidden','true');
-      }, 400);
-    }, dur);
+        clearInterval(anim);
+        dice.className = 'dice show-' + (value || 1);
+        setTimeout(()=>{
+          overlay.hidden = true;
+          overlay.style.display = 'none';
+          overlay.setAttribute('aria-hidden','true');
+          resolve(); // <- dice overlay fully finished
+        }, 400);
+      }, dur);
+    });
   }
 
   // --- Modal helpers ---
@@ -71,7 +76,7 @@ window.LegislateUI = (function(){
     root.setAttribute('aria-hidden','true');
   }
 
-  // --- Board renderer (same as Step 2.2) ---
+  // --- Board renderer (Step 2.2 baseline) ---
   function createBoardRenderer(totalSpaces){
     const tokensLayer = byId('tokensLayer');
     const boardImg = byId('boardImg');
@@ -191,4 +196,4 @@ window.LegislateUI = (function(){
   }
 
   return { setTurnIndicator, showDiceRoll, showRollModal, dismissModal, createBoardRenderer };
-})(); 
+})();
