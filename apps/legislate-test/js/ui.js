@@ -1,105 +1,100 @@
-// Lightweight UI helpers focused on rendering tokens & basic widgets
-window.LegislateUI = (function () {
-
-  function setTurnIndicator(text) {
+// UI helpers: modal, dice overlay, token renderer
+window.LegislateUI = (function(){
+  function setTurnIndicator(text){
     const el = document.getElementById('turnIndicator');
     if (el) el.textContent = text;
   }
 
-  function setSrc(id, src) {
-    const el = document.getElementById(id);
-    if (el) el.src = src;
-  }
-
-  function setAlt(id, alt) {
-    const el = document.getElementById(id);
-    if (el) el.alt = alt;
-  }
-
-  function createModal() {
+  function createModal(){
     const root = document.getElementById('modalRoot');
-    return {
-      open({ title = '', body = '', actions = [{ id: 'ok', label: 'OK' }] }) {
-        if (!root) return Promise.resolve();
-        root.innerHTML = `
-          <div class="modal-backdrop">
-            <div class="modal" role="dialog" aria-modal="true">
-              <h2 id="modalTitle">${title}</h2>
-              <div id="modalBody">${body}</div>
-              <div class="modal-actions">
-                ${actions.map(a => `<button class="button" id="modal-${a.id}">${a.label}</button>`).join('')}
-              </div>
+    if (!root) throw new Error('modalRoot missing');
+
+    function open({ title='', body='', actions=[{id:'ok',label:'OK'}] }={}){
+      root.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <h2 id="modalTitle">${title}</h2>
+            <div id="modalBody">${body}</div>
+            <div class="modal-actions">
+              ${actions.map(a=>`<button class="button" id="modal-${a.id}">${a.label}</button>`).join('')}
             </div>
-          </div>`;
-        return new Promise(resolve => {
-          actions.forEach(a => {
-            const btn = document.getElementById(`modal-${a.id}`);
-            if (btn) btn.onclick = () => { root.innerHTML = ''; resolve(a.id); };
-          });
+          </div>
+        </div>`;
+      return new Promise(resolve=>{
+        actions.forEach(a=>{
+          const btn = document.getElementById(`modal-${a.id}`);
+          if (btn) btn.onclick = () => { root.innerHTML=''; resolve(a.id); };
         });
-      }
-    };
+      });
+    }
+    return { open };
   }
 
-  // Create a renderer that places tokens by percentage coordinates.
-  function createBoardRenderer({ board }) {
-    const layer = document.getElementById('tokensLayer');
-    if (!layer) throw new Error('tokensLayer not found');
+  // Ensure dice faces exist; always hide overlay even if an error occurs
+  async function showDiceRoll(value, durationMs = 900){
+    const overlay = document.getElementById('diceOverlay');
+    const dice = document.getElementById('dice');
+    if (!overlay || !dice) return;
 
-    function clear() { layer.innerHTML = ''; }
-
-    function render(players) {
-      layer.innerHTML = '';
-      for (const p of players) {
-        const s = board.spaces.find(sp => sp.index === (p.pos ?? p.position ?? 0)) || board.spaces[0];
-        const dot = document.createElement('div');
-        dot.className = 'player-dot';
-        dot.style.background = p.color || '#d4351c';
-
-        // s.x, s.y are 0..100 percentages relative to board image
-        dot.style.left = (s.x || 0) + '%';
-        dot.style.top  = (s.y || 0) + '%';
-
-        dot.title = `${p.name || p.id}: ${s.index}`;
-        layer.appendChild(dot);
-      }
+    // build faces once
+    if (!dice.querySelector('.face.one')){
+      dice.innerHTML = `
+        <div class="face one"></div>
+        <div class="face two"></div>
+        <div class="face three"></div>
+        <div class="face four"></div>
+        <div class="face five"></div>
+        <div class="face six"></div>`;
     }
 
-    return { clear, render };
-  }
+    overlay.hidden = false;
+    overlay.style.display = 'flex';
 
-  // Full-screen dice animation overlay. Resolves when finished.
-  async function showDiceRoll(value, durationMs = 900) {
-    return new Promise(resolve => {
-      const overlay = document.getElementById('diceOverlay');
-      const dice = document.getElementById('dice');
-      if (!overlay || !dice) return resolve();
-
-      overlay.hidden = false;
-      overlay.setAttribute('aria-hidden', 'false');
-      dice.className = 'dice rolling';
-
-      const tempTimer = setInterval(() => {
-        const r = 1 + Math.floor(Math.random() * 6);
+    let temp;
+    try{
+      dice.className = 'dice rolling show-1';
+      temp = setInterval(()=> {
+        const r = 1 + Math.floor(Math.random()*6);
         dice.className = 'dice rolling show-' + r;
       }, 120);
 
-      setTimeout(() => {
-        clearInterval(tempTimer);
-        dice.className = 'dice show-' + value;
-
-        // brief “hold” so players can see the result
-        setTimeout(() => {
-          overlay.hidden = true;
-          overlay.setAttribute('aria-hidden', 'true');
-          resolve();
-        }, 500);
-      }, durationMs);
-    });
+      await new Promise(r => setTimeout(r, durationMs));
+      if (temp) clearInterval(temp);
+      dice.className = 'dice show-' + (value || 1);
+      await new Promise(r => setTimeout(r, 500));
+    } finally {
+      if (temp) clearInterval(temp);
+      overlay.style.display = 'none';
+      overlay.hidden = true;
+    }
   }
 
-  return {
-    setAlt, setSrc, setTurnIndicator,
-    createModal, createBoardRenderer, showDiceRoll
-  };
+  // Token renderer: expects board.spaces with {index,x,y} where x/y are percentages
+  function createBoardRenderer({ board }){
+    const layer = document.getElementById('tokensLayer');
+    if (!layer) throw new Error('tokensLayer missing');
+
+    function render(players){
+      layer.innerHTML = '';
+      const byIndex = new Map(board.spaces.map(s => [s.index, s]));
+      const n = players.length;
+
+      players.forEach((p, i) => {
+        const s = byIndex.get(p.pos ?? p.position ?? 0) || byIndex.get(0);
+        const dot = document.createElement('div');
+        dot.className = 'player-dot';
+        dot.style.background = p.color || '#d4351c';
+        // centre on coordinate, slight vertical stagger for stacking
+        const x = Number(s?.x ?? 0);
+        const y = Number(s?.y ?? 50) + (i - (n - 1)/2) * 3;
+        dot.style.left = x + '%';
+        dot.style.top  = y + '%';
+        layer.appendChild(dot);
+      });
+    }
+
+    return { render };
+  }
+
+  return { setTurnIndicator, createModal, showDiceRoll, createBoardRenderer };
 })();
