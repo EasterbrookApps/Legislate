@@ -4,14 +4,20 @@
   const ENABLED = qs.has('debug') || qs.get('dbg') === '1';
   if (!ENABLED) return;
 
+  // ---- State ----------------------------------------------------------
   const logs = [];
+  const STORAGE_KEY = 'legislate.debug.collapsed';
+
+  // ---- Public API -----------------------------------------------------
   const DBG = window.LegislateDebug = {
     event(type, payload) {
-      logs.push({ t: new Date().toISOString(), type, payload });
-      if (panelBody) appendLine(type, payload);
+      const entry = { t: new Date().toISOString(), type, payload };
+      logs.push(entry);
+      if (body) append(entry);
     },
     log(...args) { console.log('[DBG]', ...args); },
     error(...args) { console.error('[DBG]', ...args); },
+    clear() { logs.length = 0; if (body) body.textContent = ''; },
     download() {
       const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -21,36 +27,116 @@
       URL.revokeObjectURL(a.href);
     }
   };
+  // short alias for app code
+  window.DBG = DBG;
 
-  // UI -----------------------------------------------------------------
-  let panel, panelBody, toggleBtn;
+  // ---- UI -------------------------------------------------------------
+  let shell, bar, body, badge, collapseBtn;
 
-  function mountUI() {
-    if (panel) return;
-    panel = document.createElement('div');
-    panel.setAttribute('id', 'dbg-panel');
-    panel.style.cssText = `
-      position:fixed;left:0;right:0;bottom:0;z-index:2000;
-      font:12px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-      color:#0b0c0c;
+  function injectStyles() {
+    if (document.getElementById('dbg-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'dbg-styles';
+    s.textContent = `
+      #dbg-badge {
+        position: fixed;
+        right: max(8px, env(safe-area-inset-right));
+        bottom: calc(max(8px, env(safe-area-inset-bottom)));
+        z-index: 2147483000;
+        width: 44px; height: 28px;
+        border-radius: 14px;
+        background: #111; color:#fff;
+        display:flex; align-items:center; justify-content:center;
+        font: 12px/1 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+        box-shadow: 0 2px 8px rgba(0,0,0,.25);
+        cursor: pointer; user-select: none;
+      }
+      #dbg-shell {
+        position: fixed;
+        left: max(8px, env(safe-area-inset-left));
+        right: max(8px, env(safe-area-inset-right));
+        bottom: calc(max(8px, env(safe-area-inset-bottom)) + 36px);
+        z-index: 2147483000;
+        max-height: 36vh;
+        background: #fff; border: 1px solid #b1b4b6; border-radius: 6px;
+        box-shadow: 0 4px 24px rgba(0,0,0,.25);
+        overflow: hidden;
+        display: none;
+        font: 12px/1.35 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+        color: #0b0c0c;
+      }
+      #dbg-bar {
+        display:flex; align-items:center; gap:.5rem;
+        padding:.35rem .5rem; background:#f3f2f1; border-bottom:1px solid #e2e2e2;
+      }
+      #dbg-bar .spacer { flex: 1 1 auto; }
+      #dbg-body {
+        margin:0; padding:.5rem; background:#fff;
+        max-height: 28vh; overflow:auto; white-space: pre-wrap;
+      }
+      #dbg-bar button {
+        border: 1px solid #b1b4b6; background:#fff; border-radius:4px; padding:.2rem .5rem; cursor:pointer;
+      }
+      @media (min-width: 760px){
+        #dbg-shell { left: auto; width: 640px; right: max(8px, env(safe-area-inset-right)); }
+      }
     `;
-    panel.innerHTML = `
-      <div id="dbg-bar" style="display:flex;align-items:center;gap:.5rem;padding:.25rem .5rem;background:#f3f2f1;border-top:1px solid #b1b4b6;">
-        <strong style="margin-right:auto">Debug</strong>
-        <button id="dbg-toggle" class="button" style="padding:.2rem .5rem">Collapse</button>
-        <button id="dbg-download" class="button" style="padding:.2rem .5rem">Download</button>
-        <button id="dbg-clear" class="button" style="padding:.2rem .5rem">Clear</button>
+    document.head.appendChild(s);
+  }
+
+  function mount() {
+    injectStyles();
+
+    badge = document.createElement('div');
+    badge.id = 'dbg-badge';
+    badge.textContent = 'DBG';
+    document.body.appendChild(badge);
+
+    shell = document.createElement('div');
+    shell.id = 'dbg-shell';
+    shell.innerHTML = `
+      <div id="dbg-bar">
+        <strong>Debug</strong>
+        <span class="spacer"></span>
+        <button id="dbg-download">Download</button>
+        <button id="dbg-clear">Clear</button>
+        <button id="dbg-collapse">Collapse</button>
       </div>
-      <pre id="dbg-body" style="margin:0;max-height:28vh;overflow:auto;padding:.5rem;border-top:1px solid #d9d9d9;background:#fff;"></pre>
+      <pre id="dbg-body"></pre>
     `;
-    document.body.appendChild(panel);
-    panelBody = panel.querySelector('#dbg-body');
-    toggleBtn = panel.querySelector('#dbg-toggle');
+    document.body.appendChild(shell);
 
-    panel.querySelector('#dbg-download').onclick = () => DBG.download();
-    panel.querySelector('#dbg-clear').onclick = () => { logs.length = 0; panelBody.textContent = ''; };
-    toggleBtn.onclick = toggle;
+    bar = shell.querySelector('#dbg-bar');
+    body = shell.querySelector('#dbg-body');
+    collapseBtn = shell.querySelector('#dbg-collapse');
 
+    // wire buttons
+    shell.querySelector('#dbg-download').onclick = () => DBG.download();
+    shell.querySelector('#dbg-clear').onclick     = () => DBG.clear();
+    collapseBtn.onclick = toggle;
+
+    // badge toggles open/close
+    badge.onclick = () => {
+      const visible = shell.style.display !== 'none';
+      if (visible) {
+        shell.style.display = 'none';
+        localStorage.setItem(STORAGE_KEY, '1');
+      } else {
+        shell.style.display = 'block';
+        localStorage.setItem(STORAGE_KEY, '0');
+        // shove last few logs into view
+        if (logs.length) {
+          body.textContent = '';
+          logs.slice(-200).forEach(append);
+        }
+      }
+    };
+
+    // initial state: open unless previously collapsed
+    const collapsed = localStorage.getItem(STORAGE_KEY) === '1';
+    shell.style.display = collapsed ? 'none' : 'block';
+
+    // initial lines
     DBG.event('INFO', '[debug enabled]');
     DBG.event('ENV', {
       ua: navigator.userAgent,
@@ -62,24 +148,24 @@
   }
 
   function toggle() {
-    const collapsed = panelBody.style.display === 'none';
-    panelBody.style.display = collapsed ? 'block' : 'none';
-    toggleBtn.textContent = collapsed ? 'Collapse' : 'Expand';
+    // collapse == hide body area, keep the bar visible
+    const hidden = body.style.display === 'none';
+    body.style.display = hidden ? 'block' : 'none';
+    collapseBtn.textContent = hidden ? 'Collapse' : 'Expand';
   }
 
-  function appendLine(type, payload) {
-    const line = `[${new Date().toISOString()}] ${type} ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n`;
-    panelBody.textContent += line;
-    panelBody.scrollTop = panelBody.scrollHeight;
+  function append({ t, type, payload }) {
+    const line = `[${t}] ${type} ${
+      payload == null ? '' : (typeof payload === 'string' ? payload : JSON.stringify(payload))
+    }\n`;
+    body.textContent += line;
+    body.scrollTop = body.scrollHeight;
   }
 
-  // mount as soon as possible
+  // mount ASAP
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mountUI);
+    document.addEventListener('DOMContentLoaded', mount);
   } else {
-    mountUI();
+    mount();
   }
-
-  // convenience helpers for the rest of the app
-  window.DBG = DBG;
 })();
