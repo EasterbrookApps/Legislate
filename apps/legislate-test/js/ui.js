@@ -1,115 +1,137 @@
-// UI helpers: modal, dice overlay, token renderer, with precise token centring
-window.LegislateUI = (function(){
-  function setTurnIndicator(text){
-    const el = document.getElementById('turnIndicator');
-    if (el) el.textContent = text;
+// ui.js — DOM rendering, modals, dice overlay, debug hooks
+(function(){
+  const SEL = {
+    boardImg: '#boardImg',
+    tokensLayer: '#tokensLayer',
+    turnIndicator: '#turnIndicator',
+    playerCount: '#playerCount',
+    rollBtn: '#rollBtn',
+    restartBtn: '#restartBtn',
+    modalRoot: '#modalRoot',
+    diceOverlay: '#diceOverlay',
+    dice: '#dice'
+  };
+
+  function $(sel){ return document.querySelector(sel); }
+
+  function emitDBG(kind, payload){
+    try{ window.DBG && window.DBG.log && window.DBG.log(kind, payload); }catch(e){}
   }
+
+  function setTurnIndicator(txt){ const el = $(SEL.turnIndicator); if (el) el.textContent = txt; }
 
   function createModal(){
-    const root = document.getElementById('modalRoot');
-    if (!root) throw new Error('modalRoot missing');
-
-    function open({ title='', body='', actions=[{id:'ok',label:'OK'}] }={}){
-      root.innerHTML = `
-        <div class="modal-backdrop">
-          <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-            <h2 id="modalTitle">${title}</h2>
-            <div id="modalBody">${body}</div>
-            <div class="modal-actions">
-              ${actions.map(a=>`<button class="button" id="modal-${a.id}">${a.label}</button>`).join('')}
-            </div>
-          </div>
-        </div>`;
-      return new Promise(resolve=>{
-        actions.forEach(a=>{
-          const btn = document.getElementById(`modal-${a.id}`);
-          if (btn) btn.onclick = () => { root.innerHTML=''; resolve(a.id); };
-        });
-      });
+    const root = $(SEL.modalRoot);
+    const title = root.querySelector('#modalTitle');
+    const body = root.querySelector('#modalBody');
+    const okBtn = root.querySelector('#modalOk');
+    function open({ titleText, bodyHtml, onOk }){
+      title.textContent = titleText || 'Notice';
+      body.innerHTML = bodyHtml || '';
+      root.hidden = false;
+      root.setAttribute('aria-hidden','false');
+      okBtn.onclick = () => {
+        try{ onOk && onOk(); }finally{
+          root.hidden = true;
+          root.setAttribute('aria-hidden','true');
+        }
+      };
     }
-    return { open };
+    function close(){
+      root.hidden = true;
+      root.setAttribute('aria-hidden','true');
+    }
+    return { open, close };
   }
 
-  // Dice overlay: always builds faces, always resolves, and stores a "last promise" hook for the app
-  let lastDicePromise = Promise.resolve();
-  function getLastDicePromise(){ return lastDicePromise; }
-
-  async function showDiceRoll(value, durationMs = 900){
-    const overlay = document.getElementById('diceOverlay');
-    const dice = document.getElementById('dice');
-    if (!overlay || !dice) return;
-
-    // build faces once
-    if (!dice.querySelector('.face.one')){
-      dice.innerHTML = `
-        <div class="face one"></div>
-        <div class="face two"></div>
-        <div class="face three"></div>
-        <div class="face four"></div>
-        <div class="face five"></div>
-        <div class="face six"></div>`;
-    }
-
-    lastDicePromise = (async () => {
-      overlay.hidden = false;
-      overlay.style.display = 'flex';
-
-      let temp;
-      try{
-        dice.className = 'dice rolling show-1';
-        temp = setInterval(()=> {
-          const r = 1 + Math.floor(Math.random()*6);
-          dice.className = 'dice rolling show-' + r;
-        }, 120);
-
-        await new Promise(r => setTimeout(r, durationMs));
-        if (temp) clearInterval(temp);
-        dice.className = 'dice show-' + (value || 1);
-        await new Promise(r => setTimeout(r, 500)); // hold result briefly
-      } finally {
-        if (temp) clearInterval(temp);
-        overlay.style.display = 'none';
-        overlay.hidden = true;
-      }
-    })();
-
-    return lastDicePromise;
+  async function showDiceRoll(value, durationMs){
+    const overlay = $(SEL.diceOverlay);
+    const dice = $(SEL.dice);
+    overlay.style.display = 'flex';
+    overlay.hidden = false;
+    overlay.setAttribute('aria-hidden','false');
+    dice.className = 'dice rolling show-'+value;
+    emitDBG('OVERLAY', describeOverlay(overlay));
+    await new Promise(res => setTimeout(res, durationMs || 800));
+    dice.className = 'dice show-'+value;
+    await new Promise(res => setTimeout(res, 450));
+    overlay.hidden = true;
+    overlay.setAttribute('aria-hidden','true');
+    overlay.style.display = 'none';
+    emitDBG('OVERLAY', describeOverlay(overlay));
   }
 
-  // Token renderer: uses pure percentage positioning and CSS translate for exact centring
-  function createBoardRenderer({ board }){
-    const layer = document.getElementById('tokensLayer');
-    if (!layer) throw new Error('tokensLayer missing');
-
-    function render(players){
-      layer.innerHTML = '';
-      const byIndex = new Map(board.spaces.map(s => [s.index, s]));
-      const n = players.length;
-
-      players.forEach((p, i) => {
-        const s = byIndex.get(p.pos ?? p.position ?? 0) || byIndex.get(0);
-        const dot = document.createElement('div');
-        dot.className = 'player-dot';
-        dot.style.background = p.color || '#d4351c';
-
-        // exact centring on coordinate; slight vertical stagger if multiple tokens share a space
-        const x = Number(s?.x ?? 0);
-        const y = Number(s?.y ?? 50) + (n > 1 ? (i - (n - 1)/2) * 3 : 0);
-
-        dot.style.left = x + '%';
-        dot.style.top  = y + '%';
-        layer.appendChild(dot);
-      });
-    }
-
-    return { render };
+  function describeOverlay(overlay){
+    const cs = getComputedStyle(overlay);
+    return {
+      hidden: overlay.hidden,
+      display: cs.display,
+      vis: cs.visibility,
+      z: cs.zIndex || 'auto',
+      pe: cs.pointerEvents || 'auto'
+    };
   }
 
-  return {
-    setTurnIndicator,
-    createModal,
-    showDiceRoll,
-    createBoardRenderer,
-    getLastDicePromise
-  };
+  function createBoardRenderer(board, engine){
+    const layer = $(SEL.tokensLayer);
+    const img = $(SEL.boardImg);
+    layer.innerHTML = '';
+
+    // one DOM node per player
+    const nodes = new Map();
+
+    function ensureNode(p){
+      if(nodes.has(p.id)) return nodes.get(p.id);
+      const el = document.createElement('div');
+      el.className = 'player-dot';
+      el.style.background = p.color;
+      el.setAttribute('aria-label', p.name);
+      el.style.position = 'absolute';
+      el.style.width = '1rem'; el.style.height = '1rem';
+      el.style.borderRadius = '50%';
+      el.style.transform = 'translate(-50%, -50%)'; // center on point
+      layer.appendChild(el);
+      nodes.set(p.id, el);
+      return el;
+    }
+
+    function place(p){
+      const space = board.spaces.find(s => s.index === p.position);
+      if (!space) return;
+      const x = (space.x/100) * img.clientWidth;
+      const y = (space.y/100) * img.clientHeight;
+      const el = ensureNode(p);
+      el.style.left = `${x}px`;
+      el.style.top  = `${y}px`;
+    }
+
+    function drawAll(){
+      (engine.state.players||[]).forEach(place);
+      emitDBG('TOKENS', { summary: summarize() });
+    }
+
+    function summarize(){
+      const map = new Map();
+      (engine.state.players||[]).forEach(p => map.set(p.position, (map.get(p.position)||0)+1));
+      return Array.from(map.entries()).map(([index,count]) => ({ index, count }));
+    }
+
+    // wire to engine
+    engine.bus.on('TURN_BEGIN', ({playerId,index}) => {
+      const p = engine.state.players[index];
+      setTurnIndicator(`${p.name}’s turn`);
+      drawAll();
+      emitDBG('TURN_BEGIN', { playerId, index });
+    });
+    engine.bus.on('MOVE_STEP', ev => {
+      const p = engine.state.players.find(p=>p.id===ev.playerId);
+      place(p);
+      emitDBG('MOVE_STEP', ev);
+    });
+    engine.bus.on('LANDED', ev => emitDBG('LANDED', ev));
+
+    return { drawAll, place };
+  }
+
+  window.LegislateUI = { createModal, createBoardRenderer, showDiceRoll, setTurnIndicator };
 })();

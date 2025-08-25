@@ -1,28 +1,38 @@
-// Loads the active pack (board + decks) from assets/packs/<packId>/
-window.LegislateLoader = (function(){
-  let base = 'assets/packs';
-
-  function withBase(newBase){ base = newBase || base; return api; }
-
-  async function getJSON(url){
-    const res = await fetch(url + '?cb=' + Date.now(), { cache:'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+// loader.js — fetches pack assets from /assets/packs/<packId>/
+(function(){
+  function basePath(){
+    // Compute base path for the current app directory (e.g. .../apps/legislate-test/)
+    const u = new URL('.', window.location.href);
+    return u.pathname.endsWith('/') ? u.pathname : (u.pathname + '/');
+  }
+  function withBase(rel){
+    const clean = (rel||'').replace(/^\/+/, '');
+    return window.location.origin + basePath() + clean;
+  }
+  async function fetchJSON(url){
+    const res = await fetch(url + '?cb=' + Date.now());
+    if (!res.ok) throw new Error('Failed to load ' + url);
     return res.json();
   }
 
   async function loadPack(packId){
-    const root = `${base}/${packId}`;
-    const board = await getJSON(`${root}/board.json`);
+    const root = `assets/packs/${packId}`;
+    const board = await fetchJSON(withBase(`${root}/board.json`));
 
+    // Try a known set of deck files; skip missing
+    const deckNames = ['commons','early','implementation','lords','pingpong'];
     const decks = {};
-    const names = ['early','commons','lords','implementation','pingpong'];
-    for (const n of names){
-      try { decks[n] = await getJSON(`${root}/cards/${n}.json`); }
-      catch { decks[n] = []; } // deck optional
+    for (const name of deckNames){
+      const url = withBase(`${root}/cards/${name}.json`);
+      try{
+        decks[name] = await fetchJSON(url);
+      }catch(e){
+        // skip missing
+      }
     }
-    return { board, decks };
+    const meta = { id: packId, boardImage: withBase('assets/board.png') };
+    return { meta, board, decks };
   }
 
-  const api = { withBase, loadPack };
-  return api;
+  window.LegislateLoader = { basePath, withBase, fetchJSON, loadPack };
 })();
