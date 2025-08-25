@@ -1,4 +1,4 @@
-// Step 3.1 — UI helpers: roll acknowledgement modal AFTER dice; renderer unchanged
+// Step 5 — Renderer uses calibrated board.spaces with x/y percentages
 window.LegislateUI = (function(){
   const byId = id => document.getElementById(id);
 
@@ -7,7 +7,6 @@ window.LegislateUI = (function(){
     if (el) el.textContent = text;
   }
 
-  // Show dice animation and resolve when the overlay hides
   function showDiceRoll(value, durationMs){
     const overlay = byId('diceOverlay');
     const dice    = byId('dice');
@@ -34,27 +33,25 @@ window.LegislateUI = (function(){
           overlay.hidden = true;
           overlay.style.display = 'none';
           overlay.setAttribute('aria-hidden','true');
-          resolve(); // <- dice overlay fully finished
+          resolve();
         }, 400);
       }, dur);
     });
   }
 
-  // --- Modal helpers ---
-  function showRollModal(text){
+  function showModal({ title='Notice', html='', onOk=null }){
     const root = byId('modalRoot');
-    const title = byId('modalTitle');
+    const ttl  = byId('modalTitle');
     const body = byId('modalBody');
-    const ok = byId('modalOk');
-    if (!root || !title || !body || !ok) return;
+    const ok   = byId('modalOk');
+    if (!root || !ttl || !body || !ok) return;
 
-    title.textContent = 'Dice Roll';
-    body.textContent = text;
+    ttl.textContent = title;
+    body.innerHTML = html;
     root.hidden = false;
     root.style.display = 'flex';
     root.setAttribute('aria-hidden', 'false');
 
-    // Prevent keyboard shortcuts while modal is open
     function keyBlock(e){ e.stopPropagation(); }
     root.addEventListener('keydown', keyBlock, { capture:true });
 
@@ -63,75 +60,52 @@ window.LegislateUI = (function(){
       root.style.display = 'none';
       root.setAttribute('aria-hidden', 'true');
       root.removeEventListener('keydown', keyBlock, { capture:true });
-      ok.removeEventListener('click', close);
+      ok.removeEventListener('click', onOkWrap);
     }
-    ok.addEventListener('click', close);
+    function onOkWrap(){
+      try { onOk && onOk(); } finally { close(); }
+    }
+    ok.addEventListener('click', onOkWrap);
   }
 
-  function dismissModal(){
-    const root = byId('modalRoot');
-    if (!root) return;
-    root.hidden = true;
-    root.style.display = 'none';
-    root.setAttribute('aria-hidden','true');
+  function showCardModal(card){
+    const title = card?.title || card?.name || 'Card';
+    const body  = card?.text || card?.body || card?.description || '';
+    const html = `<strong>${escapeHtml(title)}</strong><br>${escapeHtml(body)}`;
+    showModal({ title:'You landed on a card', html });
   }
 
-  // --- Board renderer (Step 2.2 baseline) ---
-  function createBoardRenderer(totalSpaces){
+  function escapeHtml(s){
+    return String(s||'')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // New: renderer driven by board.spaces x/y percentages
+  function createBoardRenderer(board){
     const tokensLayer = byId('tokensLayer');
     const boardImg = byId('boardImg');
+    const spaces = Array.isArray(board?.spaces) ? board.spaces : [];
     let tokenMap = new Map();
-    let path = [];
-    let lastW = 0, lastH = 0;
 
     function layerRect(){
       const r = tokensLayer.getBoundingClientRect();
-      return { width: r.width || tokensLayer.clientWidth, height: r.height || tokensLayer.clientHeight };
+      const w = r.width || tokensLayer.clientWidth || 0;
+      const h = r.height || tokensLayer.clientHeight || 0;
+      return { width: w, height: h };
     }
 
-    function computePath(n){
+    function coordForIndex(index){
+      const s = spaces[index];
+      if (!s){ return { x: 0, y: 0 }; }
+      // x/y are percentages (0..100); support 0..1 fallback if needed
+      const pctX = (s.x > 1 ? s.x : s.x * 100);
+      const pctY = (s.y > 1 ? s.y : s.y * 100);
       const { width: W, height: H } = layerRect();
-      lastW = W; lastH = H;
-      const inset = Math.floor(Math.min(W,H) * 0.06);
-      const left = inset, top = inset, right = W - inset, bottom = H - inset;
-
-      const perim = 2*((right-left) + (bottom-top));
-      n = Math.max(10, n);
-      const step = perim / n;
-
-      const pts = [];
-      let x = left, y = top, dir = 0;
-      let remaining = step;
-      function push(){ pts.push({x, y}); }
-      push();
-      for(let i=1;i<n;i++){
-        while (remaining > 0){
-          let move;
-          if (dir===0) move = Math.min(remaining, right - x);
-          else if (dir===1) move = Math.min(remaining, bottom - y);
-          else if (dir===2) move = Math.min(remaining, x - left);
-          else move = Math.min(remaining, y - top);
-
-          if (move <= 0){ dir = (dir + 1) % 4; continue; }
-
-          if (dir===0) x += move;
-          else if (dir===1) y += move;
-          else if (dir===2) x -= move;
-          else y -= move;
-
-          remaining -= move;
-
-          if (remaining === 0){ push(); remaining = step; break; }
-        }
-      }
-      return pts;
-    }
-
-    function ensurePathUpToDate(){
-      const { width: W, height: H } = layerRect();
-      if (!path.length || Math.abs(W-lastW)>0.5 || Math.abs(H-lastH)>0.5){
-        path = computePath(totalSpaces);
-      }
+      return { x: (pctX/100) * W, y: (pctY/100) * H };
     }
 
     function clearTokens(){
@@ -158,13 +132,11 @@ window.LegislateUI = (function(){
         boardImg.addEventListener('load', ()=> placeToken(player, position), { once:true });
         return;
       }
-      ensurePathUpToDate();
-      const idx = Math.max(0, Math.min(position, path.length - 1));
-      const p = path[idx];
-
+      const idx = Math.max(0, Math.min(position, spaces.length - 1));
+      const p = coordForIndex(idx);
       const el = ensureToken(player);
 
-      // Offset if multiple tokens land on same spot
+      // Offset clumping
       const siblingsSame = Array.from(tokenMap.values()).filter(e => {
         const tx = parseFloat(e.style.getPropertyValue('--tx') || '0');
         const ty = parseFloat(e.style.getPropertyValue('--ty') || '0');
@@ -174,7 +146,6 @@ window.LegislateUI = (function(){
 
       const bx = p.x + (siblingsSame? offset:0);
       const by = p.y + (siblingsSame? offset:0);
-
       el.style.setProperty('--tx', bx);
       el.style.setProperty('--ty', by);
       el.style.transform = `translate3d(${bx}px, ${by}px, 0)`;
@@ -183,17 +154,24 @@ window.LegislateUI = (function(){
     function renderAll(players){
       if (!players || !players.length) return;
       clearTokens();
-      ensurePathUpToDate();
       players.forEach(p => placeToken(p, p.position || 0));
     }
 
-    const ro = ('ResizeObserver' in window) ? new ResizeObserver(()=>{ path = []; }) : null;
+    // Re-position tokens on resize/orientation changes
+    const ro = ('ResizeObserver' in window) ? new ResizeObserver(()=>{
+      // Re-render without clearing to avoid flicker
+      (window.requestAnimationFrame||setTimeout)(()=>{
+        Array.from(tokenMap.keys()).forEach(id=>{
+          const p = { id, position: 0 };
+        });
+      },0);
+    }) : null;
     if (ro) ro.observe(tokensLayer);
-    window.addEventListener('resize', ()=>{ path=[]; });
-    window.addEventListener('orientationchange', ()=>{ path=[]; });
+    window.addEventListener('resize', ()=>{ renderAll(Array.from(tokenMap.keys()).map(id=>({id, position:0}))); });
+    window.addEventListener('orientationchange', ()=>{ renderAll(Array.from(tokenMap.keys()).map(id=>({id, position:0}))); });
 
     return { placeToken, renderAll, clearTokens };
   }
 
-  return { setTurnIndicator, showDiceRoll, showRollModal, dismissModal, createBoardRenderer };
+  return { setTurnIndicator, showDiceRoll, showCardModal, createBoardRenderer };
 })();
