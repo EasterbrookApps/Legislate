@@ -1,129 +1,97 @@
-// Step 4 — Engine with board/decks and basic card effects
-window.LegislateEngine = (function(){
-  function delay(ms){ return new Promise(res=>setTimeout(res, ms)); }
-  function createEventBus(){
-    const map = new Map();
+// js/engine.js
+window.LegislateEngine = (function () {
+  // simple pub/sub ------------------------------------------------------
+  function bus() {
+    const m = new Map();
     return {
-      on(type, fn){ if(!map.has(type)) map.set(type, new Set()); map.get(type).add(fn); return ()=>map.get(type)?.delete(fn); },
-      emit(type, payload){ (map.get(type)||[]).forEach(fn=>fn(payload)); (map.get('*')||[]).forEach(fn=>fn(type,payload)); }
+      on(t, fn) { if (!m.has(t)) m.set(t, new Set()); m.get(t).add(fn); return () => m.get(t)?.delete(fn); },
+      emit(t, p) { (m.get(t) || []).forEach(fn => fn(p)); (m.get('*') || []).forEach(fn => fn(t, p)); }
     };
   }
 
-  function createEngine({ board, decks, players=4, spaces } = {}){
-    const bus = createEventBus();
+  // engine factory ------------------------------------------------------
+  function createEngine({ board, decks, rng, playerCount = 4, colors } = {}) {
+    const ev = bus();
     const state = {
-      spaces: board?.spaces?.length ?? spaces ?? 40,
       players: [],
       turnIndex: 0,
       decks: {},
-      board: board || { spaces: Array.from({length: spaces ?? 40}, (_,i)=>({index:i,deck:'none'})) }
+      board,
     };
 
-    if (decks){
-      for (const [name, list] of Object.entries(decks)){
-        state.decks[name] = Array.isArray(list) ? list.slice() : [];
-      }
-    }
-
-    function initPlayers(n){
-      const count = Math.max(2, Math.min(6, Number(n)||4));
-      const palette = ['#d4351c','#1d70b8','#00703c','#6f72af','#b58840','#912b88'];
+    const palette = colors || ['#d4351c', '#1d70b8', '#00703c', '#6f72af', '#b58840', '#912b88'];
+    function initPlayers(n) {
+      const count = Math.max(2, Math.min(6, n || 4));
       state.players = [];
-      for (let i=0;i<count;i++){
-        state.players.push({
-          id:`p${i+1}`,
-          name:`Player ${i+1}`,
-          color:palette[i%palette.length],
-          position:0,
-          skip:0,
-          extraRoll:false
-        });
+      for (let i = 0; i < count; i++) {
+        state.players.push({ id: 'p' + (i + 1), name: `Player ${i + 1}`, color: palette[i % palette.length], pos: 0 });
       }
       state.turnIndex = 0;
     }
-    initPlayers(players);
+    initPlayers(playerCount);
 
-    const endIndex = state.spaces - 1;
-    const dice = () => 1 + Math.floor(Math.random()*6);
-    function current(){ return state.players[state.turnIndex]; }
-    function nextTurn(){ state.turnIndex = (state.turnIndex+1) % state.players.length; bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex }); }
+    // deck helpers
+    function shuffle(a) { const r = a.slice(); for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; } return r; }
+    for (const [k, v] of Object.entries(decks || {})) state.decks[k] = shuffle(v);
 
-    function drawCard(deckName){
-      const d = state.decks[deckName];
-      if (!d || d.length === 0) return null;
-      const card = d.shift();
-      state.decks[deckName] = d;
-      return card;
+    // card pause plumbing
+    let pendingResolver = null;
+    function resumeCard() { if (pendingResolver) { pendingResolver(); pendingResolver = null; } }
+
+    // main turn ----------------------------------------------------------
+    async function takeTurn(stepsOverride) {
+      const active = state.players[state.turnIndex];
+      const steps = Number.isFinite(+stepsOverride) ? +stepsOverride : (1 + Math.floor((rng || Math.random)() * 6));
+      ev.emit('DICE_ROLL', { playerId: active.id, name: active.name, value: steps });
+
+      for (let i = 0; i < steps; i++) {
+        active.pos = Math.min(active.pos + 1, state.board.spaces.length - 1);
+        ev.emit('MOVE_STEP', { playerId: active.id, position: active.pos, step: i + 1, total: steps });
+        await new Promise(r => setTimeout(r, 180)); // small pacing delay
+      }
+
+      const space = state.board.spaces[active.pos];
+      ev.emit('LANDED', { playerId: active.id, position: active.pos, space });
+
+      // If there is a deck, draw and PAUSE here
+      if (space && space.deck && space.deck !== 'none' && state.decks[space.deck]?.length) {
+        const card = state.decks[space.deck].shift();
+        ev.emit('CARD_DRAWN', { playerId: active.id, deck: space.deck, card });
+
+        await new Promise(res => { pendingResolver = res; }); // wait for UI OK
+
+        // Apply a few simple effects (extend as needed)
+        applyCardEffect(active, card, state);
+      }
+
+      // next turn
+      ev.emit('TURN_END', { playerId: active.id });
+      state.turnIndex = (state.turnIndex + 1) % state.players.length;
+      ev.emit('TURN_BEGIN', { playerId: state.players[state.turnIndex].id, index: state.turnIndex });
     }
 
-    function applyEffect(card, p){
+    function applyCardEffect(player, card, state) {
       if (!card) return;
-      const eff = card.effect || '';
-      if (typeof eff === 'string' && eff.length){
-        const [type, arg] = eff.split(':');
-        switch(type){
-          case 'move': {
-            const n = Number(arg||0);
-            p.position = Math.max(0, Math.min(endIndex, p.position + n));
-            break;
-          }
-          case 'miss_turn': { p.skip = (p.skip||0)+1; break; }
-          case 'extra_roll': { p.extraRoll = true; break; }
-          case 'pingpong': { p.position = endIndex; break; }
+      if (typeof card.effect === 'string') {
+        const [kind, arg] = card.effect.split(':');
+        if (kind === 'move') {
+          const n = parseInt(arg || '0', 10);
+          player.pos = Math.max(0, Math.min(player.pos + n, state.board.spaces.length - 1));
+        } else if (kind === 'miss_turn') {
+          player.skip = (player.skip || 0) + 1; // (not enforced here; keep for future)
+        } else if (kind === 'extra_roll') {
+          // could set a flag; for now we let normal play continue
         }
       }
     }
 
-    async function takeTurn(){
-      const p = current();
-      if (p.skip && p.skip > 0){
-        p.skip -= 1;
-        bus.emit('TURN_END', { playerId:p.id, skipped:true });
-        nextTurn();
-        return;
-      }
-      const roll = dice();
-      bus.emit('DICE_ROLL', { value: roll, playerId: p.id });
+    function setPlayerCount(n) { const names = state.players.map(p => p.name); initPlayers(n); state.players.forEach((p, i) => names[i] && (p.name = names[i])); ev.emit('TURN_BEGIN', { playerId: state.players[state.turnIndex].id, index: state.turnIndex }); }
 
-      for (let i=0;i<roll;i++){
-        p.position = Math.min(endIndex, p.position + 1);
-        bus.emit('MOVE_STEP', { playerId: p.id, position: p.position, step:i+1, total: roll });
-        await delay(180);
-      }
-      bus.emit('LANDED', { playerId: p.id, position: p.position });
-
-      const space = state.board.spaces[p.position];
-      if (space && space.deck && space.deck !== 'none'){
-        const card = drawCard(space.deck);
-        bus.emit('CARD_DRAWN', { deck: space.deck, card, playerId: p.id, position: p.position });
-        if (card){
-          applyEffect(card, p);
-          bus.emit('CARD_APPLIED', { deck: space.deck, card, playerId: p.id, position: p.position });
-        }
-      }
-
-      if (p.position >= endIndex){
-        bus.emit('GAME_WIN', { playerId: p.id, name: p.name });
-      }
-
-      if (p.extraRoll){
-        p.extraRoll = false;
-        bus.emit('TURN_END', { playerId: p.id, extra:true });
-        bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
-      } else {
-        bus.emit('TURN_END', { playerId: p.id });
-        nextTurn();
-      }
-    }
-
-    function setPlayerCount(n){
-      const names = state.players.map(p=>p.name);
-      initPlayers(n);
-      state.players.forEach((p,i)=>{ if(names[i]) p.name = names[i]; });
-      bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
-    }
-
-    return { bus, state, takeTurn, setPlayerCount, endIndex };
+    return {
+      bus: ev, state,
+      takeTurn, setPlayerCount,
+      resumeCard, // <- called by UI after OK is pressed
+    };
   }
 
   return { createEngine };
