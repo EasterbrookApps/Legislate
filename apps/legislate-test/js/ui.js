@@ -1,4 +1,4 @@
-// UI helpers: modal, dice overlay, token renderer
+// UI helpers: modal, dice overlay, token renderer, with precise token centring
 window.LegislateUI = (function(){
   function setTurnIndicator(text){
     const el = document.getElementById('turnIndicator');
@@ -30,7 +30,10 @@ window.LegislateUI = (function(){
     return { open };
   }
 
-  // Ensure dice faces exist; always hide overlay even if an error occurs
+  // Dice overlay: always builds faces, always resolves, and stores a "last promise" hook for the app
+  let lastDicePromise = Promise.resolve();
+  function getLastDicePromise(){ return lastDicePromise; }
+
   async function showDiceRoll(value, durationMs = 900){
     const overlay = document.getElementById('diceOverlay');
     const dice = document.getElementById('dice');
@@ -47,29 +50,33 @@ window.LegislateUI = (function(){
         <div class="face six"></div>`;
     }
 
-    overlay.hidden = false;
-    overlay.style.display = 'flex';
+    lastDicePromise = (async () => {
+      overlay.hidden = false;
+      overlay.style.display = 'flex';
 
-    let temp;
-    try{
-      dice.className = 'dice rolling show-1';
-      temp = setInterval(()=> {
-        const r = 1 + Math.floor(Math.random()*6);
-        dice.className = 'dice rolling show-' + r;
-      }, 120);
+      let temp;
+      try{
+        dice.className = 'dice rolling show-1';
+        temp = setInterval(()=> {
+          const r = 1 + Math.floor(Math.random()*6);
+          dice.className = 'dice rolling show-' + r;
+        }, 120);
 
-      await new Promise(r => setTimeout(r, durationMs));
-      if (temp) clearInterval(temp);
-      dice.className = 'dice show-' + (value || 1);
-      await new Promise(r => setTimeout(r, 500));
-    } finally {
-      if (temp) clearInterval(temp);
-      overlay.style.display = 'none';
-      overlay.hidden = true;
-    }
+        await new Promise(r => setTimeout(r, durationMs));
+        if (temp) clearInterval(temp);
+        dice.className = 'dice show-' + (value || 1);
+        await new Promise(r => setTimeout(r, 500)); // hold result briefly
+      } finally {
+        if (temp) clearInterval(temp);
+        overlay.style.display = 'none';
+        overlay.hidden = true;
+      }
+    })();
+
+    return lastDicePromise;
   }
 
-  // Token renderer: expects board.spaces with {index,x,y} where x/y are percentages
+  // Token renderer: uses pure percentage positioning and CSS translate for exact centring
   function createBoardRenderer({ board }){
     const layer = document.getElementById('tokensLayer');
     if (!layer) throw new Error('tokensLayer missing');
@@ -84,9 +91,11 @@ window.LegislateUI = (function(){
         const dot = document.createElement('div');
         dot.className = 'player-dot';
         dot.style.background = p.color || '#d4351c';
-        // centre on coordinate, slight vertical stagger for stacking
+
+        // exact centring on coordinate; slight vertical stagger if multiple tokens share a space
         const x = Number(s?.x ?? 0);
-        const y = Number(s?.y ?? 50) + (i - (n - 1)/2) * 3;
+        const y = Number(s?.y ?? 50) + (n > 1 ? (i - (n - 1)/2) * 3 : 0);
+
         dot.style.left = x + '%';
         dot.style.top  = y + '%';
         layer.appendChild(dot);
@@ -96,5 +105,11 @@ window.LegislateUI = (function(){
     return { render };
   }
 
-  return { setTurnIndicator, createModal, showDiceRoll, createBoardRenderer };
+  return {
+    setTurnIndicator,
+    createModal,
+    showDiceRoll,
+    createBoardRenderer,
+    getLastDicePromise
+  };
 })();
