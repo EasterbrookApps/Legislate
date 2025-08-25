@@ -1,16 +1,4 @@
-body{font-family:sans-serif;margin:0}
-.button{border:1px solid #ccc;padding:4px 8px;margin:2px}
-.dbg-panel{position:fixed;bottom:0;left:0;right:0;background:#111;color:#fff;font:12px monospace;max-height:40vh;display:flex;flex-direction:column;z-index:2000}
-.dbg-head{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #333}
-.dbg-log{margin:0;padding:8px;overflow:auto;white-space:pre-wrap}
-.page-header,.page-main{max-width:1100px;margin:0 auto;padding:1rem}
-.board-wrap{position:relative}
-#boardImg{display:block;width:100%;height:auto;border:1px solid #ddd}
-.tokens-layer{position:absolute;inset:0}
-.attrib{color:#555}
-.dice-overlay{position:fixed;inset:0;display:none;align-items:center;justify-content:center}
-.dice-wrapper{width:min(70vmin,720px);height:min(70vmin,720px)}
-.dice .face{display:none;width:100%;height:100%;background:#fff;border-radius:4px;box-shadow:0 10px 30px rgba(0,0,0,.3)}
-.dice.show-1 .one,.dice.show-2 .two,.dice.show-3 .three,.dice.show-4 .four,.dice.show-5 .five,.dice.show-6 .six{display:block}
-.error-banner{position:sticky;top:0;left:0;right:0;background:#d4351c;color:#fff;padding:.5rem 1rem;display:flex;justify-content:space-between;align-items:center;z-index:2500}
-.error-banner .button{background:#fff;color:#0b0c0c;border-color:#fff}
+/* Step-1.2 CSS patch — enforce [hidden] attribute */
+[hidden] {
+  display: none !important;
+}
