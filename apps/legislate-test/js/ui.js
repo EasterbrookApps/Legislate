@@ -1,177 +1,155 @@
-// Step 5 — Renderer uses calibrated board.spaces with x/y percentages
+// js/ui.js — DOM helpers, modal + dice overlay, tokens & banner
 window.LegislateUI = (function(){
-  const byId = id => document.getElementById(id);
+  const $ = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
 
-  function setTurnIndicator(text){
-    const el = byId('turnIndicator');
-    if (el) el.textContent = text;
+  // Basic helpers
+  function setAlt(sel, text){ const el=$(sel); if(el) el.alt=text; }
+  function setSrc(sel, src){ const el=$(sel); if(el) el.src=src; }
+  function setTurnIndicator(text){ const el=$("#turnIndicator"); if(el) el.textContent=text; }
+
+  // --- Modal (cards) ---
+  function createModal(){
+    const host = $("#modalRoot");
+    if (!host) throw new Error("modalRoot missing");
+
+    // Build once
+    let backdrop = host.querySelector(".modal-backdrop");
+    if (!backdrop){
+      backdrop = document.createElement('div');
+      backdrop.className = 'modal-backdrop';
+      backdrop.setAttribute('role','dialog');
+      backdrop.setAttribute('aria-modal','true');
+      backdrop.hidden = true;
+
+      const box = document.createElement('div');
+      box.className = 'modal';
+      box.innerHTML = `
+        <h2 id="modalTitle"></h2>
+        <div id="modalBody"></div>
+        <div class="modal-actions">
+          <button id="modalOk" class="button">OK</button>
+        </div>
+      `;
+      backdrop.appendChild(box);
+      host.appendChild(backdrop);
+    }
+
+    const titleEl = backdrop.querySelector('#modalTitle');
+    const bodyEl  = backdrop.querySelector('#modalBody');
+    const okBtn   = backdrop.querySelector('#modalOk');
+
+    function open({title='', body='', onOk}={}){
+      titleEl.textContent = title;
+      if (typeof body === 'string') { bodyEl.textContent = body; }
+      else { bodyEl.innerHTML = ''; bodyEl.appendChild(body); }
+
+      backdrop.hidden = false;
+      backdrop.style.display = 'flex';
+      document.body.style.overflow = 'hidden'; // prevent background scroll
+
+      okBtn.onclick = () => {
+        close();
+        if (typeof onOk === 'function') onOk();
+      };
+    }
+    function close(){
+      backdrop.style.display = 'none';
+      backdrop.hidden = true;
+      document.body.style.overflow = '';
+    }
+
+    return { open, close, backdrop };
   }
 
+  // --- Dice overlay ---
   function showDiceRoll(value, durationMs){
-    const overlay = byId('diceOverlay');
-    const dice    = byId('dice');
-    if (!dice || !overlay) return Promise.resolve();
+    const overlay = $("#diceOverlay");
+    const dice = $("#dice");
+    if (!overlay || !dice) return Promise.resolve();
 
-    const prefersReduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const dur = Math.max(300, prefersReduced ? 300 : (durationMs || 1000));
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const dur = prefersReduced ? 300 : (durationMs || 1000);
 
-    return new Promise((resolve)=>{
-      overlay.hidden = false;
-      overlay.style.display = 'flex';
-      overlay.setAttribute('aria-hidden','false');
+    // Ensure faces exist (1..6)
+    if (!dice.querySelector('.face.one')){
+      dice.innerHTML = `
+        <div class="face one"></div>
+        <div class="face two"></div>
+        <div class="face three"></div>
+        <div class="face four"></div>
+        <div class="face five"></div>
+        <div class="face six"></div>
+      `;
+    }
 
-      dice.className = 'dice rolling';
-      const anim = setInterval(()=>{
-        const r = 1 + Math.floor(Math.random()*6);
-        dice.className = 'dice rolling show-' + r;
+    // Start
+    overlay.hidden = false;
+    overlay.style.display = 'flex';
+    dice.className = 'dice rolling show-1';
+
+    let temp = null;
+    if (!prefersReduced){
+      temp = setInterval(()=>{
+        const v = 1 + Math.floor(Math.random()*6);
+        dice.className = 'dice rolling show-' + v;
       }, 120);
+    }
 
+    return new Promise(resolve=>{
       setTimeout(()=>{
-        clearInterval(anim);
+        if (temp) clearInterval(temp);
         dice.className = 'dice show-' + (value || 1);
         setTimeout(()=>{
-          overlay.hidden = true;
           overlay.style.display = 'none';
-          overlay.setAttribute('aria-hidden','true');
+          overlay.hidden = true;
           resolve();
-        }, 400);
+        }, 450);
       }, dur);
     });
   }
 
-  function showModal({ title='Notice', html='', onOk=null }){
-    const root = byId('modalRoot');
-    const ttl  = byId('modalTitle');
-    const body = byId('modalBody');
-    const ok   = byId('modalOk');
-    if (!root || !ttl || !body || !ok) return;
-
-    ttl.textContent = title;
-    body.innerHTML = html;
-    root.hidden = false;
-    root.style.display = 'flex';
-    root.setAttribute('aria-hidden', 'false');
-
-    function keyBlock(e){ e.stopPropagation(); }
-    root.addEventListener('keydown', keyBlock, { capture:true });
-
-    function close(){
-      root.hidden = true;
-      root.style.display = 'none';
-      root.setAttribute('aria-hidden', 'true');
-      root.removeEventListener('keydown', keyBlock, { capture:true });
-      ok.removeEventListener('click', onOkWrap);
+  // --- Tokens & players (minimal scaffolding that existing app.js expects) ---
+  function createBoardRenderer(boardImgEl, tokensLayerEl){
+    // Return an object with a placeTokens API used by app.js
+    function placeTokens(players){
+      // naive render: place small dots at top-left; app.js computes proper coords
+      tokensLayerEl.innerHTML = '';
+      players.forEach(p=>{
+        const dot = document.createElement('div');
+        dot.className = 'player-dot';
+        dot.style.background = p.color || '#666';
+        dot.style.position = 'absolute';
+        dot.style.width = '.9rem';
+        dot.style.height = '.9rem';
+        dot.style.borderRadius = '50%';
+        // app.js should set p._x, p._y (percentages) — fallback top-left
+        const x = (p._x ?? 2);
+        const y = (p._y ?? 2);
+        dot.style.left = x + '%';
+        dot.style.top = y + '%';
+        tokensLayerEl.appendChild(dot);
+      });
     }
-    function onOkWrap(){
-      try { onOk && onOk(); } finally { close(); }
-    }
-    ok.addEventListener('click', onOkWrap);
+    return { placeTokens };
   }
 
-  function showCardModal(card){
-    const title = card?.title || card?.name || 'Card';
-    const body  = card?.text || card?.body || card?.description || '';
-    const html = `<strong>${escapeHtml(title)}</strong><br>${escapeHtml(body)}`;
-    showModal({ title:'You landed on a card', html });
+  function renderPlayers(container, players){
+    container.innerHTML = '';
+    players.forEach(p=>{
+      const pill = document.createElement('span');
+      pill.className = 'player-pill';
+      pill.innerHTML = `
+        <span class="player-dot" style="background:${p.color || '#666'}"></span>
+        <span class="player-name" contenteditable="true" data-id="${p.id}" aria-label="Edit player name">${p.name}</span>
+      `;
+      container.appendChild(pill);
+    });
   }
 
-  function escapeHtml(s){
-    return String(s||'')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
-  // New: renderer driven by board.spaces x/y percentages
-  function createBoardRenderer(board){
-    const tokensLayer = byId('tokensLayer');
-    const boardImg = byId('boardImg');
-    const spaces = Array.isArray(board?.spaces) ? board.spaces : [];
-    let tokenMap = new Map();
-
-    function layerRect(){
-      const r = tokensLayer.getBoundingClientRect();
-      const w = r.width || tokensLayer.clientWidth || 0;
-      const h = r.height || tokensLayer.clientHeight || 0;
-      return { width: w, height: h };
-    }
-
-    function coordForIndex(index){
-      const s = spaces[index];
-      if (!s){ return { x: 0, y: 0 }; }
-      // x/y are percentages (0..100); support 0..1 fallback if needed
-      const pctX = (s.x > 1 ? s.x : s.x * 100);
-      const pctY = (s.y > 1 ? s.y : s.y * 100);
-      const { width: W, height: H } = layerRect();
-      return { x: (pctX/100) * W, y: (pctY/100) * H };
-    }
-
-    function clearTokens(){
-      if (tokensLayer) tokensLayer.innerHTML = '';
-      tokenMap = new Map();
-    }
-
-    function ensureToken(player){
-      let el = tokenMap.get(player.id);
-      if (!el){
-        el = document.createElement('div');
-        el.className = 'token';
-        el.dataset.player = player.id;
-        const palette = ['#d4351c','#1d70b8','#00703c','#6f72af','#b58840','#912b88'];
-        el.style.background = palette[ (parseInt(player.id.slice(1),10)-1) % palette.length ];
-        tokensLayer.appendChild(el);
-        tokenMap.set(player.id, el);
-      }
-      return el;
-    }
-
-    function placeToken(player, position){
-      if (!boardImg.complete){
-        boardImg.addEventListener('load', ()=> placeToken(player, position), { once:true });
-        return;
-      }
-      const idx = Math.max(0, Math.min(position, spaces.length - 1));
-      const p = coordForIndex(idx);
-      const el = ensureToken(player);
-
-      // Offset clumping
-      const siblingsSame = Array.from(tokenMap.values()).filter(e => {
-        const tx = parseFloat(e.style.getPropertyValue('--tx') || '0');
-        const ty = parseFloat(e.style.getPropertyValue('--ty') || '0');
-        return Math.abs(tx - p.x) < 2 && Math.abs(ty - p.y) < 2;
-      }).length;
-      const offset = (siblingsSame % 3) * 6;
-
-      const bx = p.x + (siblingsSame? offset:0);
-      const by = p.y + (siblingsSame? offset:0);
-      el.style.setProperty('--tx', bx);
-      el.style.setProperty('--ty', by);
-      el.style.transform = `translate3d(${bx}px, ${by}px, 0)`;
-    }
-
-    function renderAll(players){
-      if (!players || !players.length) return;
-      clearTokens();
-      players.forEach(p => placeToken(p, p.position || 0));
-    }
-
-    // Re-position tokens on resize/orientation changes
-    const ro = ('ResizeObserver' in window) ? new ResizeObserver(()=>{
-      // Re-render without clearing to avoid flicker
-      (window.requestAnimationFrame||setTimeout)(()=>{
-        Array.from(tokenMap.keys()).forEach(id=>{
-          const p = { id, position: 0 };
-        });
-      },0);
-    }) : null;
-    if (ro) ro.observe(tokensLayer);
-    window.addEventListener('resize', ()=>{ renderAll(Array.from(tokenMap.keys()).map(id=>({id, position:0}))); });
-    window.addEventListener('orientationchange', ()=>{ renderAll(Array.from(tokenMap.keys()).map(id=>({id, position:0}))); });
-
-    return { placeToken, renderAll, clearTokens };
-  }
-
-  return { setTurnIndicator, showDiceRoll, showCardModal, createBoardRenderer };
+  return {
+    setAlt, setSrc, setTurnIndicator,
+    createModal, createBoardRenderer, renderPlayers,
+    showDiceRoll
+  };
 })();
