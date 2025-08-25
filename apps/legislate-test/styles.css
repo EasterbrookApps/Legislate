@@ -93,21 +93,10 @@ body {
 /* Visibility helpers */
 [hidden] { display: none !important; }
 
-/* ------------------------- */
-/* Modal (works over dice)   */
-/* ------------------------- */
+/* Modal should be above dice & tokens */
+#modalRoot, #modal-root { z-index: 1500; }
 
-/* Our JS builds inline styles, but ensure z-index beats dice & tokens */
-#modalRoot,
-#modal-root {
-  z-index: 1500;
-}
-
-/* ------------------------- */
-/* Dice overlay (IDs & class)*/
-/* ------------------------- */
-
-/* Support both the new IDs (#diceOverlay/#dice) and the old class (.dice-overlay) */
+/* Dice overlay (support IDs and class) */
 #diceOverlay,
 .dice-overlay {
   position: fixed;
@@ -154,9 +143,7 @@ body {
 #dice.show-1 .one, #dice.show-2 .two, #dice.show-3 .three,
 #dice.show-4 .four, #dice.show-5 .five, #dice.show-6 .six,
 .dice.show-1 .one, .dice.show-2 .two, .dice.show-3 .three,
-.dice.show-4 .four, .dice.show-5 .five, .dice.show-6 .six {
-  display: block;
-}
+.dice.show-4 .four, .dice.show-5 .five, .dice.show-6 .six { display: block; }
 
 /* pips */
 #dice .face:before, .dice .face:before {
@@ -170,7 +157,7 @@ body {
     radial-gradient(circle at 75% 25%, transparent 0 4%, transparent 5%),
     radial-gradient(circle at 25% 75%, transparent 0 4%, transparent 5%),
     radial-gradient(circle at 25% 50%, transparent 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 50%, transparent 0 4%, transparent 5%);
+    radial-gradient(circle at 75% 50%, #000 0 4%, transparent 5%);
   background-size: 100% 100%;
 }
 #dice .two:before, .dice .two:before {
