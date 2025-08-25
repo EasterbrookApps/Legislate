@@ -1,4 +1,4 @@
-// Step 2.1 — UI token renderer: clear/reconcile to avoid ghost tokens
+// Step 2.2 — UI renderer fix: compute path in token layer coords (mobile-safe)
 window.LegislateUI = (function(){
   const byId = id => document.getElementById(id);
 
@@ -40,11 +40,16 @@ window.LegislateUI = (function(){
     const boardImg = byId('boardImg');
     let tokenMap = new Map(); // playerId -> element
     let path = [];
+    let lastW = 0, lastH = 0;
+
+    function layerRect(){
+      const r = tokensLayer.getBoundingClientRect();
+      return { width: r.width || tokensLayer.clientWidth, height: r.height || tokensLayer.clientHeight };
+    }
 
     function computePath(n){
-      const rect = boardImg.getBoundingClientRect();
-      const W = rect.width || boardImg.clientWidth || 800;
-      const H = rect.height || boardImg.clientHeight || 600;
+      const { width: W, height: H } = layerRect();
+      lastW = W; lastH = H;
       const inset = Math.floor(Math.min(W,H) * 0.06);
       const left = inset, top = inset, right = W - inset, bottom = H - inset;
 
@@ -80,6 +85,13 @@ window.LegislateUI = (function(){
       return pts;
     }
 
+    function ensurePathUpToDate(){
+      const { width: W, height: H } = layerRect();
+      if (!path.length || Math.abs(W-lastW)>0.5 || Math.abs(H-lastH)>0.5){
+        path = computePath(totalSpaces);
+      }
+    }
+
     function clearTokens(){
       if (tokensLayer) tokensLayer.innerHTML = '';
       tokenMap = new Map();
@@ -104,40 +116,42 @@ window.LegislateUI = (function(){
         boardImg.addEventListener('load', ()=> placeToken(player, position), { once:true });
         return;
       }
-      if (!path.length) path = computePath(totalSpaces);
+      ensurePathUpToDate();
       const idx = Math.max(0, Math.min(position, path.length - 1));
       const p = path[idx];
 
       const el = ensureToken(player);
-      const layerRect = tokensLayer.getBoundingClientRect();
-      const bx = p.x - layerRect.left;
-      const by = p.y - layerRect.top;
 
+      // Offset if multiple tokens land on same spot
       const siblingsSame = Array.from(tokenMap.values()).filter(e => {
         const tx = parseFloat(e.style.getPropertyValue('--tx') || '0');
         const ty = parseFloat(e.style.getPropertyValue('--ty') || '0');
-        return Math.abs(tx - bx) < 2 && Math.abs(ty - by) < 2;
+        return Math.abs(tx - p.x) < 2 && Math.abs(ty - p.y) < 2;
       }).length;
       const offset = (siblingsSame % 3) * 6;
 
-      el.style.setProperty('--tx', bx + (siblingsSame? offset:0));
-      el.style.setProperty('--ty', by + (siblingsSame? offset:0));
-      el.style.transform = `translate3d(${bx + (siblingsSame? offset:0)}px, ${by + (siblingsSame? offset:0)}px, 0)`;
+      const bx = p.x + (siblingsSame? offset:0);
+      const by = p.y + (siblingsSame? offset:0);
+
+      el.style.setProperty('--tx', bx);
+      el.style.setProperty('--ty', by);
+      el.style.transform = `translate3d(${bx}px, ${by}px, 0)`;
     }
 
     function renderAll(players){
       if (!players || !players.length) return;
-      clearTokens(); // <-- key fix: avoid ghost tokens
-      if (!path.length) path = computePath(totalSpaces);
+      clearTokens();
+      ensurePathUpToDate();
       players.forEach(p => placeToken(p, p.position || 0));
     }
 
-    function relayout(){ path = []; }
-
+    // Keep path fresh when layout changes (mobile safe)
+    const ro = ('ResizeObserver' in window) ? new ResizeObserver(()=>{ path = []; }) : null;
+    if (ro) ro.observe(tokensLayer);
     window.addEventListener('resize', ()=>{ path=[]; });
     window.addEventListener('orientationchange', ()=>{ path=[]; });
 
-    return { placeToken, renderAll, relayout, clearTokens };
+    return { placeToken, renderAll, clearTokens };
   }
 
   return { setTurnIndicator, showDiceRoll, createBoardRenderer };
