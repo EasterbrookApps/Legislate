@@ -1,11 +1,10 @@
-<!-- /js/loader.js -->
-<script>
+// js/loader.js
 window.LegislateLoader = (function(){
   const DBG = window.LegislateDebug || { event(){}, log(){}, error(){} };
 
   async function getJSON(url){
     const u = new URL(url, window.location.href);
-    u.searchParams.set('cb', Date.now()); // bust caches on GH Pages
+    u.searchParams.set('cb', Date.now());
     const res = await fetch(u.toString(), { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status} for ${u.pathname}`);
     return res.json();
@@ -13,9 +12,9 @@ window.LegislateLoader = (function(){
 
   async function findPackRoot(){
     const candidates = [
-      './assets/packs/uk-parliament',  // your new structure
-      './assets/uk-parliament',        // older “assets” variant
-      './content/uk-parliament',       // legacy modular path
+      './assets/packs/uk-parliament',
+      './assets/uk-parliament',
+      './content/uk-parliament',
     ];
     for (const root of candidates){
       try { await getJSON(`${root}/board.json`); return root; }
@@ -26,7 +25,6 @@ window.LegislateLoader = (function(){
 
   function normalizeBoard(board){
     if (!board || !Array.isArray(board.spaces)) return board;
-    // If it looks like coords are 0–1, convert once to percentages
     const looksFractional = board.spaces.some(s => typeof s.x === 'number' && s.x > 0 && s.x <= 1);
     if (looksFractional){
       board.spaces = board.spaces.map(s => {
@@ -40,12 +38,11 @@ window.LegislateLoader = (function(){
 
   async function loadPack(){
     const root = await findPackRoot();
-
     const board = normalizeBoard(await getJSON(`${root}/board.json`));
 
     async function maybe(file){
       try { return await getJSON(`${root}/cards/${file}`); }
-      catch { return []; } // missing deck is okay for now
+      catch { return []; }
     }
     const [commons, early, implementation, lords, pingpong] = await Promise.all([
       maybe('commons.json'),
@@ -60,7 +57,6 @@ window.LegislateLoader = (function(){
       .filter(([,arr]) => Array.isArray(arr) && arr.length)
       .map(([k]) => k);
 
-    // Emit a debug event so we can see what actually loaded
     DBG.event && DBG.event('PACK', {
       root,
       spaces: Array.isArray(board?.spaces) ? board.spaces.length : 0,
@@ -70,6 +66,6 @@ window.LegislateLoader = (function(){
     return { board, decks };
   }
 
+  // IMPORTANT: return the object app.js expects
   return { loadPack };
 })();
-</script>
