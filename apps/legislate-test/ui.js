@@ -1,8 +1,7 @@
-/* ui.js — mobile-safe token placement + robust modal root */
+/* ui.js — modal fix: handle hidden attribute, support #modalRoot and #modal-root */
 window.LegislateUI = (function () {
   function $(sel, root = document) { return root.querySelector(sel); }
 
-  // setters
   function setAlt(img, alt) { if (img) img.alt = alt || ""; }
   function setSrc(img, src) { if (img) img.src = src || ""; }
 
@@ -12,26 +11,34 @@ window.LegislateUI = (function () {
     el.textContent = `${cleaned}'s turn`;
   }
 
-  // Modal supporting #modalRoot and #modal-root
+  // Robust modal that works even if the element ships with [hidden]
   function createModal() {
+    // Prefer existing containers, otherwise create one
     let root = $("#modalRoot") || $("#modal-root");
     if (!root) {
       root = document.createElement("div");
-      root.id = "modalRoot";
+      root.id = "modal-root";
       document.body.appendChild(root);
     }
 
+    // Normalise styling for container
+    Object.assign(root.style, {
+      position: "fixed",
+      inset: "0",
+      display: "none",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "rgba(0,0,0,.55)",
+      zIndex: 1500
+    });
+
+    // Build internal structure once
     if (!root._wired) {
       root._wired = true;
-      Object.assign(root.style, {
-        position: "fixed",
-        inset: "0",
-        display: "none",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0,0,0,.55)",
-        zIndex: 1500
-      });
+      // If HTML shipped with [hidden], ensure it won't win against display:flex
+      root.hidden = false;
+      root.removeAttribute("hidden");
+      root.setAttribute("aria-hidden", "true");
 
       const dialog = document.createElement("div");
       dialog.setAttribute("role", "dialog");
@@ -76,6 +83,7 @@ window.LegislateUI = (function () {
       dialog.appendChild(header);
       dialog.appendChild(body);
       dialog.appendChild(actions);
+      root.innerHTML = ""; // clear any server HTML
       root.appendChild(dialog);
 
       root._els = { dialog, title, body, ok };
@@ -92,20 +100,29 @@ window.LegislateUI = (function () {
     }
 
     async function open({ title, body }) {
-      const { dialog, ok } = root._els;
+      // Ensure [hidden] cannot suppress visibility
+      root.hidden = false;
+      root.removeAttribute("hidden");
+      root.setAttribute("aria-hidden", "false");
+      root.style.display = "flex";
+      root.style.pointerEvents = "auto";
+
+      const { ok } = root._els;
       root._els.title.textContent = title || "";
       if (typeof body === "string") root._els.body.innerHTML = body;
       else { root._els.body.innerHTML = ""; root._els.body.appendChild(body); }
 
-      root.style.display = "flex";
       document.addEventListener("keydown", trapFocus);
       setTimeout(() => ok.focus(), 0);
 
       return new Promise((resolve) => {
         function close() {
-          root.style.display = "none";
-          ok.removeEventListener("click", onClick);
           document.removeEventListener("keydown", trapFocus);
+          root.setAttribute("aria-hidden", "true");
+          root.style.display = "none";
+          root.hidden = true; // cooperate with global [hidden] rule
+          root.style.pointerEvents = "none";
+          ok.removeEventListener("click", onClick);
           resolve();
         }
         function onClick() { close(); }
@@ -116,9 +133,8 @@ window.LegislateUI = (function () {
     return { open };
   }
 
-  // Board renderer — robust sizing for Safari mobile
+  // Board rendering preserved (abridged for brevity; unchanged from last good version)
   function createBoardRenderer(boardImg, tokensLayer, board) {
-    // Ensure the layer can absolutely position over the image
     if (tokensLayer && getComputedStyle(tokensLayer).position === "static") {
       tokensLayer.style.position = "absolute";
       tokensLayer.style.inset = "0";
@@ -126,35 +142,22 @@ window.LegislateUI = (function () {
     }
 
     function sizeOfBoard() {
-      // Primary: live layout box
       let w = boardImg?.clientWidth || 0;
       let h = boardImg?.clientHeight || 0;
-
-      // Safari sometimes reports 0 briefly; fallback to natural size with CSS scale ratio
       if ((w === 0 || h === 0) && boardImg && boardImg.naturalWidth && boardImg.naturalHeight) {
-        const ratio = boardImg.naturalWidth ? (boardImg.naturalHeight / boardImg.naturalWidth) : 1;
+        const ratio = boardImg.naturalHeight / boardImg.naturalWidth;
         const pw = boardImg.parentElement ? boardImg.parentElement.clientWidth : 0;
-        if (pw > 0) {
-          w = pw;
-          h = Math.round(pw * ratio);
-        }
+        if (pw > 0) { w = pw; h = Math.round(pw * ratio); }
       }
-
       return { w, h };
     }
 
     function renderPlayers(players) {
       if (!boardImg || !tokensLayer || !board || !Array.isArray(board.spaces)) return;
-
       const { w, h } = sizeOfBoard();
-      if (w === 0 || h === 0) {
-        // retry once on the next frame — mobile Safari layout quirk
-        requestAnimationFrame(() => renderPlayers(players));
-        return;
-      }
+      if (w === 0 || h === 0) { requestAnimationFrame(() => renderPlayers(players)); return; }
 
       tokensLayer.innerHTML = "";
-
       const by = new Map();
       for (const p of players) {
         const k = Number(p.position) || 0;
@@ -165,10 +168,8 @@ window.LegislateUI = (function () {
       for (const [idx, group] of by.entries()) {
         const space = board.spaces.find(s => Number(s.index) === Number(idx));
         if (!space) continue;
-
         const cx = (Number(space.x) / 100) * w;
         const cy = (Number(space.y) / 100) * h;
-
         const r = Math.max(6, Math.min(18, Math.round(Math.min(w, h) / 30)));
         const ring = Math.max(0, group.length - 1);
 
@@ -176,7 +177,6 @@ window.LegislateUI = (function () {
           const angle = ring ? (i / ring) * Math.PI * 2 : 0;
           const x = cx + (ring ? r * 0.8 * Math.cos(angle) : 0);
           const y = cy + (ring ? r * 0.8 * Math.sin(angle) : 0);
-
           const dot = document.createElement("div");
           dot.className = "player-dot";
           const colour = pl.color || pl.colour || "#1d70b8";
@@ -208,19 +208,17 @@ window.LegislateUI = (function () {
     return { renderPlayers };
   }
 
-  // Dice overlay (IDs #diceOverlay/#dice)
   function showDiceRoll(value, durationMs) {
     return new Promise((resolve) => {
       const overlay = document.getElementById('diceOverlay') || $('.dice-overlay');
       const dice = document.getElementById('dice') || $('.dice');
-      if (!overlay || !dice) {
-        alert(`You rolled a ${value}.`);
-        return resolve();
-      }
+      if (!overlay || !dice) { alert(`You rolled a ${value}.`); return resolve(); }
       const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const dur = prefersReduced ? 300 : (durationMs || 1600);
 
       overlay.hidden = false;
+      overlay.style.display = "flex";
+      overlay.style.pointerEvents = "auto";
       overlay.setAttribute("aria-hidden", "false");
       dice.className = "dice rolling";
 
@@ -234,6 +232,8 @@ window.LegislateUI = (function () {
         dice.className = "dice show-" + value;
         setTimeout(() => {
           overlay.hidden = true;
+          overlay.style.display = "none";
+          overlay.style.pointerEvents = "none";
           overlay.setAttribute("aria-hidden", "true");
           resolve();
         }, 450);
@@ -247,7 +247,6 @@ window.LegislateUI = (function () {
     setTurnIndicator,
     createModal,
     createBoardRenderer,
-    renderPlayers: () => {}, // API placeholder
     showDiceRoll
   };
 })();
