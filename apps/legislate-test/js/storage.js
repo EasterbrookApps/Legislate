@@ -1,0 +1,1 @@
+window.LegislateStorage={save:()=>{},load:()=>null,clear:()=>{}};

@@ -1,0 +1,1 @@
+window.LegislateUI={setTurnIndicator:t=>{document.getElementById('turnIndicator').textContent=t},showDiceRoll:v=>{const d=document.getElementById('dice');if(!d)return;d.className='dice show-'+v;}};

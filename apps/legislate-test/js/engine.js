@@ -1,0 +1,1 @@
+window.LegislateEngine={createEngine:()=>({bus:{on:()=>{},emit:()=>{}},state:{},takeTurn:()=>{}})};

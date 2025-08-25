@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legislate?! — Step 0 (Debug Baseline)</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <header class="page-header">
+    <div class="brand">Legislate?!</div>
+    <div class="controls">
+      <label for="playerCount">Players:</label>
+      <select id="playerCount">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+      <button id="rollBtn" class="button">Roll</button>
+      <button id="restartBtn" class="button button--secondary">Restart</button>
+    </div>
+    <div id="turnIndicator" class="turn">Loading…</div>
+  </header>
+
+  <main class="page-main">
+    <div class="board-wrap">
+      <img id="boardImg" src="./assets/board.png" alt="Board" />
+      <div id="tokensLayer" class="tokens-layer"></div>
+    </div>
+    <p id="footerAttrib" class="attrib">
+      Contains Parliamentary information licensed under the Open Parliament Licence v3.0.
+    </p>
+  </main>
+
+  <div id="diceOverlay" class="dice-overlay" hidden>
+    <div class="dice-wrapper">
+      <div id="dice" class="dice">
+        <div class="face one"></div><div class="face two"></div><div class="face three"></div>
+        <div class="face four"></div><div class="face five"></div><div class="face six"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalRoot" class="modal-backdrop" hidden>
+    <div class="modal"><h2 id="modalTitle">Card</h2><div id="modalBody">Example body</div><div class="modal-actions"><button id="modalOk" class="button">OK</button></div></div>
+  </div>
+
+  <div id="dbg-panel" class="dbg-panel">
+    <div class="dbg-head"><span>Debug</span>
+      <div class="dbg-actions"><button id="dbg-download" class="button button--secondary">Download log</button><button id="dbg-clear" class="button button--secondary">Clear</button></div>
+    </div>
+    <pre id="dbg-log" class="dbg-log"></pre>
+  </div>
+
+  <script src="./js/debug.js"></script>
+  <script src="./js/storage.js"></script>
+  <script src="./js/loader.js"></script>
+  <script src="./js/engine.js"></script>
+  <script src="./js/ui.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>

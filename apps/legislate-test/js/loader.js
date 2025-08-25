@@ -1,0 +1,1 @@
+window.LegislateLoader={withBase:p=>p||'',check:async()=>({ok:true})};
