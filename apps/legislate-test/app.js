@@ -184,7 +184,7 @@
         if (!t || !t.matches || !t.matches('.player-name-input')) return;
         if (namesLocked) { t.blur(); return; }
         const pid   = t.getAttribute('data-player-id');
-        aconst value = (t.value || '').trimEnd();
+        const value = (t.value || '').trimEnd();
         const p = engine.state.players.find(p => p.id === pid);
         if (p) {
           p.name = value;
