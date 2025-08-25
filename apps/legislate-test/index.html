@@ -28,15 +28,17 @@
 
   <main class="page-main">
     <div class="board-wrap">
-      <img id="boardImg" src="content/uk-parliament/board.png" alt="Game board" />
+      <!-- correct path here -->
+      <img id="boardImg" src="assets/board.png" alt="Game board" />
       <div id="tokensLayer" class="tokens-layer"></div>
     </div>
+
     <section class="players-section" id="players"></section>
+
+    <!-- Modal + dice overlay containers (used by JS) -->
     <div id="modalRoot"></div>
     <div id="diceOverlay" class="dice-overlay" hidden>
-      <div class="dice-wrapper">
-        <div id="dice" class="dice"></div>
-      </div>
+      <div class="dice-wrapper"><div id="dice" class="dice"></div></div>
     </div>
   </main>
 
@@ -46,7 +48,7 @@
     </p>
   </footer>
 
-  <!-- scripts -->
+  <!-- scripts (order matters) -->
   <script src="js/storage.js"></script>
   <script src="js/loader.js"></script>
   <script src="js/engine.js"></script>
