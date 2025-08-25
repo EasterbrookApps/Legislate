@@ -2,14 +2,12 @@
   const UI = window.LegislateUI;
   const Engine = window.LegislateEngine;
   const Loader = window.LegislateLoader;
-  const DBG = window.LegislateDebug; // if present
+  const DBG = window.LegislateDebug;
 
-  // --- Ensure the token layer tracks the rendered image box exactly
   function syncTokenLayerToImage() {
     const img = document.getElementById('boardImg');
     const layer = document.getElementById('tokensLayer');
     if (!img || !layer) return;
-    // Position the layer exactly over the image’s client box
     const rect = img.getBoundingClientRect();
     const parentRect = img.parentElement.getBoundingClientRect();
     layer.style.left = (rect.left - parentRect.left) + 'px';
@@ -17,8 +15,6 @@
     layer.style.width  = rect.width + 'px';
     layer.style.height = rect.height + 'px';
   }
-
-  // Re-run whenever layout may change
   function installOverlaySync(){
     const img = document.getElementById('boardImg');
     if (img){
@@ -30,29 +26,26 @@
 
   async function boot(){
     try{
-      DBG && DBG.info('booting');
+      DBG && DBG.info('boot start');
 
-      // 1) Load pack (assumes you already set the src for board image)
+      // Load current pack
       const packId = 'uk-parliament';
       const { board, decks } = await Loader.loadPack(packId);
 
-      // 2) Engine + UI
+      // Engine
       const rng = Engine.makeRng(Date.now());
       const engine = Engine.createEngine({ board, decks, rng, playerCount: 4 });
 
+      // UI helpers
       const modal = UI.createModal();
       const boardUI = UI.createBoardRenderer({ board });
 
-      // 3) Keep overlay pinned to the image
       installOverlaySync();
-
-      // 4) Initial render
       UI.setTurnIndicator(`Player 1's turn`);
       boardUI.render(engine.state.players);
 
-      // 5) Wire bus -> UI
+      // EVENTS -> UI
       engine.bus.on('MOVE_STEP', ({ playerId, position }) => {
-        // update and redraw
         const p = engine.state.players.find(x => x.id === playerId);
         if (p) p.pos = position;
         boardUI.render(engine.state.players);
@@ -67,9 +60,27 @@
         await UI.showDiceRoll(value);
       });
 
-      // 6) Controls
+      // Show card, wait for OK, then resolve
+      engine.bus.on('CARD_DRAWN', async ({ deck, card, playerId }) => {
+        const title = card.title || `Card from ${deck}`;
+        const body  = card.body  || (card.text || '');
+        await modal.open({
+          title,
+          body: `<p>${body}</p>`,
+          actions: [{ id: 'ok', label: 'OK' }]
+        });
+        engine.resolveCard(card);
+      });
+
+      engine.bus.on('CARD_APPLIED', () => {
+        // redraw if position changed due to effect
+        boardUI.render(engine.state.players);
+      });
+
+      // CONTROLS
       document.getElementById('rollBtn').onclick = async () => {
-        await engine.takeTurn(); // engine emits steps; UI re-renders
+        DBG && DBG.log('rollBtn click');
+        await engine.takeTurn();
       };
 
       document.getElementById('playerCount').onchange = (e) => {
