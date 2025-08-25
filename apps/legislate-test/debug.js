@@ -1,145 +1,194 @@
-
+/* debug.js — comprehensive debug harness (feature-flagged)
+   Enable by adding ?debug=1 to the URL or localStorage.setItem('legislate.debug','1')
+*/
 (function(){
-  const qs = new URLSearchParams(location.search);
-  const FLAG = (qs.get('debug') === '1') || (localStorage.getItem('legislate.debug') === '1');
-  const DBG = window.LegislateDebug = window.LegislateDebug || {};
+  const DBG = {
+    enabled() {
+      try {
+        const q = new URLSearchParams(location.search).get('debug') === '1';
+        const ls = localStorage.getItem('legislate.debug') === '1';
+        return q || ls;
+      } catch { return false; }
+    },
 
-  const logs = [];
-  function ts(){ return new Date().toISOString(); }
-  function push(kind, msg, data){
-    logs.push({ t: ts(), kind, msg, data });
-    if (panel && panelOpen) appendRow({ t: ts(), kind, msg, data });
-  }
-  DBG.dump = () => logs.slice();
-  DBG.clear = () => { logs.length = 0; };
-  DBG.download = () => {
-    const blob = new Blob([JSON.stringify({ua:navigator.userAgent, logs}, null, 2)], {type:'application/json'});
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'legislate-debug-log.json'; a.click(); URL.revokeObjectURL(a.href);
+    log(...args){ try { console.log('[DBG]', ...args); } catch {} },
+    warn(...args){ try { console.warn('[DBG]', ...args); } catch {} },
+    error(...args){ try { console.error('[DBG]', ...args); } catch {} },
+
+    // Panel UI
+    ensurePanel(){
+      if (!this.enabled()) return null;
+      if (document.getElementById('dbg-panel')) return document.getElementById('dbg-panel');
+      const wrap = document.createElement('div');
+      wrap.id = 'dbg-panel';
+      Object.assign(wrap.style, {
+        position:'fixed', right:'8px', bottom:'8px', width:'min(92vw,360px)',
+        maxHeight:'70vh', overflow:'auto', background:'#111', color:'#eee',
+        border:'1px solid #444', borderRadius:'8px', padding:'8px', zIndex: 3000,
+        font: '12px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif'
+      });
+      wrap.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">
+          <strong>Legislate Debug</strong>
+          <div style="display:flex;gap:4px">
+            <button id="dbg-hide"   style="padding:4px 6px">Hide</button>
+            <button id="dbg-clear"  style="padding:4px 6px">Clear</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <button id="dbg-roll"    style="padding:4px 6px">Sim Roll</button>
+          <button id="dbg-forcehide" style="padding:4px 6px">Force-hide overlays</button>
+          <button id="dbg-testmodal" style="padding:4px 6px">Test modal</button>
+          <button id="dbg-reset"   style="padding:4px 6px">Reset state</button>
+          <button id="dbg-dump"    style="padding:4px 6px">Dump state</button>
+        </div>
+        <pre id="dbg-log" style="white-space:pre-wrap;background:#000;color:#0f0;padding:6px;border-radius:4px;min-height:120px"></pre>
+      `;
+      document.body.appendChild(wrap);
+      wrap.querySelector('#dbg-hide').onclick = ()=> { wrap.style.display='none'; };
+      wrap.querySelector('#dbg-clear').onclick = ()=> { const pre = wrap.querySelector('#dbg-log'); pre.textContent=''; };
+      return wrap;
+    },
+
+    panelLog(msg, obj){
+      const pnl = this.ensurePanel();
+      if (!pnl) return;
+      const pre = pnl.querySelector('#dbg-log');
+      const line = `[${new Date().toISOString()}] ${msg}` + (obj ? ' ' + JSON.stringify(obj) : '');
+      pre.textContent += line + '\n';
+      pre.scrollTop = pre.scrollHeight;
+    },
+
+    bootDOMHooks(){
+      if (!this.enabled()) return;
+      // Log when critical elements exist + when listeners are attached
+      const ids = ['rollBtn','restartBtn','playerCount','boardImg','tokensLayer','turnIndicator','modalRoot','modal-root','diceOverlay','dice'];
+      const found = {};
+      ids.forEach(id=>{ found[id] = !!document.getElementById(id); });
+      this.panelLog('DOM presence', found);
+
+      // Wrap addEventListener to detect handler attachment on targets of interest
+      const origAdd = EventTarget.prototype.addEventListener;
+      const self = this;
+      EventTarget.prototype.addEventListener = function(type, listener, options){
+        try {
+          const el = this;
+          if (el && (el.id === 'rollBtn' || el.id === 'restartBtn' || el.id === 'playerCount')) {
+            self.panelLog(`Listener attached`, { id: el.id, type });
+          }
+        } catch {}
+        return origAdd.call(this, type, listener, options);
+      };
+
+      // Global tap location inspector (first 10 taps)
+      let tapCount = 0;
+      document.addEventListener('pointerdown', (e)=>{
+        if (tapCount++ > 10) return;
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const desc = el ? (el.id ? ('#'+el.id) : (el.className ? '.'+String(el.className).split(' ').join('.') : el.tagName)) : 'null';
+        this.panelLog('Tap @', { x:e.clientX, y:e.clientY, top: desc });
+      }, { capture:true });
+
+      // Overlay state snapshot
+      setInterval(()=>{
+        const o = document.getElementById('diceOverlay') || document.querySelector('.dice-overlay');
+        const m = document.getElementById('modalRoot') || document.getElementById('modal-root');
+        if (o) {
+          const cs = getComputedStyle(o);
+          this.panelLog('Overlay', { hidden: o.hidden, display: cs.display, vis: cs.visibility, z: cs.zIndex, pe: cs.pointerEvents });
+        }
+        if (m) {
+          const cs = getComputedStyle(m);
+          this.panelLog('Modal', { display: cs.display, z: cs.zIndex });
+        }
+      }, 3500);
+    },
+
+    attach(engine, board, decks){
+      if (!this.enabled()) return;
+      this.panelLog('Engine attached', { players: engine?.state?.players?.length ?? 0 });
+
+      // Bus event mirroring
+      try {
+        engine.bus.on('*', (type, payload)=>{
+          this.panelLog(`BUS ${type}`, payload || {});
+        });
+      } catch {}
+
+      // Utility hooks for panel actions
+      const pnl = this.ensurePanel();
+      if (pnl) {
+        const btnRoll = pnl.querySelector('#dbg-roll');
+        const btnHide = pnl.querySelector('#dbg-forcehide');
+        const btnTest = pnl.querySelector('#dbg-testmodal');
+        const btnDump = pnl.querySelector('#dbg-dump');
+        const btnReset= pnl.querySelector('#dbg-reset');
+
+        btnRoll.onclick = async ()=> {
+          const r = 1 + Math.floor(Math.random()*6);
+          this.panelLog('Sim roll', { value: r });
+          try { await window.LegislateUI?.showDiceRoll?.(r, 600); } catch {}
+          try { await engine.takeTurn(r); } catch (e) { this.panelLog('Sim roll error', { msg: String(e) }); }
+        };
+        btnHide.onclick = ()=>{
+          const o = document.getElementById('diceOverlay') || document.querySelector('.dice-overlay');
+          if (o) { o.hidden = true; o.style.display = 'none'; o.style.pointerEvents = 'none'; }
+          this.panelLog('Force-hide overlays');
+        };
+        btnTest.onclick = async ()=>{
+          try { await window.LegislateUI?.createModal()?.open({ title:'Test modal', body:'If you can see this and press OK, modals work.' }); }
+          catch(e){ this.panelLog('Test modal failed', { msg: String(e) }); }
+        };
+        btnDump.onclick = ()=> {
+          const snap = {
+            turnIndex: engine.state.turnIndex,
+            positions: engine.state.players.map(p=>({id:p.id,name:p.name,pos:p.position})),
+            decks: Object.fromEntries(Object.entries(engine.state.decks||{}).map(([k,v])=>[k, v.length]))
+          };
+          this.panelLog('State', snap);
+        };
+        btnReset.onclick = ()=> {
+          try { engine.reset(); this.panelLog('Reset invoked'); } catch(e){ this.panelLog('Reset failed', { msg: String(e) }); }
+        };
+      }
+    },
+
+    instrumentHandlers(){
+      if (!this.enabled()) return;
+      // Log clicks/changes on primary controls
+      const roll = document.getElementById('rollBtn');
+      const rst  = document.getElementById('restartBtn');
+      const pc   = document.getElementById('playerCount');
+      if (roll) roll.addEventListener('click', ()=> this.panelLog('rollBtn click'));
+      if (rst)  rst.addEventListener('click', ()=> this.panelLog('restartBtn click'));
+      if (pc)   pc.addEventListener('change', (e)=> this.panelLog('playerCount change', { value: e.target.value }));
+    },
+
+    installErrorTraps(){
+      if (!this.enabled()) return;
+      window.addEventListener('error', (e)=>{
+        this.panelLog('ERROR window.onerror', { msg: e.message, file: e.filename, line: e.lineno, col: e.colno });
+      });
+      window.addEventListener('unhandledrejection', (e)=>{
+        this.panelLog('ERROR unhandledrejection', { reason: String(e.reason) });
+      });
+      // Environment
+      this.panelLog('Env', { ua: navigator.userAgent, dpr: window.devicePixelRatio, vw: innerWidth, vh: innerHeight, tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
+    }
   };
 
-  let badge, panel, panelOpen = false;
-  function ensureUI(){
-    if (badge) return;
-    badge = document.createElement('button');
-    badge.textContent = 'DEBUG';
-    badge.setAttribute('aria-label','Open debug panel');
-    Object.assign(badge.style, { position:'fixed', right:'12px', bottom:'12px', zIndex: 2000, background:'#0b0c0c', color:'#fff',
-      border:'none', borderRadius:'9999px', padding:'6px 10px', fontWeight:'700', letterSpacing:'0.03em', cursor:'pointer', boxShadow:'0 2px 8px rgba(0,0,0,.3)'});
-    badge.onclick = ()=>{ panelOpen ? closePanel() : openPanel(); };
-    document.body.appendChild(badge);
+  window.LegislateDebug = {
+    attach: (...args)=> DBG.attach(...args),
+    ensurePanel: ()=> DBG.ensurePanel(),
+  };
 
-    panel = document.createElement('div');
-    Object.assign(panel.style, { position:'fixed', right:'12px', bottom:'56px', width:'min(96vw, 520px)', maxHeight:'75vh', overflow:'auto',
-      background:'#fff', color:'#0b0c0c', border:'1px solid #b1b4b6', borderRadius:'8px', boxShadow:'0 6px 24px rgba(0,0,0,.25)', zIndex: 2000, display:'none' });
-    panel.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid #e5e5e5">
-        <strong>Legislate Debug</strong>
-        <div>
-          <button id="dbg-download" style="margin-right:6px">Download</button>
-          <button id="dbg-clear" style="margin-right:6px">Clear</button>
-          <button id="dbg-off">Turn Off</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;padding:8px 10px;border-bottom:1px solid #e5e5e5;flex-wrap:wrap">
-        <button id="dbg-step">Step +1 (active)</button>
-        <label>Move active to index <input id="dbg-move" type="number" style="width:80px" min="0"></label>
-        <button id="dbg-advance">Force next turn</button>
-        <button id="dbg-reset">Reset Save</button>
-        <button id="dbg-refresh">Refresh State</button>
-      </div>
-      <div id="dbg-state" style="padding:8px 10px;border-bottom:1px solid #e5e5e5;font-family:monospace;font-size:12px"></div>
-      <div id="dbg-log" style="padding:8px 10px;font-family:monospace;font-size:12px"></div>
-    `;
-    document.body.appendChild(panel);
-
-    panel.querySelector('#dbg-download').onclick = ()=> DBG.download();
-    panel.querySelector('#dbg-clear').onclick = ()=> { DBG.clear(); panel.querySelector('#dbg-log').innerHTML=''; };
-    panel.querySelector('#dbg-off').onclick = ()=> { localStorage.removeItem('legislate.debug'); location.reload(); };
-    panel.querySelector('#dbg-reset').onclick = ()=> { try{ localStorage.removeItem('legislate.v1.save'); push('info','save cleared'); }catch(e){} };
-    panel.querySelector('#dbg-refresh').onclick = ()=> updateState();
-    panel.querySelector('#dbg-step').onclick = async ()=> {
-      if (!DBG.engine) return;
-      try { await DBG.engine.takeTurn(1); push('action','engine.takeTurn(1)'); updateState(); } catch(e){ push('error','takeTurn(1) failed', String(e)); }
-    };
-    panel.querySelector('#dbg-advance').onclick = ()=> {
-      if (!DBG.engine) return;
-      const s = DBG.engine.state;
-      s.turnIndex = (s.turnIndex + 1) % s.players.length;
-      try { DBG.engine.bus.emit('TURN_BEGIN', { playerId: s.players[s.turnIndex].id, index: s.turnIndex }); } catch(e){}
-      push('action','force next turn', s.turnIndex);
-      updateState();
-    };
-    panel.querySelector('#dbg-move').addEventListener('change', (e)=>{
-      if (!DBG.engine) return;
-      const idx = Math.max(0, Math.floor(Number(e.target.value)||0));
-      const s = DBG.engine.state;
-      const p = s.players[s.turnIndex];
-      p.position = idx;
-      try { DBG.engine.bus.emit('MOVE_STEP', { playerId:p.id, to: p.position }); } catch(e){}
-      push('action','move active to index', idx);
-      updateState();
+  if (DBG.enabled()) {
+    // Initialize panel and traps ASAP
+    document.addEventListener('DOMContentLoaded', ()=>{
+      DBG.ensurePanel();
+      DBG.installErrorTraps();
+      DBG.bootDOMHooks();
+      DBG.instrumentHandlers();
     });
   }
-  function openPanel(){ ensureUI(); panel.style.display='block'; panelOpen = true; updateState(); renderExistingLogs(); }
-  function closePanel(){ panel.style.display='none'; panelOpen = false; }
-  function renderExistingLogs(){ const logEl = panel.querySelector('#dbg-log'); logEl.innerHTML = ''; logs.forEach(appendRow); }
-  function updateState(){
-    if (!panel) return;
-    const stateEl = panel.querySelector('#dbg-state');
-    if (!DBG.engine){ stateEl.textContent = '(engine not attached yet)'; return; }
-    const s = DBG.engine.state;
-    const decks = Object.fromEntries(Object.entries(s.decks||{}).map(([k,v])=>[k, (v&&v.length)||0]));
-    stateEl.textContent = JSON.stringify({ turnIndex: s.turnIndex, players: s.players.map(p=>({id:p.id,name:p.name,pos:p.position})), decks }, null, 2);
-  }
-  function appendRow(rec){
-    const logEl = panel.querySelector('#dbg-log'); if (!logEl) return;
-    const div = document.createElement('div');
-    div.textContent = `[${rec.t}] ${rec.kind.toUpperCase()} ${rec.msg}${rec.data!==undefined? ' ' + (typeof rec.data==='string'? rec.data : JSON.stringify(rec.data)) : ''}`;
-    if (rec.kind==='error') div.style.color = '#d4351c';
-    else if (rec.kind==='warn') div.style.color = '#d97a00';
-    logEl.appendChild(div);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-
-  function wireConsole(){
-    const orig = { log:console.log, warn:console.warn, error:console.error };
-    console.log = function(){ push('log', Array.from(arguments).join(' ')); return orig.log.apply(console, arguments); };
-    console.warn = function(){ push('warn', Array.from(arguments).join(' ')); return orig.warn.apply(console, arguments); };
-    console.error = function(){ push('error', Array.from(arguments).join(' ')); return orig.error.apply(console, arguments); };
-    window.addEventListener('error', (e)=> push('error', 'window.onerror', e.message||String(e)), true);
-    window.addEventListener('unhandledrejection', (e)=> push('error','unhandledrejection', String(e.reason||e)), true);
-  }
-  function wireFetch(){
-    const origFetch = window.fetch;
-    window.fetch = async function(url, opts){
-      const t0 = performance.now();
-      try{
-        const res = await origFetch(url, opts);
-        const t1 = performance.now();
-        push(res.ok ? 'net' : 'error', res.ok ? `FETCH OK ${res.status}` : `FETCH ERR ${res.status}`, { url: String(url), ms: Math.round(t1-t0) });
-        return res;
-      } catch (err){
-        const t1 = performance.now();
-        push('error', 'FETCH THROW', { url: String(url), ms: Math.round(t1-t0), err: String(err) });
-        throw err;
-      }
-    };
-  }
-
-  // Allow UI to report token placements if it wants
-  DBG.tokensPlaced = function(info){ push('ui','TOKENS', info); };
-
-  DBG.attach = function(engine, board, decks){
-    DBG.engine = engine; DBG.board = board; DBG.decks = decks;
-    ensureUI(); updateState();
-    try {
-      engine.bus.on('*', (type, payload)=>{
-        push('bus', type, payload);
-        if (type==='MOVE_STEP' || type==='TURN_BEGIN') updateState();
-      });
-      push('info','[debug attached]');
-    } catch(e){ push('error','attach bus failed', String(e)); }
-  };
-
-  if (FLAG){ wireConsole(); wireFetch(); ensureUI(); push('info','[debug enabled]'); }
 })();
