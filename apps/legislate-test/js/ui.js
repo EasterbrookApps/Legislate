@@ -1,4 +1,4 @@
-// Step 2 — UI token rendering & simple board path
+// Step 2.1 — UI token renderer: clear/reconcile to avoid ghost tokens
 window.LegislateUI = (function(){
   const byId = id => document.getElementById(id);
 
@@ -38,24 +38,22 @@ window.LegislateUI = (function(){
   function createBoardRenderer(totalSpaces){
     const tokensLayer = byId('tokensLayer');
     const boardImg = byId('boardImg');
-    const tokenMap = new Map(); // playerId -> el
+    let tokenMap = new Map(); // playerId -> element
     let path = [];
 
     function computePath(n){
-      // Perimeter path around the board image bounds (clockwise)
       const rect = boardImg.getBoundingClientRect();
       const W = rect.width || boardImg.clientWidth || 800;
       const H = rect.height || boardImg.clientHeight || 600;
       const inset = Math.floor(Math.min(W,H) * 0.06);
       const left = inset, top = inset, right = W - inset, bottom = H - inset;
 
-      // Build four edges, approx equal distribution
       const perim = 2*((right-left) + (bottom-top));
       n = Math.max(10, n);
       const step = perim / n;
 
       const pts = [];
-      let x = left, y = top, dir = 0; // 0:right,1:down,2:left,3:up
+      let x = left, y = top, dir = 0;
       let remaining = step;
       function push(){ pts.push({x, y}); }
       push();
@@ -67,11 +65,7 @@ window.LegislateUI = (function(){
           else if (dir===2) move = Math.min(remaining, x - left);
           else move = Math.min(remaining, y - top);
 
-          if (move <= 0){
-            // turn corner
-            dir = (dir + 1) % 4;
-            continue;
-          }
+          if (move <= 0){ dir = (dir + 1) % 4; continue; }
 
           if (dir===0) x += move;
           else if (dir===1) y += move;
@@ -80,14 +74,15 @@ window.LegislateUI = (function(){
 
           remaining -= move;
 
-          if (remaining === 0){
-            push();
-            remaining = step;
-            break;
-          }
+          if (remaining === 0){ push(); remaining = step; break; }
         }
       }
       return pts;
+    }
+
+    function clearTokens(){
+      if (tokensLayer) tokensLayer.innerHTML = '';
+      tokenMap = new Map();
     }
 
     function ensureToken(player){
@@ -95,8 +90,7 @@ window.LegislateUI = (function(){
       if (!el){
         el = document.createElement('div');
         el.className = 'token';
-        el.setAttribute('data-player', player.id);
-        // simple color palette
+        el.dataset.player = player.id;
         const palette = ['#d4351c','#1d70b8','#00703c','#6f72af','#b58840','#912b88'];
         el.style.background = palette[ (parseInt(player.id.slice(1),10)-1) % palette.length ];
         tokensLayer.appendChild(el);
@@ -119,7 +113,6 @@ window.LegislateUI = (function(){
       const bx = p.x - layerRect.left;
       const by = p.y - layerRect.top;
 
-      // slight offset if multiple tokens on same space
       const siblingsSame = Array.from(tokenMap.values()).filter(e => {
         const tx = parseFloat(e.style.getPropertyValue('--tx') || '0');
         const ty = parseFloat(e.style.getPropertyValue('--ty') || '0');
@@ -134,24 +127,17 @@ window.LegislateUI = (function(){
 
     function renderAll(players){
       if (!players || !players.length) return;
+      clearTokens(); // <-- key fix: avoid ghost tokens
       if (!path.length) path = computePath(totalSpaces);
       players.forEach(p => placeToken(p, p.position || 0));
     }
 
-    function relayout(){
-      path = []; // force recompute
-      // Re-place all tokens
-      const els = Array.from(tokenMap.keys());
-      els.forEach(id => {
-        const player = { id, position: parseInt(byId('turnIndicator').getAttribute('data-pos-'+id) || '0',10) };
-        // we don't store per-player pos here; app will re-render on demand in practice
-      });
-    }
+    function relayout(){ path = []; }
 
     window.addEventListener('resize', ()=>{ path=[]; });
     window.addEventListener('orientationchange', ()=>{ path=[]; });
 
-    return { placeToken, renderAll, relayout };
+    return { placeToken, renderAll, relayout, clearTokens };
   }
 
   return { setTurnIndicator, showDiceRoll, createBoardRenderer };
