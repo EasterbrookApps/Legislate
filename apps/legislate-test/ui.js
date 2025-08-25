@@ -133,7 +133,6 @@ window.LegislateUI = (function () {
       // Safari sometimes reports 0 briefly; fallback to natural size with CSS scale ratio
       if ((w === 0 || h === 0) && boardImg && boardImg.naturalWidth && boardImg.naturalHeight) {
         const ratio = boardImg.naturalWidth ? (boardImg.naturalHeight / boardImg.naturalWidth) : 1;
-        // Try to infer width from parent box
         const pw = boardImg.parentElement ? boardImg.parentElement.clientWidth : 0;
         if (pw > 0) {
           w = pw;
