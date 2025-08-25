@@ -1,4 +1,4 @@
-// Step 3 — Roll acknowledgement modal (no cancel), movement starts immediately
+// Step 3.1 — app wiring: show modal AFTER dice; do NOT auto-dismiss on TURN_END
 (function(){
   const D = window.LegislateDebug;
   const UI = window.LegislateUI;
@@ -24,11 +24,14 @@
     busWired = true;
     const bus = engine.bus;
 
+    // Show dice first; only then show the acknowledgement modal
     bus.on('DICE_ROLL', ({ value, playerId }) => {
       const name = nameFor(playerId);
       D.event('DICE_ROLL', { value, playerId, name });
-      UI.showDiceRoll(value);
-      UI.showRollModal(`${name} rolled ${value}. Moving ${value} spaces…`);
+      // Wait for dice overlay to finish, then show the modal
+      UI.showDiceRoll(value).then(()=>{
+        UI.showRollModal(`${name} rolled ${value}. Moving ${value} spaces…`);
+      });
     });
 
     bus.on('MOVE_STEP', ({ playerId, position, step, total }) => {
@@ -42,9 +45,9 @@
       D.event('LANDED', payload);
     });
 
+    // Do NOT auto-dismiss the modal here; user closes it with OK
     bus.on('TURN_END', payload => {
       D.event('TURN_END', payload);
-      UI.dismissModal(); // in case still open
     });
 
     bus.on('TURN_BEGIN', beginTurn);
@@ -67,7 +70,7 @@
         if (animating) return;
         animating = true;
         D.log('rollBtn click');
-        await engine.takeTurn(); // emits DICE_ROLL then moves; modal is just acknowledgement
+        await engine.takeTurn(); // emits DICE_ROLL, moves; modal appears after dice, not before
         animating = false;
       });
 
