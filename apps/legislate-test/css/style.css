@@ -1,4 +1,12 @@
-/* Step-1.2 CSS patch — enforce [hidden] attribute */
-[hidden] {
-  display: none !important;
+/* Step 2 — token visuals */
+.tokens-layer{ position:absolute; inset:0; pointer-events:none; }
+.token{
+  position:absolute;
+  width:18px; height:18px;
+  border-radius:50%;
+  border:2px solid #fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.25);
+  transform:translate3d(0,0,0);
+  will-change:transform;
+  transition: transform 140ms ease; /* stepwise movement smooth */
 }

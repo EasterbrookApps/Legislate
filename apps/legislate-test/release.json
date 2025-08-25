@@ -1,5 +1,11 @@
 {
-  "step": 1,
-  "name": "Boot & Loader Reliability",
-  "timestamp": "2025-08-25T13:48:37.226980Z"
+  "step": 2,
+  "name": "Engine Canonicalisation",
+  "timestamp": "2025-08-25T14:38:43.914343Z",
+  "notes": [
+    "Canonical position property",
+    "Stepwise movement",
+    "Deterministic event flow",
+    "Seeded RNG (session)"
+  ]
 }
