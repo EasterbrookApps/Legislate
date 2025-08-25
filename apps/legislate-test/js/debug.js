@@ -1,11 +1,29 @@
-// js/debug.js — compact, docked, collapsible debug panel
+// js/debug.js — feature-flagged, collapsible; purges any legacy debug on load
 (function () {
   const qs = new URLSearchParams(location.search);
   const ENABLED = qs.has('debug') || qs.get('dbg') === '1';
+
+  // --- Purge any legacy debug markup (always run, even if debug off) ---
+  (function purgeLegacy(){
+    const legacyIds = [
+      'dbg-log','debug','debug-panel','dbg-panel','dbg-panel-old',
+      'dbg-root','devtools','devtools-root','debugger','debug-root'
+    ];
+    legacyIds.forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.remove) el.remove();
+    });
+    // Remove any old injected style blocks
+    Array.from(document.querySelectorAll('style')).forEach(s => {
+      const txt = (s.textContent || '').toLowerCase();
+      if (txt.includes('#dbg-log') || txt.includes('#debug-panel')) s.remove();
+    });
+  })();
+
   if (!ENABLED) return;
 
-  // Kill any prior debug panel to avoid duplicates
-  for (const id of ['dbg-badge','dbg-shell','debug','dbg-styles']) {
+  // Kill any prior instance of this panel
+  for (const id of ['dbg-badge','dbg-shell','dbg-styles']) {
     const el = document.getElementById(id);
     if (el && el.remove) el.remove();
   }
@@ -13,7 +31,6 @@
   const logs = [];
   const STORAGE_KEY_COLLAPSED = 'legislate.debug.collapsed';
 
-  // Public API
   const API = {
     event(type, payload) { push(type, payload); },
     log(...a){ console.log('[DBG]', ...a); },
@@ -65,7 +82,6 @@
       #dbg-bar .sp{flex:1 1 auto}
       #dbg-bar button{border:1px solid #b1b4b6;background:#fff;border-radius:4px;padding:.2rem .5rem;cursor:pointer}
       #dbg-body{margin:0;padding:.6rem;background:#fff;max-height:40vh;overflow:auto;white-space:pre-wrap}
-      /* collapsed to thin bar */
       #dbg-shell.mini #dbg-body{display:none}
     `;
     document.head.appendChild(s);
@@ -97,32 +113,27 @@
     body = shell.querySelector('#dbg-body');
     collapseBtn = shell.querySelector('#dbg-collapse');
 
-    // Buttons
     shell.querySelector('#dbg-download').onclick = () => API.download();
     shell.querySelector('#dbg-clear').onclick = () => API.clear();
     collapseBtn.onclick = () => {
       const mini = shell.classList.toggle('mini');
       collapseBtn.textContent = mini ? 'Expand' : 'Collapse';
-      // remember bar-only vs full panel
       localStorage.setItem(STORAGE_KEY_COLLAPSED, mini ? '1' : '0');
     };
 
-    // Badge toggles visibility of the panel itself
     badge.onclick = () => {
-      shell.style.display = (shell.style.display === 'none' || !shell.style.display) ? 'block' : 'none';
-      // When showing, backfill last lines
-      if (shell.style.display === 'block' && logs.length) {
+      const show = (shell.style.display === 'none' || !shell.style.display);
+      shell.style.display = show ? 'block' : 'none';
+      if (show && logs.length) {
         body.textContent = '';
         logs.slice(-200).forEach(append);
       }
     };
 
-    // Initial state
     shell.style.display = 'block';
     const mini = localStorage.getItem(STORAGE_KEY_COLLAPSED) === '1';
     if (mini) { shell.classList.add('mini'); collapseBtn.textContent = 'Expand'; }
 
-    // Boot lines
     API.event('INFO', '[debug enabled]');
     API.event('ENV', {
       ua: navigator.userAgent,
@@ -135,8 +146,7 @@
 
   function push(type, payload){
     const e = { t: new Date().toISOString(), type, payload };
-    logs.push(e);
-    append(e);
+    logs.push(e); append(e);
   }
   function append(e){
     if (!body) return;
@@ -146,5 +156,7 @@
     body.scrollTop = body.scrollHeight;
   }
 
-  (document.readyState === 'loading') ? document.addEventListener('DOMContentLoaded', mount) : mount();
+  (document.readyState === 'loading')
+    ? document.addEventListener('DOMContentLoaded', mount)
+    : mount();
 })();
