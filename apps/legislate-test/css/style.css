@@ -1,178 +1,77 @@
-:root {
-  /* Global design tokens */
-  --border: #b1b4b6;
-  --text: #0b0c0c;
-  --muted: #505a5f;
-  --bg: #fff;
+:root{
+  --border:#b1b4b6;
+  --text:#0b0c0c;
+  --muted:#505a5f;
+  --bg:#fff;
 }
 
-* { box-sizing: border-box; }
-
-/* Base body styles */
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  color: var(--text);
-  background: var(--bg);
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  color:var(--text);
+  background:var(--bg);
 }
 
-/* Page layout wrappers */
-.page-header, .page-main {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: 1rem;
-}
+/* Layout */
+.page-header,.page-main,.page-footer{max-width:1100px;margin:0 auto;padding:1rem}
+.brand{font-weight:700;font-size:1.25rem}
+.controls{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.button{border:1px solid var(--border);background:#f3f2f1;padding:.4rem .8rem;border-radius:.35rem;cursor:pointer}
+.button--secondary{background:#fff}
+.turn{margin:.5rem 0 1rem;font-weight:600}
 
-.brand { font-weight: 700; font-size: 1.25rem; }
+/* Board + tokens */
+.board-wrap{position:relative}
+#boardImg{display:block;width:100%;height:auto}
+.tokens-layer{position:absolute;inset:0}
+.players-section{margin-top:.5rem}
+.player-pill{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--border);border-radius:999px;padding:.25rem .5rem;margin:.25rem .25rem 0 0}
+.player-dot{display:inline-block;width:.8rem;height:.8rem;border-radius:50%}
+.player-name{border:1px solid transparent;padding:.1rem .25rem;min-width:6ch}
+.player-name:focus{outline:2px solid #1d70b8;background:#fff;border-color:#1d70b8}
+.attrib{color:var(--muted);margin-top:1rem}
 
-/* Controls (player count, roll button, etc.) */
-.controls {
-  display: flex;
-  gap: .5rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.button {
-  border: 1px solid var(--border);
-  background: #f3f2f1;
-  padding: .4rem .8rem;
-  border-radius: .35rem;
-  cursor: pointer;
-}
-.button--secondary { background: #fff; }
-
-.turn { margin: .5rem 0 1rem; font-weight: 600; }
-
-/* Board + token layer */
-.board-wrap { position: relative; }
-#boardImg { display: block; width: 100%; height: auto; }
-
-.tokens-layer { position: absolute; inset: 0; }
-
-/* Individual token appearance */
-.token {
-  position: absolute;
-  width: 1.2rem;
-  height: 1.2rem;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 1px 3px rgba(0,0,0,.3);
-  transform: translate3d(0,0,0);
-  will-change: transform;
-}
-
-/* Player pills (colour + editable name) */
-.players-section { margin-top: .5rem; }
-.player-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: .4rem;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: .25rem .5rem;
-  margin: .25rem .25rem 0 0;
-}
-.player-dot {
-  display: inline-block;
-  width: .8rem;
-  height: .8rem;
-  border-radius: 50%;
-}
-.player-name {
-  border: 1px solid transparent;
-  padding: .1rem .25rem;
-  min-width: 6ch;
-}
-.player-name:focus {
-  outline: 2px solid #1d70b8;
-  background: #fff;
-  border-color: #1d70b8;
-}
-
-/* Attribution footer text */
-.attrib { color: var(--muted); margin-top: 1rem; }
-
-/* Generic hiding rule */
-[hidden] { display: none !important; }
-
-/* ===========================
-   Modal styles
-   =========================== */
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.55);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 10vh 1rem;
-  z-index: 1500; /* Higher than dice */
-}
-.modal {
-  background: #fff;
-  max-width: 640px;
-  width: 100%;
-  border-radius: .5rem;
-  padding: 1rem;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: .5rem;
-}
-
-/* ===========================
-   Dice overlay styles
-   =========================== */
-.dice-overlay {
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(ellipse at center, rgba(0,0,0,.6) 0%, rgba(0,0,0,.85) 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1400; /* Below modal */
-}
-.dice-wrapper {
-  width: min(70vmin,720px);
-  height: min(70vmin,720px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.dice {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  display: grid;
-  place-items: center;
-}
-/* Faces of the dice (1–6) */
-.dice .face {
-  display: none;
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  border-radius: 3%;
-  background: #fff;
-  box-shadow: 0 10px 30px rgba(0,0,0,.35);
-  width: 100%;
-  height: 100%;
-}
-/* Show correct face based on class */
-.dice.show-1 .one,
-.dice.show-2 .two,
-.dice.show-3 .three,
-.dice.show-4 .four,
-.dice.show-5 .five,
-.dice.show-6 .six { display: block; }
-
-/* Pip patterns (dots on dice) */
-.dice .face:before {
-  content:"";
-  position:absolute;
+/* --- Modal (cards) --- */
+.modal-backdrop{
+  position:fixed;
   inset:0;
+  background:rgba(0,0,0,.55);
+  display:flex;
+  align-items:flex-start;       /* start so header isn’t under iOS Safari URL bar */
+  justify-content:center;
+  padding:10vh 1rem;            /* push down from very top */
+  z-index:2000;                 /* above tokens/board */
+}
+.modal{
+  background:#fff;
+  max-width:640px;
+  width:100%;
+  border-radius:.5rem;
+  padding:1rem;
+  box-shadow:0 8px 32px rgba(0,0,0,.35);
+}
+.modal h2{margin:.25rem 0 1rem;font-size:1.25rem}
+.modal-actions{display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem}
+[hidden]{display:none !important}
+
+/* --- Dice overlay --- */
+.dice-overlay{
+  position:fixed;
+  inset:0;
+  background:radial-gradient(ellipse at center, rgba(0,0,0,.6) 0%, rgba(0,0,0,.85) 100%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:1900;                 /* under modal, over board */
+}
+.dice-wrapper{width:min(70vmin,720px);height:min(70vmin,720px);display:flex;align-items:center;justify-content:center}
+.dice{position:relative;width:100%;height:100%;display:grid;place-items:center}
+.dice .face{display:none;position:absolute;inset:0;margin:auto;border-radius:3%;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.35);width:100%;height:100%}
+.dice.show-1 .one,.dice.show-2 .two,.dice.show-3 .three,.dice.show-4 .four,.dice.show-5 .five,.dice.show-6 .six{display:block}
+.dice .face:before{
+  content:"";position:absolute;inset:0;
   background:
     radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
     radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
@@ -183,84 +82,31 @@ body {
     radial-gradient(circle at 75% 50%, transparent 0 4%, transparent 5%);
   background-size:100% 100%;
 }
-.dice .two:before {
-  background:
-    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
-}
-.dice .three:before {
-  background:
-    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
-}
-.dice .four:before {
-  background:
-    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
-}
-.dice .five:before {
-  background:
-    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
-}
-.dice .six:before {
-  background:
-    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 25% 50%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 50%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
-}
-
-/* Dice wobble animation */
-@keyframes dice-wobble {
-  0%{transform:rotate(0deg) scale(1);}
-  25%{transform:rotate(10deg) scale(1.02);}
-  50%{transform:rotate(-10deg) scale(1.04);}
-  75%{transform:rotate(6deg) scale(1.02);}
-  100%{transform:rotate(0deg) scale(1);}
-}
-.dice.rolling .face { animation:dice-wobble .35s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce){
-  .dice.rolling .face { animation:none; }
-}
-
-/* ===========================
-   Debug panel
-   =========================== */
-.dbg-panel {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  max-height: 40vh;
-  background: #f8f8f8;
-  border-top: 1px solid var(--border);
-  font-size: .85rem;
-  display: flex;
-  flex-direction: column;
-  z-index: 2000;
-}
-.dbg-head {
-  display: flex;
-  justify-content: space-between;
-  padding: .25rem .5rem;
-  background: #e5e5e5;
-  border-bottom: 1px solid var(--border);
-}
-.dbg-actions { display: flex; gap: .25rem; }
-.dbg-log {
-  flex: 1;
-  margin: 0;
-  padding: .5rem;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  font-family: ui-monospace, monospace;
-}
+.dice .two:before{background:
+  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%)}
+.dice .three:before{background:
+  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%)}
+.dice .four:before{background:
+  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%)}
+.dice .five:before{background:
+  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%)}
+.dice .six:before{background:
+  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 25% 50%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 50%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%)}
+@keyframes dice-wobble{0%{transform:rotate(0) scale(1)}25%{transform:rotate(10deg) scale(1.02)}50%{transform:rotate(-10deg) scale(1.04)}75%{transform:rotate(6deg) scale(1.02)}100%{transform:rotate(0) scale(1)}}
+.dice.rolling .face{animation:dice-wobble .35s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.dice.rolling .face{animation:none}}
