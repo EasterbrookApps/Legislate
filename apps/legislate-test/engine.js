@@ -75,7 +75,7 @@ window.LegislateEngine = (function () {
       return c;
     }
 
-    // Keep your card/effect logic (move/miss_turn/extra_roll/pingpong and a few id-based fallbacks)
+    // Keep your card/effect logic
     function applyCard(card) {
       if (!card) return;
       let applied = false;
@@ -106,7 +106,7 @@ window.LegislateEngine = (function () {
         }
       }
 
-      // Specific card id fallbacks (as in your file)
+      // Specific card id fallbacks
       if (!applied) {
         const id = card.id || '';
         if (id === 'Early04' || id === 'Early09') {
@@ -127,11 +127,11 @@ window.LegislateEngine = (function () {
         if (p.position < 0) p.position = 0;
         if (p.position > endIndex) p.position = endIndex;
         bus.emit('MOVE_STEP', { playerId: p.id, to: p.position });
-        await delay(250); // tune as desired; matches your UI pacing
+        await delay(250);
       }
     }
 
-    // ---- Fixed takeTurn: honours UI-provided dice value, emits events, advances turn
+    // ---- takeTurn: honours UI-provided dice value, emits events, advances turn
     async function takeTurn(stepsOverride) {
       const active = current();
 
@@ -140,14 +140,15 @@ window.LegislateEngine = (function () {
         ? Number(stepsOverride)
         : (1 + Math.floor(rng() * 6));
 
-      // If player is skipping a turn, just decrement and advance to next player
+      // Skip turn?
       if (active.skip && active.skip > 0) {
         active.skip -= 1;
-        bus.emit('TURN_BEGIN', { playerId: nextPlayerIdAfterAdvance(), index: state.turnIndex });
+        state.turnIndex = (state.turnIndex + 1) % state.players.length;
+        bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
         return;
       }
 
-      // Announce the roll (used by debug UI)
+      // Announce the roll
       bus.emit('DICE_ROLL', { playerId: active.id, value: steps });
 
       // Step-by-step movement
@@ -164,22 +165,15 @@ window.LegislateEngine = (function () {
         applyCard(card);
       }
 
-      // Determine if player gets an extra roll (effect)
+      // Next turn (extra roll handled via flag)
       const giveExtra = !!active.extraRoll;
       if (giveExtra) {
-        active.extraRoll = false; // consume the flag
-        // Same player again
+        active.extraRoll = false; // consume
         bus.emit('TURN_BEGIN', { playerId: active.id, index: state.turnIndex });
       } else {
-        // Advance to next player
         state.turnIndex = (state.turnIndex + 1) % state.players.length;
         bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
       }
-    }
-
-    function nextPlayerIdAfterAdvance() {
-      state.turnIndex = (state.turnIndex + 1) % state.players.length;
-      return current().id;
     }
 
     function endTurn(extra) {
@@ -191,8 +185,20 @@ window.LegislateEngine = (function () {
 
     function setPlayerCount(n) {
       const names = state.players.map(p => p.name);
-      initPlayers(n);
-      state.players.forEach((p, i) => { if (names[i]) p.name = names[i]; });
+      // re-init
+      const max = Math.max(2, Math.min(6, n || 4));
+      state.players = [];
+      for (let i = 0; i < max; i++) {
+        state.players.push({
+          id: 'p' + (i + 1),
+          name: names[i] || ('Player ' + (i + 1)),
+          color: ['#d4351c', '#1d70b8', '#00703c', '#6f72af', '#b58840', '#912b88'][i % 6],
+          position: 0,
+          skip: 0,
+          extraRoll: false
+        });
+      }
+      state.turnIndex = 0;
       bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
     }
 
