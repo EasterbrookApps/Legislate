@@ -1,9 +1,0 @@
-{
-  "name": "UK Parliament",
-  "board": {
-    "asset": "board.png",
-    "alt": "UK Parliament board"
-  },
-  "decks": ["early", "commons", "lords", "implementation", "pingpong"],
-  "attribution": "Contains Parliamentary information licensed under the Open Parliament Licence v3.0."
-}
