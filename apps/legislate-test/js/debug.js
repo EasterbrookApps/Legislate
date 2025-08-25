@@ -1,85 +1,85 @@
-(function(){
-  const state = { mounted:false, panel:null, logEl:null, clearBtn:null, dlBtn:null };
+// js/debug.js
+(function () {
+  const qs = new URLSearchParams(location.search);
+  const ENABLED = qs.has('debug') || qs.get('dbg') === '1';
+  if (!ENABLED) return;
+
   const logs = [];
-
-  function ts(){ return new Date().toISOString(); }
-  function line(kind, msg, meta){
-    const e = { t: ts(), kind, msg, meta: meta ?? null };
-    logs.push(e);
-    if (state.logEl){
-      state.logEl.textContent += `[${e.t}] ${kind} ${msg}${meta ? " " + JSON.stringify(meta) : ""}\n`;
-      state.logEl.scrollTop = state.logEl.scrollHeight;
-    }
-    return e;
-  }
-
-  function envSnapshot(){
-    try {
-      return {
-        ua: navigator.userAgent,
-        dpr: window.devicePixelRatio || 1,
-        vw: document.documentElement.clientWidth,
-        vh: document.documentElement.clientHeight,
-        tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'n/a',
-      };
-    } catch(e){ return { error:String(e) }; }
-  }
-
-  function domPresence(){
-    const ids = ['rollBtn','restartBtn','playerCount','boardImg','tokensLayer','turnIndicator','modalRoot','modal-root','diceOverlay','dice','dbg-log'];
-    const res = {};
-    ids.forEach(id => res[id] = !!document.getElementById(id));
-    return res;
-  }
-
-  function download(){
-    try{
-      const blob = new Blob([JSON.stringify(logs, null, 2)], { type:'application/json' });
+  const DBG = window.LegislateDebug = {
+    event(type, payload) {
+      logs.push({ t: new Date().toISOString(), type, payload });
+      if (panelBody) appendLine(type, payload);
+    },
+    log(...args) { console.log('[DBG]', ...args); },
+    error(...args) { console.error('[DBG]', ...args); },
+    download() {
+      const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = `legislate-debug-${Date.now()}.json`;
-      document.body.appendChild(a);
       a.click();
-      setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 100);
-    }catch(e){
-      line('ERR','download failed',{error:String(e)});
+      URL.revokeObjectURL(a.href);
     }
-  }
-
-  function clear(){
-    logs.length = 0;
-    if (state.logEl) state.logEl.textContent = '';
-    line('INFO','[cleared]');
-  }
-
-  function mount(){
-    if (state.mounted) return;
-    state.panel   = document.getElementById('dbg-panel');
-    state.logEl   = document.getElementById('dbg-log');
-    state.dlBtn   = document.getElementById('dbg-download');
-    state.clearBtn= document.getElementById('dbg-clear');
-
-    if (!state.panel || !state.logEl){
-      // panel is optional: keep API no-op but log to console
-      console.warn('[LegislateDebug] panel elements not found; continuing in headless mode');
-    } else {
-      state.dlBtn && state.dlBtn.addEventListener('click', download);
-      state.clearBtn && state.clearBtn.addEventListener('click', clear);
-    }
-    state.mounted = true;
-
-    line('INFO','[debug enabled]');
-    line('ENV',  JSON.stringify(envSnapshot()));
-    line('DOM',  JSON.stringify(domPresence()));
-  }
-
-  window.LegislateDebug = {
-    mount,
-    log:   (msg, meta)=> line('LOG', msg, meta),
-    event: (msg, meta)=> line('EVT', msg, meta),
-    error: (msg, meta)=> line('ERROR', msg, meta),
-    get:   ()=> logs.slice(),
-    clear,
-    download
   };
+
+  // UI -----------------------------------------------------------------
+  let panel, panelBody, toggleBtn;
+
+  function mountUI() {
+    if (panel) return;
+    panel = document.createElement('div');
+    panel.setAttribute('id', 'dbg-panel');
+    panel.style.cssText = `
+      position:fixed;left:0;right:0;bottom:0;z-index:2000;
+      font:12px/1.4 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      color:#0b0c0c;
+    `;
+    panel.innerHTML = `
+      <div id="dbg-bar" style="display:flex;align-items:center;gap:.5rem;padding:.25rem .5rem;background:#f3f2f1;border-top:1px solid #b1b4b6;">
+        <strong style="margin-right:auto">Debug</strong>
+        <button id="dbg-toggle" class="button" style="padding:.2rem .5rem">Collapse</button>
+        <button id="dbg-download" class="button" style="padding:.2rem .5rem">Download</button>
+        <button id="dbg-clear" class="button" style="padding:.2rem .5rem">Clear</button>
+      </div>
+      <pre id="dbg-body" style="margin:0;max-height:28vh;overflow:auto;padding:.5rem;border-top:1px solid #d9d9d9;background:#fff;"></pre>
+    `;
+    document.body.appendChild(panel);
+    panelBody = panel.querySelector('#dbg-body');
+    toggleBtn = panel.querySelector('#dbg-toggle');
+
+    panel.querySelector('#dbg-download').onclick = () => DBG.download();
+    panel.querySelector('#dbg-clear').onclick = () => { logs.length = 0; panelBody.textContent = ''; };
+    toggleBtn.onclick = toggle;
+
+    DBG.event('INFO', '[debug enabled]');
+    DBG.event('ENV', {
+      ua: navigator.userAgent,
+      dpr: window.devicePixelRatio,
+      vw: document.documentElement.clientWidth,
+      vh: document.documentElement.clientHeight,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+    });
+  }
+
+  function toggle() {
+    const collapsed = panelBody.style.display === 'none';
+    panelBody.style.display = collapsed ? 'block' : 'none';
+    toggleBtn.textContent = collapsed ? 'Collapse' : 'Expand';
+  }
+
+  function appendLine(type, payload) {
+    const line = `[${new Date().toISOString()}] ${type} ${typeof payload === 'string' ? payload : JSON.stringify(payload)}\n`;
+    panelBody.textContent += line;
+    panelBody.scrollTop = panelBody.scrollHeight;
+  }
+
+  // mount as soon as possible
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mountUI);
+  } else {
+    mountUI();
+  }
+
+  // convenience helpers for the rest of the app
+  window.DBG = DBG;
 })();
