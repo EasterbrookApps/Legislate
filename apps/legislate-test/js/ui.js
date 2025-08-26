@@ -1,137 +1,101 @@
-// ui.js — DOM rendering, modals, dice overlay, debug hooks
-(function(){
-  const SEL = {
-    boardImg: '#boardImg',
-    tokensLayer: '#tokensLayer',
-    turnIndicator: '#turnIndicator',
-    playerCount: '#playerCount',
-    rollBtn: '#rollBtn',
-    restartBtn: '#restartBtn',
-    modalRoot: '#modalRoot',
-    diceOverlay: '#diceOverlay',
-    dice: '#dice'
-  };
+// ui.js — board renderer, dice, modal, names
+window.LegislateUI = (function(){
+  const $ = (id)=>document.getElementById(id);
 
-  function $(sel){ return document.querySelector(sel); }
-
-  function emitDBG(kind, payload){
-    try{ window.DBG && window.DBG.log && window.DBG.log(kind, payload); }catch(e){}
+  function setTurnIndicator(txt){
+    const el=$('turnIndicator'); if(el) el.textContent = txt;
   }
 
-  function setTurnIndicator(txt){ const el = $(SEL.turnIndicator); if (el) el.textContent = txt; }
+  function renderPlayers(players){
+    const root = $('playersSection'); if(!root) return;
+    root.innerHTML = '';
+    players.forEach(p=>{
+      const pill = document.createElement('span');
+      pill.className = 'player-pill';
+      const dot = document.createElement('span');
+      dot.className = 'player-dot'; dot.style.background = p.color;
+      const name = document.createElement('span');
+      name.className = 'player-name'; name.contentEditable = 'true'; name.textContent = p.name;
+      name.addEventListener('input', ()=>{ p.name = name.textContent.trim() || p.name; });
+      pill.append(dot, name);
+      root.appendChild(pill);
+    });
+  }
 
+  function placeToken(el, xPct, yPct){
+    el.style.left = xPct + '%';
+    el.style.top = yPct + '%';
+  }
+
+  function createBoardRenderer({ board }){
+    const layer = $('tokensLayer');
+    const tokens = new Map();
+    function ensureToken(pid, color){
+      let t = tokens.get(pid);
+      if(!t){
+        t = document.createElement('div');
+        t.className = 'token';
+        t.setAttribute('aria-hidden','true');
+        layer.appendChild(t);
+        tokens.set(pid, t);
+      }
+      t.style.background = color;
+      return t;
+    }
+    function coordsFor(index){
+      const sp = board.spaces.find(s=>s.index===index);
+      if(!sp) return {x:0,y:0};
+      return { x: sp.x, y: sp.y };
+    }
+    function render(players){
+      players.forEach(p=>{
+        const t = ensureToken(p.id, p.color);
+        const {x,y} = coordsFor(p.position||0);
+        placeToken(t, x, y);
+      });
+    }
+    return { render };
+  }
+
+  // --- Modal (promise-based) ---
   function createModal(){
-    const root = $(SEL.modalRoot);
-    const title = root.querySelector('#modalTitle');
-    const body = root.querySelector('#modalBody');
-    const okBtn = root.querySelector('#modalOk');
-    function open({ titleText, bodyHtml, onOk }){
-      title.textContent = titleText || 'Notice';
-      body.innerHTML = bodyHtml || '';
-      root.hidden = false;
-      root.setAttribute('aria-hidden','false');
-      okBtn.onclick = () => {
-        try{ onOk && onOk(); }finally{
-          root.hidden = true;
-          root.setAttribute('aria-hidden','true');
-        }
-      };
+    const root = $('modalRoot');
+    function open({ title, body, actions }){
+      return new Promise((resolve)=>{
+        root.innerHTML = '';
+        const back = document.createElement('div');
+        back.className = 'modal-backdrop';
+        back.style.display = 'flex';
+        const box = document.createElement('div');
+        box.className = 'modal';
+        const h = document.createElement('h3'); h.textContent = title || 'Card';
+        const b = document.createElement('div'); b.innerHTML = body || '';
+        const act = document.createElement('div'); act.className = 'modal-actions';
+        const ok = document.createElement('button'); ok.className='button'; ok.textContent = (actions?.[0]?.label)||'OK';
+        ok.addEventListener('click', ()=>{ back.remove(); resolve(); });
+        act.appendChild(ok);
+        box.append(h,b,act);
+        back.appendChild(box);
+        root.appendChild(back);
+      });
     }
-    function close(){
-      root.hidden = true;
-      root.setAttribute('aria-hidden','true');
-    }
-    return { open, close };
+    return { open };
   }
 
-  async function showDiceRoll(value, durationMs){
-    const overlay = $(SEL.diceOverlay);
-    const dice = $(SEL.dice);
-    overlay.style.display = 'flex';
+  // --- Dice overlay ---
+  let diceTimer = null;
+  function showDiceRoll(value, ms=900){
+    const overlay = $('diceOverlay');
+    const dice = $('dice');
+    if(!overlay || !dice) return;
     overlay.hidden = false;
-    overlay.setAttribute('aria-hidden','false');
-    dice.className = 'dice rolling show-'+value;
-    emitDBG('OVERLAY', describeOverlay(overlay));
-    await new Promise(res => setTimeout(res, durationMs || 800));
-    dice.className = 'dice show-'+value;
-    await new Promise(res => setTimeout(res, 450));
-    overlay.hidden = true;
-    overlay.setAttribute('aria-hidden','true');
-    overlay.style.display = 'none';
-    emitDBG('OVERLAY', describeOverlay(overlay));
+    dice.className = 'dice rolling show-'+(value||1);
+    clearTimeout(diceTimer);
+    diceTimer = setTimeout(()=>{
+      dice.className = 'dice show-'+(value||1);
+      setTimeout(()=>{ overlay.hidden = true; }, 250);
+    }, ms);
   }
 
-  function describeOverlay(overlay){
-    const cs = getComputedStyle(overlay);
-    return {
-      hidden: overlay.hidden,
-      display: cs.display,
-      vis: cs.visibility,
-      z: cs.zIndex || 'auto',
-      pe: cs.pointerEvents || 'auto'
-    };
-  }
-
-  function createBoardRenderer(board, engine){
-    const layer = $(SEL.tokensLayer);
-    const img = $(SEL.boardImg);
-    layer.innerHTML = '';
-
-    // one DOM node per player
-    const nodes = new Map();
-
-    function ensureNode(p){
-      if(nodes.has(p.id)) return nodes.get(p.id);
-      const el = document.createElement('div');
-      el.className = 'player-dot';
-      el.style.background = p.color;
-      el.setAttribute('aria-label', p.name);
-      el.style.position = 'absolute';
-      el.style.width = '1rem'; el.style.height = '1rem';
-      el.style.borderRadius = '50%';
-      el.style.transform = 'translate(-50%, -50%)'; // center on point
-      layer.appendChild(el);
-      nodes.set(p.id, el);
-      return el;
-    }
-
-    function place(p){
-      const space = board.spaces.find(s => s.index === p.position);
-      if (!space) return;
-      const x = (space.x/100) * img.clientWidth;
-      const y = (space.y/100) * img.clientHeight;
-      const el = ensureNode(p);
-      el.style.left = `${x}px`;
-      el.style.top  = `${y}px`;
-    }
-
-    function drawAll(){
-      (engine.state.players||[]).forEach(place);
-      emitDBG('TOKENS', { summary: summarize() });
-    }
-
-    function summarize(){
-      const map = new Map();
-      (engine.state.players||[]).forEach(p => map.set(p.position, (map.get(p.position)||0)+1));
-      return Array.from(map.entries()).map(([index,count]) => ({ index, count }));
-    }
-
-    // wire to engine
-    engine.bus.on('TURN_BEGIN', ({playerId,index}) => {
-      const p = engine.state.players[index];
-      setTurnIndicator(`${p.name}’s turn`);
-      drawAll();
-      emitDBG('TURN_BEGIN', { playerId, index });
-    });
-    engine.bus.on('MOVE_STEP', ev => {
-      const p = engine.state.players.find(p=>p.id===ev.playerId);
-      place(p);
-      emitDBG('MOVE_STEP', ev);
-    });
-    engine.bus.on('LANDED', ev => emitDBG('LANDED', ev));
-
-    return { drawAll, place };
-  }
-
-  window.LegislateUI = { createModal, createBoardRenderer, showDiceRoll, setTurnIndicator };
+  return { setTurnIndicator, createBoardRenderer, renderPlayers, createModal, showDiceRoll };
 })();

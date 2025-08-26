@@ -1,239 +1,118 @@
-// apps/legislate-test/js/engine.js
-// Complete engine: event bus, turns, movement, finite-deck draw, OK-to-apply handshake.
-
-(function () {
-  // --- tiny async helper ---
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  // --- minimal event bus ---
-  function createBus() {
+// engine.js — simple, stable engine with step-by-step movement + deck draw
+window.LegislateEngine = (function(){
+  function delay(ms){ return new Promise(res=>setTimeout(res, ms)); }
+  function createEventBus(){
     const map = new Map();
     return {
-      on(type, fn) {
-        if (!map.has(type)) map.set(type, new Set());
-        map.get(type).add(fn);
-        return () => map.get(type)?.delete(fn);
-      },
-      emit(type, payload) {
-        (map.get(type) || []).forEach(fn => fn(payload));
-        (map.get('*') || []).forEach(fn => fn(type, payload));
-      }
+      on(type, fn){ if(!map.has(type)) map.set(type,new Set()); map.get(type).add(fn); return ()=>map.get(type)?.delete(fn); },
+      emit(type, payload){ (map.get(type)||[]).forEach(fn=>fn(payload)); (map.get('*')||[]).forEach(fn=>fn(type,payload)); }
     };
   }
+  function makeRng(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+  function dice(rng){ return 1 + Math.floor(rng()*6); }
 
-  // --- RNG + die roll ---
-  function makeRng(seed) {
-    let t = (seed >>> 0) || 0xA5F1C9D7;
-    return function () {
-      t += 0x6D2B79F5;
-      let r = Math.imul(t ^ (t >>> 15), 1 | t);
-      r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  function rollDie(rng) { return 1 + Math.floor(rng() * 6); }
+  function createEngine({ board, decks, rng = makeRng(Date.now()), playerCount=4, colors } = {}){
+    const bus = createEventBus();
+    const state = { players: [], turnIndex: 0, decks: {}, lastRoll: 0 };
+    const endIndex = (board.spaces.slice().reverse().find(s=>s.stage==='end') || board.spaces[board.spaces.length-1]).index;
 
-  // --- Engine factory ---
-  function createEngine({ board, decks, playerCount = 4, seed = Date.now(), stepDelay = 160 } = {}) {
-    if (!board || !Array.isArray(board.spaces)) {
-      throw new Error('Engine requires board.spaces[]');
-    }
-
-    const bus = createBus();
-
-    // Mirror emits to debug panel if present (no-op otherwise)
-    if (!bus.__dbgWrapped) {
-      const raw = bus.emit.bind(bus);
-      bus.emit = (t, p) => { try { window.DBG?.log('EVT ' + t, p); } catch { } return raw(t, p); };
-      bus.__dbgWrapped = true;
-    }
-
-    const rng = makeRng(seed);
-
-    // Compute final/end index (prefer a space tagged stage:'end'; otherwise last space index)
-    const endIndex = (() => {
-      const s = board.spaces;
-      const tagged = s.slice().reverse().find(sp => sp && sp.stage === 'end');
-      if (tagged && Number.isFinite(tagged.index)) return tagged.index;
-      const last = s[s.length - 1];
-      return Number.isFinite(last?.index) ? last.index : (s.length - 1);
-    })();
-
-    const state = {
-      players: [],
-      turnIndex: 0,
-      decks: {},     // finite decks (seeded below)
-      endIndex
-    };
-
-    // Seed players
-    const palette = ['#d4351c', '#1d70b8', '#00703c', '#6f72af', '#b58840', '#912b88'];
-    function initPlayers(n) {
-      const c = Math.max(2, Math.min(6, Number(n) || 4));
-      state.players.length = 0;
-      for (let i = 0; i < c; i++) {
-        state.players.push({
-          id: 'p' + (i + 1),
-          name: 'Player ' + (i + 1),
-          color: palette[i % palette.length],
-          position: 0,
-          skip: 0,
-          extra: false
-        });
+    const palette = colors || ['#d4351c','#1d70b8','#00703c','#6f72af','#b58840','#912b88'];
+    function initPlayers(n){
+      const max = Math.max(2, Math.min(6, n||4));
+      state.players = [];
+      for (let i=0; i<max; i++){
+        state.players.push({ id:'p'+(i+1), name:'Player '+(i+1), color:palette[i%palette.length], position:0, skip:0, extraRoll:false });
       }
       state.turnIndex = 0;
     }
     initPlayers(playerCount);
 
-    // --- Seed finite decks from input (no refills, no shuffle here) ---
-    state.decks = {};
-    if (decks && typeof decks === 'object') {
-      for (const [name, cards] of Object.entries(decks)) {
-        state.decks[name] = Array.isArray(cards) ? cards.slice() : [];
-      }
-    }
+    for (const [name, cards] of Object.entries(decks||{})){ state.decks[name] = cards.slice(); }
 
-    // --- helpers ---
-    function current() { return state.players[state.turnIndex]; }
-    function spaceFor(idx) { return board.spaces.find(s => s.index === idx) || null; }
+    function current(){ return state.players[state.turnIndex]; }
+    function spaceFor(i){ return board.spaces.find(s=>s.index===i) || null; }
+    function drawFrom(name){ const d=state.decks[name]; if(!d||!d.length) return null; const c=d.shift(); return c; }
 
-    // Consume a card from a named deck (finite)
-    function drawFrom(deckName) {
-      const d = state.decks[deckName];
-      if (!Array.isArray(d) || d.length === 0) return null;
-      return d.shift();
-    }
-
-    // Apply a card's effect to a player (finite, simple verbs)
-    function applyCardEffect(card, p) {
+    function applyCard(card){
       if (!card) return;
-      const eff = String(card.effect || '').trim();
-      const [kind, raw] = eff.split(':');
-      const n = Number(raw);
-
-      switch (kind) {
-        case 'move': {
-          const steps = Number.isFinite(n) ? n : 0;
-          p.position = Math.max(0, Math.min(state.endIndex, p.position + steps));
-          break;
-        }
-        case 'miss_turn': {
-          p.skip = (p.skip || 0) + 1;
-          break;
-        }
-        case 'extra_roll': {
-          p.extra = true;
-          break;
-        }
-        case 'pingpong': {
-          p.position = state.endIndex;
-          break;
-        }
-        case 'goto': {
-          const dest = Number.isFinite(n) ? n : p.position;
-          p.position = Math.max(0, Math.min(state.endIndex, dest));
-          break;
-        }
-        case 'back': {
-          const steps = Number.isFinite(n) ? Math.abs(n) : 0;
-          p.position = Math.max(0, Math.min(state.endIndex, p.position - steps));
-          break;
-        }
-        default: {
-          // Legacy fallbacks by id (for older card sets)
-          const id = card.id || '';
-          if (id === 'Early04' || id === 'Early09') p.position = 0;
-          if (id === 'Implementation01') p.position = state.endIndex;
+      if (typeof card.effect === 'string' && card.effect.length){
+        const [type, arg] = card.effect.split(':');
+        if (type === 'move'){
+          const n = Number(arg||0);
+          const p=current(); let i=p.position+n;
+          if(i<0)i=0; if(i>endIndex)i=endIndex; p.position=i;
+        } else if (type === 'miss_turn'){
+          current().skip = (current().skip||0) + 1;
+        } else if (type === 'extra_roll'){
+          current().extraRoll = true;
+        } else if (type === 'pingpong'){
+          current().position = endIndex;
         }
       }
     }
 
-    // Move forward step-by-step (1 tile per tick)
-    async function stepMove(count) {
-      const p = current();
-      const steps = Math.abs(Number(count) || 0);
-      for (let i = 1; i <= steps; i++) {
-        p.position = Math.min(state.endIndex, p.position + 1);
-        bus.emit('MOVE_STEP', { playerId: p.id, position: p.position, step: i, total: steps });
-        await sleep(stepDelay);
+    async function moveSteps(n){
+      const p=current(); const step=n>=0?1:-1; const count=Math.abs(n);
+      for (let k=0;k<count;k++){
+        p.position += step;
+        if(p.position<0)p.position=0;
+        if(p.position>endIndex)p.position=endIndex;
+        bus.emit('MOVE_STEP',{playerId:p.id,position:p.position,step:k+1,total:count});
+        await delay(180);
       }
     }
 
-    // Take one turn: roll → move → land → (maybe draw card) → end/next
-    async function takeTurn() {
-      const p = current();
+    async function takeTurn(){
+      const p=current();
+      if (p.skip>0){ p.skip--; endTurn(false); return; }
 
-      // Handle "miss a turn"
-      if (p.skip && p.skip > 0) {
-        p.skip -= 1;
-        bus.emit('TURN_SKIPPED', { playerId: p.id, remaining: p.skip });
-        return endTurn(false);
-      }
+      const roll = dice(rng);
+      state.lastRoll = roll;
+      bus.emit('DICE_ROLL',{ value: roll, playerId: p.id, name: p.name });
+      await moveSteps(roll);
 
-      // Roll
-      const value = rollDie(rng);
-      bus.emit('DICE_ROLL', { value, playerId: p.id, name: p.name });
-
-      // Move
-      await stepMove(value);
-
-      // Land
       const space = spaceFor(p.position);
-      bus.emit('LANDED', { playerId: p.id, position: p.position, space });
+      bus.emit('LANDED',{ playerId:p.id, position:p.position, space });
 
-      // Draw from deck (finite) if present
-      if (space?.deck && space.deck !== 'none') {
-        const name = space.deck; // must match board string exactly (e.g., "early")
-        const deck = state.decks[name];
-        bus.emit('DECK_CHECK', { name, len: Array.isArray(deck) ? deck.length : -1 });
-
-        if (Array.isArray(deck) && deck.length > 0) {
-          const card = drawFrom(name); // consume top card
-          bus.emit('CARD_DRAWN', { deck: name, card });
-
-          // Wait for UI "OK" → CARD_RESOLVE { card }
-          await new Promise(resolve => {
-            const off = bus.on('CARD_RESOLVE', ({ card: ack }) => {
-              if (!ack || !card || ack.id !== card.id) return;
-              off(); resolve();
-            });
+      let card = null;
+      if (space && space.deck && space.deck !== 'none'){
+        const d = state.decks[space.deck] || [];
+        bus.emit('DECK_CHECK',{ name: space.deck, len: d.length });
+        card = drawFrom(space.deck);
+        bus.emit('CARD_DRAWN',{ deck: space.deck, card });
+        if (card){
+          await new Promise(res=>{
+            const off = bus.on('CARD_RESOLVE', ()=>{ off(); res(); });
           });
-
-          // Apply & signal
-          applyCardEffect(card, p);
-          bus.emit('CARD_APPLIED', { card, playerId: p.id, position: p.position });
-        } else {
-          // Finite deck empty; no draw this time (design choice). We still continue the turn.
-          bus.emit('CARD_DRAWN', { deck: name, card: null });
+          applyCard(card);
+          bus.emit('CARD_APPLIED',{ card, playerId:p.id, position:p.position });
         }
       }
-
-      // End / maybe extra
-      const again = !!p.extra;
-      p.extra = false;
-      endTurn(again);
+      endTurn(p.extraRoll);
+      p.extraRoll = false;
     }
 
-    function endTurn(extra) {
-      if (!extra) {
-        state.turnIndex = (state.turnIndex + 1) % state.players.length;
-      }
-      const cur = current();
-      bus.emit('TURN_END', { playerId: cur.id });
-      bus.emit('TURN_BEGIN', { playerId: cur.id, index: state.turnIndex });
+    function endTurn(extra){
+      if(!extra){ state.turnIndex = (state.turnIndex+1) % state.players.length; }
+      bus.emit('TURN_BEGIN',{ playerId: current().id, index: state.turnIndex });
     }
 
-    function setPlayerCount(n) {
-      const prevNames = state.players.map(p => p.name);
+    function setPlayerCount(n){
+      const names = state.players.map(p=>p.name);
       initPlayers(n);
-      state.players.forEach((p, i) => { if (prevNames[i]) p.name = prevNames[i]; });
-      const cur = current();
-      bus.emit('TURN_BEGIN', { playerId: cur.id, index: state.turnIndex });
+      state.players.forEach((p,i)=>{ if(names[i]) p.name = names[i]; });
+      bus.emit('TURN_BEGIN',{ playerId: current().id, index: state.turnIndex });
     }
 
-    return { bus, state, takeTurn, setPlayerCount };
+    function reset(){
+      state.players.forEach(p=>{p.position=0;p.skip=0;p.extraRoll=false;});
+      state.turnIndex=0;
+      for (const [name,cards] of Object.entries(decks||{})){ state.decks[name]=cards.slice(); }
+      bus.emit('TURN_BEGIN',{ playerId: current().id, index: state.turnIndex });
+    }
+
+    return { bus, state, endIndex, takeTurn, setPlayerCount, reset };
   }
 
-  // Public API
-  window.LegislateEngine = { createEngine, makeRng, rollDie };
+  return { createEngine, makeRng };
 })();

@@ -1,51 +1,91 @@
-// app.js — main entry point
-(function(){
-  const { createEngine, makeRng } = window.LegislateEngine;
-  const rng = makeRng(Date.now());
+// app.js — wires Loader → Engine → UI, no roll-cancel, legacy debug
+(function (){
+  const $ = (id)=>document.getElementById(id);
+  function log(kind, payload){ try{ window.LegislateDebug.log(kind, payload);}catch(e){} }
+  const possessive = (name)=>`${(name||'Player').trim()}'s turn`;
 
-  let engine;
+  document.addEventListener('DOMContentLoaded', boot);
 
   async function boot(){
+    log('ENV',{ ua:navigator.userAgent, dpr:devicePixelRatio, vw:innerWidth, vh:innerHeight, tz:Intl.DateTimeFormat().resolvedOptions().timeZone });
+    log('DOM',{ rollBtn:!!$('rollBtn'), restartBtn:!!$('restartBtn'), playerCount:!!$('playerCount'), boardImg:!!$('boardImg'), tokensLayer:!!$('tokensLayer'), turnIndicator:!!$('turnIndicator'), modalRoot:!!$('modalRoot'), diceOverlay:!!$('diceOverlay'), dice:!!$('dice'), 'dbg-log':!!$('dbg-log') });
+
     try {
-      const pack = await window.LegislateLoader.loadPack("uk-parliament");
-      window.LegislateDebug.log("PACK", { spaces: pack.board.spaces.length, decks: Object.keys(pack.decks) });
+      const { board, decks } = await window.LegislateLoader.loadPack('uk-parliament');
+      log('PACK',{ spaces: Array.isArray(board?.spaces)?board.spaces.length:-1, decks: Object.keys(decks||{}) });
 
-      engine = createEngine({ board: pack.board, decks: pack.decks, rng });
-      if (!engine || !engine.bus) throw new Error("Engine did not initialise properly");
+      const engine = window.LegislateEngine.createEngine({ board, decks });
+      if(!engine || !engine.bus){ throw new Error('engine missing'); }
 
-      window.LegislateDebug.log("ENGINE_FACTORY", { hasLE: !!window.LegislateEngine, hasCreate: !!createEngine });
+      const modal = window.LegislateUI.createModal();
+      const boardUI = window.LegislateUI.createBoardRenderer({ board });
 
-      bindUI(engine);
-      engine.bus.emit("TURN_BEGIN", { playerId: engine.state.players[engine.state.turnIndex].id, index: engine.state.turnIndex });
-      window.LegislateDebug.log("BOOT_OK");
-    } catch (err) {
-      console.error("Boot failed", err);
-      window.LegislateDebug.log("BOOT_FAIL", err);
-      document.getElementById("turnIndicator").textContent = "Error loading game.";
+      // initial render
+      window.LegislateUI.renderPlayers(engine.state.players);
+      boardUI.render(engine.state.players);
+      window.LegislateUI.setTurnIndicator(possessive(engine.state.players[0]?.name));
+      log('EVT BOOT_OK');
+
+      // engine → ui
+      engine.bus.on('DICE_ROLL', ({ value })=>{
+        log('DICE_ROLL',{ value });
+        window.LegislateUI.showDiceRoll(value, 900);
+      });
+      engine.bus.on('MOVE_STEP', ({ playerId, position, step, total })=>{
+        const p = engine.state.players.find(x=>x.id===playerId);
+        if (p) p.position = position;
+        boardUI.render(engine.state.players);
+        log('MOVE_STEP',{ playerId, position, step, total });
+      });
+      engine.bus.on('LANDED', ({ playerId, position, space })=>{
+        log('LANDED',{ playerId, position, space });
+      });
+      engine.bus.on('DECK_CHECK', ({ name, len })=>{
+        log('DECK_CHECK',{ name, len });
+      });
+      engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
+        log('CARD_DRAWN',{ deck, card });
+        if (!card) return;
+        await new Promise(r=>setTimeout(r, 200));
+        await modal.open({
+          title: card.title || deck,
+          body: `<p>${(card.text||'').trim()}</p>`,
+          actions: [{ id:'ok', label:'OK' }]
+        });
+        engine.bus.emit('CARD_RESOLVE', { card });
+      });
+      engine.bus.on('CARD_APPLIED', ({ card, playerId, position })=>{
+        log('CARD_APPLIED',{ id:card?.id, effect:card?.effect, playerId, position });
+        boardUI.render(engine.state.players);
+      });
+      engine.bus.on('TURN_BEGIN', ({ index })=>{
+        const cur = engine.state.players[index];
+        window.LegislateUI.setTurnIndicator(possessive(cur?.name));
+        log('TURN_BEGIN',{ playerId: cur?.id, index });
+      });
+      engine.bus.on('TURN_END', ({ playerId })=>{
+        log('TURN_END',{ playerId });
+      });
+
+      // controls
+      $('rollBtn')?.addEventListener('click', ()=>{
+        log('rollBtn click');
+        engine.takeTurn();
+      });
+      $('restartBtn')?.addEventListener('click', ()=>{
+        if (confirm('Restart the game?')) location.reload();
+      });
+      $('playerCount')?.addEventListener('change', (e)=>{
+        const n = Number(e.target.value||4) || 4;
+        engine.setPlayerCount(n);
+        window.LegislateUI.renderPlayers(engine.state.players);
+        boardUI.render(engine.state.players);
+        log('TURN_BEGIN',{ playerId: engine.state.players[engine.state.turnIndex]?.id, index: engine.state.turnIndex });
+      });
+
+    } catch (err){
+      log('BOOT_FAIL', String(err));
+      const ti=$('turnIndicator'); if(ti) ti.textContent='There was a problem starting the game.';
     }
   }
-
-  function bindUI(engine){
-    const rollBtn = document.getElementById("rollBtn");
-    const restartBtn = document.getElementById("restartBtn");
-    const playerCount = document.getElementById("playerCount");
-
-    rollBtn.addEventListener("click", ()=>{
-      window.LegislateDebug.log("rollBtn click");
-      engine.takeTurn();
-    });
-    restartBtn.addEventListener("click", ()=>{
-      engine.reset();
-    });
-    playerCount.addEventListener("change", e=>{
-      engine.setPlayerCount(parseInt(e.target.value,10));
-    });
-
-    engine.bus.on("DICE_ROLL", ev=> window.LegislateUI.showDiceRoll(ev.value));
-    engine.bus.on("MOVE_STEP", ev=> window.LegislateUI.moveToken(ev.playerId, ev.position));
-    engine.bus.on("LANDED", ev=> window.LegislateUI.handleLanded(ev, engine));
-    engine.bus.on("TURN_BEGIN", ev=> window.LegislateUI.setTurnIndicator(ev, engine));
-  }
-
-  boot();
 })();
