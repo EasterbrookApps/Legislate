@@ -62,6 +62,16 @@ window.LegislateUI = (function () {
     }
 
     function render(players){
+      // --- FIX: remove tokens for players that no longer exist
+      const liveIds = new Set(players.map(p=>p.id));
+      for (const [pid, el] of Array.from(tokens.entries())){
+        if (!liveIds.has(pid)){
+          el.remove();
+          tokens.delete(pid);
+        }
+      }
+
+      // Ensure/update tokens for current players
       players.forEach(p=>{
         const t = ensureToken(p.id, p.color);
         const {x,y} = coordsFor(p.position||0);
