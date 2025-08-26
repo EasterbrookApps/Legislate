@@ -1,61 +1,66 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Legislate?!</title>
-  <link rel="stylesheet" href="style.css?v=1.0.1">
+  <link rel="stylesheet" href="./css/style.css?v=LG-1">
 </head>
 <body>
   <header class="page-header">
     <div class="brand">Legislate?!</div>
-    <div id="turnIndicator" class="turn">Loading…</div>
     <div class="controls">
+      <label for="playerCount">Players</label>
+      <select id="playerCount" aria-label="Number of players">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4" selected>4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
       <button id="rollBtn" class="button">Roll</button>
       <button id="restartBtn" class="button button--secondary">Restart</button>
-      <label>Players:
-        <select id="playerCount">
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4" selected>4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
-        </select>
-      </label>
     </div>
+    <div id="turnIndicator" class="turn">Loading…</div>
   </header>
+
   <main class="page-main">
     <div class="board-wrap">
-      <img id="boardImg" src="assets/board.png" alt="Game Board">
-      <div id="tokensLayer" class="tokens-layer"></div>
+      <img id="boardImg" src="./assets/packs/uk-parliament/board.png" alt="UK Parliament board">
+      <div id="tokensLayer" class="tokens-layer" aria-live="polite"></div>
     </div>
-    <section id="players" class="players-section"></section>
-  </main>
-  <footer class="attrib" id="footerAttrib">
-    Based on the Legislate?! board game. For demo purposes only.
-  </footer>
 
-  <!-- Modals and overlays -->
-  <div id="modalRoot" class="modal-backdrop" hidden></div>
-  <div id="diceOverlay" class="dice-overlay" hidden>
-    <div class="dice-wrapper">
-      <div id="dice" class="dice">
-        <div class="face one"></div>
-        <div class="face two"></div>
-        <div class="face three"></div>
-        <div class="face four"></div>
-        <div class="face five"></div>
-        <div class="face six"></div>
+    <section id="playersSection" class="players-section" aria-label="Players"></section>
+
+    <!-- Modal & Dice roots -->
+    <div id="modalRoot"></div>
+    <div id="diceOverlay" class="dice-overlay" hidden>
+      <div class="dice-wrapper">
+        <div id="dice" class="dice">
+          <div class="face one"></div>
+          <div class="face two"></div>
+          <div class="face three"></div>
+          <div class="face four"></div>
+          <div class="face five"></div>
+          <div class="face six"></div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Scripts -->
-  <script src="storage.js?v=1.0.1"></script>
-  <script src="loader.js?v=1.0.1"></script>
-  <script src="engine.js?v=1.0.1"></script>
-  <script src="ui.js?v=1.0.1"></script>
-  <script src="app.js?v=1.0.1"></script>
-  <script src="debug.js?v=1.0.1"></script>
+    <p class="attrib" id="footerAttrib">
+      Built from the “Legislate?!” board game materials by UK Parliament. Attribution per original repository.
+    </p>
+  </main>
+
+  <!-- Always-on legacy debug sink -->
+  <pre id="dbg-log" style="max-height:200px;overflow:auto;background:#111;color:#0f0;font-size:12px;padding:6px;margin:0;white-space:pre-wrap;"></pre>
+
+  <!-- Script order: storage → debug → engine → loader → ui → app -->
+  <script src="./js/storage.js?v=LG-1"></script>
+  <script src="./js/debug.js?v=LG-1"></script>
+  <script src="./js/engine.js?v=LG-1"></script>
+  <script src="./js/loader.js?v=LG-1"></script>
+  <script src="./js/ui.js?v=LG-1"></script>
+  <script src="./js/app.js?v=LG-1"></script>
 </body>
 </html>
