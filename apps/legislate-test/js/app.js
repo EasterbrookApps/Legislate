@@ -81,6 +81,14 @@
         window.LegislateUI.toast(`${(name||'Player').trim()}'s turn is skipped`);
       });
 
+      // NEW: end-game visibility in debug
+      engine.bus.on('GAME_PLACE', ({ playerId, place, name })=>{
+        log('GAME_PLACE', { playerId, place, name });
+      });
+      engine.bus.on('GAME_OVER', ({ podium, totalPlayers })=>{
+        log('GAME_OVER', { podium, totalPlayers });
+      });
+
       engine.bus.on('TURN_BEGIN', ({ index })=>{
         const cur = engine.state.players[index];
         window.LegislateUI.setTurnIndicator(cur?.name);
