@@ -82,19 +82,27 @@ window.LegislateUI = (function(){
     return { open };
   }
 
-  // --- Dice overlay ---
+  // --- Dice overlay returns a Promise so callers can wait for it to finish ---
   let diceTimer = null;
   function showDiceRoll(value, ms=900){
     const overlay = $('diceOverlay');
     const dice = $('dice');
-    if(!overlay || !dice) return;
-    overlay.hidden = false;
-    dice.className = 'dice rolling show-'+(value||1);
-    clearTimeout(diceTimer);
-    diceTimer = setTimeout(()=>{
-      dice.className = 'dice show-'+(value||1);
-      setTimeout(()=>{ overlay.hidden = true; }, 250);
-    }, ms);
+    if(!overlay || !dice) return Promise.resolve(); // nothing to do
+
+    return new Promise((resolve)=>{
+      overlay.hidden = false;
+      dice.className = 'dice rolling show-'+(value||1);
+      clearTimeout(diceTimer);
+      // roll animation
+      diceTimer = setTimeout(()=>{
+        dice.className = 'dice show-'+(value||1);
+        // short settle, then hide
+        setTimeout(()=>{
+          overlay.hidden = true;
+          resolve(); // signal to app.js that dice is fully done
+        }, 250);
+      }, ms);
+    });
   }
 
   return { setTurnIndicator, createBoardRenderer, renderPlayers, createModal, showDiceRoll };
