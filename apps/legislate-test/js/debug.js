@@ -1,64 +1,53 @@
-// apps/legislate-test/js/debug.js
-// Minimal, robust legacy debug logger that writes to <pre id="dbg-log">.
-// Safe to include on all pages. No external deps.
+// debug.js — feature-flagged debug panel with verbosity
+(function(){
+  const enabled = true;
+  const verbose = true;
 
-// Expose a very small API: window.LegislateDebug.log/info/error(kind, payload)
-
-(function () {
-  // Find or create the target <pre id="dbg-log">
-  function ensureSink() {
-    let el = document.getElementById('dbg-log');
-    if (!el) {
-      el = document.createElement('pre');
-      el.id = 'dbg-log';
-      el.style.cssText = 'max-height:200px;overflow:auto;background:#111;color:#0f0;font-size:12px;padding:6px;margin:0;white-space:pre-wrap;';
-      document.body.appendChild(el);
-    }
-    return el;
-  }
-
-  const sink = ensureSink();
-
-  function stringify(v) {
-    if (v == null) return '';
-    if (typeof v === 'string') return v;
-    try { return JSON.stringify(v); } catch { return String(v); }
-  }
-
-  function line(kind, payload) {
+  function log(type, payload){
+    if(!enabled) return;
     const ts = new Date().toISOString();
-    return `[${ts}] ${kind} ${stringify(payload)}`;
+    console.log(`[${ts}] ${type}`, payload||"");
+    if(!panel) return;
+
+    const line = document.createElement("div");
+    line.textContent = `[${ts}] ${type} ${JSON.stringify(payload)}`;
+    panel.appendChild(line);
+    panel.scrollTop = panel.scrollHeight;
   }
 
-  function write(kind, payload) {
-    if (!sink) return;
-    sink.textContent += line(kind, payload) + '\n';
-    sink.scrollTop = sink.scrollHeight;
+  let panel;
+  function setup(){
+    panel = document.createElement("div");
+    panel.id = "dbg-log";
+    panel.style.position = "fixed";
+    panel.style.bottom = 0;
+    panel.style.left = 0;
+    panel.style.right = 0;
+    panel.style.maxHeight = "30vh";
+    panel.style.overflowY = "auto";
+    panel.style.background = "rgba(0,0,0,0.8)";
+    panel.style.color = "#0f0";
+    panel.style.fontSize = "0.75rem";
+    panel.style.fontFamily = "monospace";
+    panel.style.zIndex = 2000;
+    panel.style.padding = "0.25rem";
+
+    const toggle = document.createElement("button");
+    toggle.textContent = "Toggle Debug";
+    toggle.style.position = "fixed";
+    toggle.style.bottom = "30vh";
+    toggle.style.right = "0";
+    toggle.style.zIndex = 2001;
+    toggle.onclick = ()=>{
+      if(panel.style.display==="none"){ panel.style.display="block"; }
+      else { panel.style.display="none"; }
+    };
+
+    document.body.appendChild(toggle);
+    document.body.appendChild(panel);
+    log("INFO","debug enabled");
   }
 
-  // Global error handlers so we see failures even before app boots
-  window.addEventListener('error', (e) => {
-    write('ERROR', (e && e.message) ? e.message : e);
-  });
-
-  window.addEventListener('unhandledrejection', (e) => {
-    write('ERROR', (e && e.reason) ? (e.reason.message || e.reason) : e);
-  });
-
-  // Public API used by app.js
-  window.LegislateDebug = {
-    log: (kind, payload) => write(kind, payload),
-    info: (kind, payload) => write(kind, payload),
-    error: (kind, payload) => write(kind, payload)
-  };
-
-  // Small convenience helpers for quick manual checks
-  window.__dbg = {
-    show() { if (sink) sink.style.display = 'block'; },
-    hide() { if (sink) sink.style.display = 'none'; },
-    clear() { if (sink) sink.textContent = ''; }
-  };
-
-  // Boot line so we know the module is active
-  write('INFO', '[debug enabled]');
+  window.LegislateDebug = { log };
+  window.addEventListener("DOMContentLoaded", setup);
 })();
