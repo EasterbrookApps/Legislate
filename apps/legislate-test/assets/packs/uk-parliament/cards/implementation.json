@@ -2,7 +2,7 @@
   {
     "id": "Implementation01",
     "text": "Everything in your Bill has now come into force – go straight to the finish line.",
-    "effect": ""
+    "effect": "goto:58"
   },
   {
     "id": "Implementation02",
