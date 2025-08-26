@@ -1,26 +1,41 @@
-/* app.js — wire engine events to UI; add end-game toasts/modal with 2P rule */
+/* app.js — wire engine events to UI (cards queued after dice; end-game modal) */
 (function () {
   'use strict';
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const log = (...args) => { try { window.LegislateDebug?.log(...args); } catch {} };
 
-  // Expect these to exist from your current boot:
-  //  - window.LegislateEngine.createEngine(...)
-  //  - window.LegislateLoader.loadPack(...)
-  //  - window.LegislateUI (renderPlayers, showDiceRoll, createModal, setTurnIndicator, etc.)
-
   const rollBtn = $('#rollBtn');
   const restartBtn = $('#restartBtn');
   const playerCountSel = $('#playerCount');
 
-  // Keep a reference to expose engine for other modules (debug, etc.)
   const App = (window.LegislateApp = window.LegislateApp || {});
   let engine = App.engine;
 
+  let diceActive = false;
+  const cardQueue = [];
+
+  function showCardAfterDice(card) {
+    const open = () => {
+      window.LegislateUI?.openCard?.(card, () => {
+        // After user confirms, ask engine to apply effect (defensive)
+        let applied = false;
+        try {
+          if (typeof engine.applyCard === 'function') { engine.applyCard(card); applied = true; }
+          else if (typeof engine.resolveCard === 'function') { engine.resolveCard(card); applied = true; }
+        } catch {}
+        if (!applied) {
+          // Last resort: emit a signal the engine might listen to
+          try { engine.bus.emit('UI_CARD_CONFIRMED', { card }); } catch {}
+        }
+      });
+    };
+    if (diceActive) cardQueue.push(open); else open();
+  }
+
   async function boot() {
     try {
-      const pack = await window.LegislateLoader.loadPack('uk-parliament'); // uses your current loader pathing
+      const pack = await window.LegislateLoader.loadPack('uk-parliament');
       log('PACK', { spaces: pack.board.spaces.length, decks: Object.keys(pack.decks) });
 
       engine = window.LegislateEngine.createEngine({
@@ -30,39 +45,53 @@
       });
       App.engine = engine;
 
-      // --- Core existing wiring (minimal; assumes UI already has these methods) ---
-      // Turn banner
+      // turn banner + immediate render
       engine.bus.on('TURN_BEGIN', ({ playerId, index }) => {
         const p = engine.state.players[index];
         const name = p?.name || `Player ${index + 1}`;
         try { window.LegislateUI?.setTurnIndicator?.(`${name}’s turn`); } catch {}
-        log('TURN_BEGIN', { playerId, index });
-        // Render tokens immediately on turn begin to keep in sync
         try { window.LegislateUI?.renderPlayers?.(engine.state.players, engine.state, pack.board); } catch {}
+        log('TURN_BEGIN', { playerId, index });
       });
 
-      // Movement render
       engine.bus.on('MOVE_STEP', (e) => {
         try { window.LegislateUI?.renderPlayers?.(engine.state.players, engine.state, pack.board); } catch {}
         log('MOVE_STEP', e);
       });
 
-      // Dice overlay (already implemented elsewhere)
+      // dice overlay & gating
       engine.bus.on('DICE_ROLL', ({ value, playerId, name }) => {
+        diceActive = true;
         try { window.LegislateUI?.showDiceRoll?.(value); } catch {}
         log('DICE_ROLL', { value, playerId, name });
       });
+      // listen to UI's DICE_DONE log by polling a tiny timeout; or simply clear after 1.4s
+      // we prefer listening to the debug hook to be precise:
+      const origLog = log;
+      window.LegislateDebug = window.LegislateDebug || { log: () => {} };
+      const prevDbg = window.LegislateDebug.log;
+      window.LegislateDebug.log = function (type, payload) {
+        try { prevDbg?.call(window.LegislateDebug, type, payload); } catch {}
+        if (type === 'DICE_DONE') {
+          diceActive = false;
+          // flush queue
+          while (cardQueue.length) cardQueue.shift()();
+        }
+        try { origLog(type, payload); } catch {}
+      };
 
       engine.bus.on('LANDED', (e) => log('LANDED', e));
       engine.bus.on('DECK_CHECK', (e) => log('DECK_CHECK', e));
+
+      // === cards ===
       engine.bus.on('CARD_DRAWN', ({ deck, card }) => {
         log('CARD_DRAWN', { deck, card });
-        // Defer UI open to your existing card modal flow in UI; nothing to do here.
+        showCardAfterDice(card);
       });
       engine.bus.on('CARD_APPLIED', (e) => log('CARD_APPLIED', e));
-      engine.bus.on('TURN_END', (e) => log('TURN_END', e));
+
+      // skips / extra roll toasts (unchanged)
       engine.bus.on('TURN_SKIPPED', ({ playerId, remaining }) => {
-        // UI toast for skip already exists in your build; keep as-is
         try { window.LegislateUI?.toast?.('⏭️ Turn skipped'); } catch {}
         log('TURN_SKIPPED', { playerId, remaining });
       });
@@ -71,9 +100,7 @@
         log('EFFECT_EXTRA_ROLL', { playerId });
       });
 
-      // --- NEW: end-game UI wiring ---
-
-      // 1) GAME_PLACE → toast only when total players >= 3 (suppress for 2-player games)
+      // === end-game UI (unchanged from previous) ===
       engine.bus.on('GAME_PLACE', ({ playerId, place }) => {
         const total = engine.state.players.length;
         if (total >= 3) {
@@ -85,57 +112,44 @@
         log('GAME_PLACE', { playerId, place });
       });
 
-      // 2) GAME_OVER → open modal, disable roll while open; “Play again” does a hard reset.
       engine.bus.on('GAME_OVER', ({ podium, totalPlayers }) => {
         log('GAME_OVER', { podium, totalPlayers });
-
-        // Disable roll while modal visible
         const disableRoll = (on) => {
           if (!rollBtn) return;
           rollBtn.disabled = !!on;
           rollBtn.setAttribute('aria-disabled', on ? 'true' : 'false');
         };
         disableRoll(true);
-
         window.LegislateUI?.openGameOver?.(
           podium,
           totalPlayers,
-          // onPlayAgain:
           () => {
             try { engine.reset(); } catch {}
-            // After reset, update tokens & banner
             try { window.LegislateUI?.renderPlayers?.(engine.state.players, engine.state, pack.board); } catch {}
-            try {
-              const p0 = engine.state.players[engine.state.turnIndex];
-              window.LegislateUI?.setTurnIndicator?.(`${p0?.name || 'Player 1'}’s turn`);
-            } catch {}
+            const p0 = engine.state.players[engine.state.turnIndex];
+            try { window.LegislateUI?.setTurnIndicator?.(`${p0?.name || 'Player 1'}’s turn`); } catch {}
           },
-          // onClose:
-          () => {
-            disableRoll(false);
-          }
+          () => { disableRoll(false); }
         );
       });
 
-      // Initial render/banner
+      // initial banner/tokens
       const p0 = engine.state.players[engine.state.turnIndex];
       try { window.LegislateUI?.setTurnIndicator?.(`${p0?.name || 'Player 1'}’s turn`); } catch {}
       try { window.LegislateUI?.renderPlayers?.(engine.state.players, engine.state, pack.board); } catch {}
       log('EVT BOOT_OK', '');
 
-      // --- Controls ---
+      // controls
       rollBtn?.addEventListener('click', () => {
         log('LOG', 'rollBtn click');
         engine.takeTurn();
       });
-
       restartBtn?.addEventListener('click', () => {
         try { engine.reset(); } catch {}
         try { window.LegislateUI?.renderPlayers?.(engine.state.players, engine.state, pack.board); } catch {}
         const pX = engine.state.players[engine.state.turnIndex];
         try { window.LegislateUI?.setTurnIndicator?.(`${pX?.name || 'Player 1'}’s turn`); } catch {}
       });
-
       playerCountSel?.addEventListener('change', (e) => {
         const n = Number(e.target.value || 4);
         try { engine.setPlayerCount(n); } catch {}
@@ -146,7 +160,6 @@
 
     } catch (err) {
       log('BOOT_FAIL', String(err));
-      // Minimal visible banner if your debug panel is hidden
       const banner = document.createElement('div');
       banner.style.position = 'fixed';
       banner.style.insetInline = '0';
@@ -161,6 +174,5 @@
     }
   }
 
-  // Boot now
   boot();
 })();
