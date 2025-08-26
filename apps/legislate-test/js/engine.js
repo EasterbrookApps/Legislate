@@ -1,4 +1,4 @@
-// engine.js — core engine with TURN_SKIPPED + EFFECT_EXTRA_ROLL emits, and card apply-after-OK
+// engine.js — core engine: movement, cards, skip/extra-roll, and end-game flow
 window.LegislateEngine = (function () {
   function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
 
@@ -18,7 +18,7 @@ window.LegislateEngine = (function () {
   }
 
   function makeRng(seed) {
-    let t = (seed >>> 0) || Date.now() >>> 0;
+    let t = (seed >>> 0) || (Date.now() >>> 0);
     return function () {
       t += 0x6D2B79F5;
       let r = Math.imul(t ^ (t >>> 15), 1 | t);
@@ -29,8 +29,18 @@ window.LegislateEngine = (function () {
 
   function createEngine({ board, decks, rng = makeRng(Date.now()), playerCount = 4, colors } = {}) {
     const bus = createEventBus();
-    const state = { players: [], turnIndex: 0, decks: {} };
-    const endIndex = (board.spaces.slice().reverse().find(s => s.stage === 'end') || board.spaces[board.spaces.length - 1]).index;
+
+    const state = {
+      players: [],
+      turnIndex: 0,
+      decks: {},
+      finishedOrder: [], // array of playerIds in finish order
+      gameOver: false
+    };
+
+    const endIndex =
+      (board.spaces.slice().reverse().find(s => s.stage === 'end') ||
+        board.spaces[board.spaces.length - 1]).index;
 
     const palette = colors || ['#d4351c','#1d70b8','#00703c','#6f72af','#b58840','#912b88'];
 
@@ -38,13 +48,24 @@ window.LegislateEngine = (function () {
       const max = Math.max(2, Math.min(6, n || 4));
       state.players = [];
       for (let i = 0; i < max; i++) {
-        state.players.push({ id:'p'+(i+1), name:'Player '+(i+1), color:palette[i%palette.length], position:0, skip:0, extraRoll:false });
+        state.players.push({
+          id: 'p' + (i + 1),
+          name: 'Player ' + (i + 1),
+          color: palette[i % palette.length],
+          position: 0,
+          skip: 0,
+          extraRoll: false,
+          finished: false,
+          place: null
+        });
       }
       state.turnIndex = 0;
+      state.finishedOrder = [];
+      state.gameOver = false;
     }
     initPlayers(playerCount);
 
-    // shallow shuffle copy per deck
+    // shuffle-copy per deck
     function shuffle(a){ const arr=a.slice(); for(let i=arr.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } return arr; }
     for (const [name, cards] of Object.entries(decks||{})) state.decks[name] = shuffle(cards);
 
@@ -88,8 +109,67 @@ window.LegislateEngine = (function () {
       }
     }
 
+    // --- End-game helpers (minimal)
+    function finishThreshold() {
+      const total = state.players.length;
+      if (total <= 2) return 1;  // 2 players → 1 finisher
+      if (total === 3) return 2; // 3 players → 2 finishers
+      return 3;                  // 4+ players → 3 finishers
+    }
+
+    function maybeMarkFinished(p){
+      if (p.finished) return false;
+      const sp = spaceFor(p.position);
+      if (sp && sp.stage === 'end'){
+        p.finished = true;
+        p.place = state.finishedOrder.length + 1;
+        state.finishedOrder.push(p.id);
+        bus.emit('GAME_PLACE', { playerId: p.id, place: p.place, name: p.name });
+        return true;
+      }
+      return false;
+    }
+
+    function maybeGameOver(){
+      if (state.gameOver) return true;
+      const threshold = finishThreshold();
+      const finishers = state.finishedOrder.length;
+      const allFinished = state.players.every(pp => pp.finished);
+      if (finishers >= threshold || allFinished){
+        state.gameOver = true;
+        // build podium up to threshold (or available finishers)
+        const podium = state.finishedOrder.slice(0, Math.max(threshold, finishers)).map((pid, idx)=>{
+          const pl = state.players.find(pp=>pp.id===pid);
+          return { playerId: pid, name: pl?.name || ('Player ' + (idx+1)), place: (idx+1) };
+        });
+        bus.emit('GAME_OVER', { podium, totalPlayers: state.players.length });
+        return true;
+      }
+      return false;
+    }
+
+    function advanceToNextActive(startIndex){
+      // move to next non-finished player; if none, remain (engine will be in gameOver anyway)
+      let idx = startIndex;
+      const total = state.players.length;
+      for (let i=0;i<total;i++){
+        const p = state.players[idx];
+        if (!p.finished) return idx;
+        idx = (idx + 1) % total;
+      }
+      return startIndex;
+    }
+
     async function takeTurn(){
+      if (state.gameOver) return; // no-op if game ended
+
+      // current player (skip finished players just in case)
+      state.turnIndex = advanceToNextActive(state.turnIndex);
       const p = current();
+      if (p.finished){ // guard
+        if (maybeGameOver()) return;
+        return;
+      }
 
       // Handle actual skip at the start of this player's turn
       if (p.skip>0){
@@ -103,36 +183,56 @@ window.LegislateEngine = (function () {
       bus.emit('DICE_ROLL', { value: roll, playerId: p.id, name: p.name });
       await moveSteps(roll);
 
-      const space = spaceFor(p.position);
-      bus.emit('LANDED', { playerId: p.id, position: p.position, space });
+      // Landed
+      bus.emit('LANDED', { playerId: p.id, position: p.position, space: spaceFor(p.position) });
 
-      // Card draw & apply *after* UI acknowledges
+      // Finish check on landing
+      const justFinishedOnMove = maybeMarkFinished(p);
+      if (justFinishedOnMove && maybeGameOver()) {
+        return;
+      }
+
+      // Card draw & apply after UI OK
+      const space = spaceFor(p.position);
       if (space && space.deck && space.deck !== 'none'){
         const d = state.decks[space.deck] || [];
         bus.emit('DECK_CHECK', { name: space.deck, len: d.length });
         const card = drawFrom(space.deck);
         if (card){
           bus.emit('CARD_DRAWN', { deck: space.deck, card });
-          // Wait for UI to show card and user to OK
+          // wait for UI to show card and user to OK
           await new Promise(res => {
             const off = bus.on('CARD_RESOLVE', () => { off(); res(); });
           });
           applyCard(card);
           bus.emit('CARD_APPLIED', { card, playerId:p.id, position:p.position });
+
+          // Finish check after card effects
+          const justFinishedOnCard = maybeMarkFinished(p);
+          if (justFinishedOnCard && maybeGameOver()) {
+            return;
+          }
+
+          // Extra roll?
+          if (p.extraRoll){
+            bus.emit('EFFECT_EXTRA_ROLL', { playerId: p.id, name: p.name });
+            p.extraRoll = false; // consume flag
+            // same player goes again unless game over
+            if (!state.gameOver) {
+              bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
+            }
+            return;
+          }
         }
       }
 
-      // Announce extra roll if granted, just before re-beginning same player's turn
-      const extra = !!p.extraRoll;
-      if (extra) bus.emit('EFFECT_EXTRA_ROLL', { playerId: p.id, name: p.name });
-
-      endTurn(extra);
-      p.extraRoll = false; // clear flag after decision
-    }
-
-    function endTurn(extra){
-      if (!extra) state.turnIndex = (state.turnIndex+1) % state.players.length;
-      bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
+      // Normal turn end
+      bus.emit('TURN_END', { playerId: p.id });
+      // advance to next active player
+      state.turnIndex = advanceToNextActive((state.turnIndex + 1) % state.players.length);
+      if (!state.gameOver){
+        bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
+      }
     }
 
     function setPlayerCount(n){
@@ -143,8 +243,10 @@ window.LegislateEngine = (function () {
     }
 
     function reset(){
-      state.players.forEach(p=>{ p.position=0; p.skip=0; p.extraRoll=false; });
+      state.players.forEach(p=>{ p.position=0; p.skip=0; p.extraRoll=false; p.finished=false; p.place=null; });
       state.turnIndex=0;
+      state.finishedOrder = [];
+      state.gameOver = false;
       for (const [name,cards] of Object.entries(decks||{})) state.decks[name]=cards.slice();
       bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
     }
