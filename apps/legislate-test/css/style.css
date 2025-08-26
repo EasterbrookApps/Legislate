@@ -35,40 +35,63 @@ body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helve
 .dice{position:relative;width:100%;height:100%;display:grid;place-items:center}
 .dice .face{display:none;position:absolute;inset:0;margin:auto;border-radius:3%;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.35);width:100%;height:100%}
 .dice.show-1 .one,.dice.show-2 .two,.dice.show-3 .three,.dice.show-4 .four,.dice.show-5 .five,.dice.show-6 .six{display:block}
-.dice .face:before{content:"";position:absolute;inset:0;
+/* Reset default so faces start empty */
+.dice .face:before {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:none;
+}
+
+/* One pip (centre) */
+.dice .one:before {
+  background:
+    radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%);
+}
+
+/* Two pips (diagonal) */
+.dice .two:before {
+  background:
+    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
+}
+
+/* Three pips (diagonal + centre) */
+.dice .three:before {
   background:
     radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
     radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 25%, transparent 0 4%, transparent 5%),
-    radial-gradient(circle at 25% 75%, transparent 0 4%, transparent 5%),
-    radial-gradient(circle at 25% 50%, transparent 0 4%, transparent 5%),
-    radial-gradient(circle at 75% 50%, transparent 0 4%, transparent 5%);
+    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
 }
-.dice .two:before{background:
-  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);}
-.dice .three:before{background:
-  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);}
-.dice .four:before{background:
-  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);}
-.dice .five:before{background:
-  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);}
-.dice .six:before{background:
-  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 25% 50%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 50%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
-  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);}
+
+/* Four pips (corners) */
+.dice .four:before {
+  background:
+    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
+}
+
+/* Five pips (four corners + centre) */
+.dice .five:before {
+  background:
+    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
+}
+
+/* Six pips (three each side) */
+.dice .six:before {
+  background:
+    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 25% 50%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 25% 75%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 50%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%);
+}
 @keyframes dice-wobble { 0%{transform:rotate(0deg) scale(1);} 25%{transform:rotate(10deg) scale(1.02);} 50%{transform:rotate(-10deg) scale(1.04);} 75%{transform:rotate(6deg) scale(1.02);} 100%{transform:rotate(0deg) scale(1);} }
 .dice.rolling .face{animation:dice-wobble .35s ease-in-out infinite}
