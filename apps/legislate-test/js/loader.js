@@ -1,6 +1,6 @@
 // loader.js — pack loader (UK Parliament)
 window.LegislateLoader = (function(){
-  const BASE = './content/uk-parliament';
+  const BASE = './content/packs/uk-parliament/cards';
   const DECKS = ['commons','early','implementation','lords','pingpong'];
 
   async function fetchJSON(path){
