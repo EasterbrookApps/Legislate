@@ -34,7 +34,7 @@ window.LegislateEngine = (function () {
       players: [],
       turnIndex: 0,
       decks: {},
-      finishedOrder: [], // array of playerIds in finish order
+      finishedOrder: [], // playerIds in finish order
       gameOver: false
     };
 
@@ -76,26 +76,51 @@ window.LegislateEngine = (function () {
     function applyCard(card){
       if (!card) return;
       let applied=false;
-      if (typeof card.effect === 'string' && card.effect.length){
-        const [type,arg] = card.effect.split(':');
-        if (type==='move'){
-          const n = Number(arg||0);
-          const p=current(); let i=p.position+n;
-          if(i<0)i=0; if(i>endIndex)i=endIndex;
-          p.position=i; applied=true;
-        } else if (type==='miss_turn'){
-          current().skip = (current().skip||0) + 1; applied=true;
-        } else if (type==='extra_roll'){
-          current().extraRoll = true; applied=true;
-        } else if (type==='pingpong'){
-          current().position = endIndex; applied=true;
+
+      if (typeof card.effect === 'string') {
+        const eff = card.effect.trim();
+        if (eff) {
+          const [type, arg] = eff.split(':');
+
+          if (type === 'move') {
+            const n = Number(arg || 0);
+            const p = current();
+            let i = p.position + n;
+            // legacy behaviour for move: clamp within 0..endIndex
+            if (i < 0) i = 0;
+            if (i > endIndex) i = endIndex;
+            p.position = i;
+            applied = true;
+
+          } else if (type === 'miss_turn') {
+            current().skip = (current().skip || 0) + 1;
+            applied = true;
+
+          } else if (type === 'extra_roll') {
+            current().extraRoll = true;
+            applied = true;
+
+          } else if (type === 'pingpong') {
+            // kept for compatibility (acts like goto:endIndex)
+            current().position = endIndex;
+            applied = true;
+
+          } else if (type === 'goto') {
+            // NEW: goto:<index> — absolute index, no clamping (per product decision)
+            const idx = Number(arg);
+            if (Number.isFinite(idx)) {
+              current().position = idx;
+              applied = true;
+              // Optional visibility for designers if the current board has no such index
+              if (!spaceFor(idx)) {
+                bus.emit('WARN_GOTO_INVALID', { target: idx });
+              }
+            }
+          }
         }
       }
-      if (!applied){
-        const id = card.id || '';
-        if (id==='Early04' || id==='Early09'){ current().position=0; }
-        else if (id==='Implementation01'){ current().position=endIndex; }
-      }
+
+      // No ID-based fallbacks — behaviour must be explicit in card JSON now.
     }
 
     async function moveSteps(n){
@@ -109,7 +134,7 @@ window.LegislateEngine = (function () {
       }
     }
 
-    // --- End-game helpers (minimal)
+    // --- End-game helpers
     function finishThreshold() {
       const total = state.players.length;
       if (total <= 2) return 1;  // 2 players → 1 finisher
@@ -137,11 +162,12 @@ window.LegislateEngine = (function () {
       const allFinished = state.players.every(pp => pp.finished);
       if (finishers >= threshold || allFinished){
         state.gameOver = true;
-        // build podium up to threshold (or available finishers)
-        const podium = state.finishedOrder.slice(0, Math.max(threshold, finishers)).map((pid, idx)=>{
-          const pl = state.players.find(pp=>pp.id===pid);
-          return { playerId: pid, name: pl?.name || ('Player ' + (idx+1)), place: (idx+1) };
-        });
+        const podium = state.finishedOrder
+          .slice(0, Math.max(threshold, finishers))
+          .map((pid, idx)=>{
+            const pl = state.players.find(pp=>pp.id===pid);
+            return { playerId: pid, name: pl?.name || ('Player ' + (idx+1)), place: (idx+1) };
+          });
         bus.emit('GAME_OVER', { podium, totalPlayers: state.players.length });
         return true;
       }
@@ -149,7 +175,6 @@ window.LegislateEngine = (function () {
     }
 
     function advanceToNextActive(startIndex){
-      // move to next non-finished player; if none, remain (engine will be in gameOver anyway)
       let idx = startIndex;
       const total = state.players.length;
       for (let i=0;i<total;i++){
@@ -161,17 +186,15 @@ window.LegislateEngine = (function () {
     }
 
     async function takeTurn(){
-      if (state.gameOver) return; // no-op if game ended
+      if (state.gameOver) return;
 
-      // current player (skip finished players just in case)
       state.turnIndex = advanceToNextActive(state.turnIndex);
       const p = current();
-      if (p.finished){ // guard
+      if (p.finished){
         if (maybeGameOver()) return;
         return;
       }
 
-      // Handle actual skip at the start of this player's turn
       if (p.skip>0){
         p.skip--;
         bus.emit('TURN_SKIPPED', { playerId: p.id, name: p.name, remaining: p.skip });
@@ -183,16 +206,11 @@ window.LegislateEngine = (function () {
       bus.emit('DICE_ROLL', { value: roll, playerId: p.id, name: p.name });
       await moveSteps(roll);
 
-      // Landed
       bus.emit('LANDED', { playerId: p.id, position: p.position, space: spaceFor(p.position) });
 
-      // Finish check on landing
       const justFinishedOnMove = maybeMarkFinished(p);
-      if (justFinishedOnMove && maybeGameOver()) {
-        return;
-      }
+      if (justFinishedOnMove && maybeGameOver()) return;
 
-      // Card draw & apply after UI OK
       const space = spaceFor(p.position);
       if (space && space.deck && space.deck !== 'none'){
         const d = state.decks[space.deck] || [];
@@ -200,24 +218,18 @@ window.LegislateEngine = (function () {
         const card = drawFrom(space.deck);
         if (card){
           bus.emit('CARD_DRAWN', { deck: space.deck, card });
-          // wait for UI to show card and user to OK
           await new Promise(res => {
             const off = bus.on('CARD_RESOLVE', () => { off(); res(); });
           });
           applyCard(card);
           bus.emit('CARD_APPLIED', { card, playerId:p.id, position:p.position });
 
-          // Finish check after card effects
           const justFinishedOnCard = maybeMarkFinished(p);
-          if (justFinishedOnCard && maybeGameOver()) {
-            return;
-          }
+          if (justFinishedOnCard && maybeGameOver()) return;
 
-          // Extra roll?
           if (p.extraRoll){
             bus.emit('EFFECT_EXTRA_ROLL', { playerId: p.id, name: p.name });
-            p.extraRoll = false; // consume flag
-            // same player goes again unless game over
+            p.extraRoll = false;
             if (!state.gameOver) {
               bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
             }
@@ -226,9 +238,7 @@ window.LegislateEngine = (function () {
         }
       }
 
-      // Normal turn end
       bus.emit('TURN_END', { playerId: p.id });
-      // advance to next active player
       state.turnIndex = advanceToNextActive((state.turnIndex + 1) % state.players.length);
       if (!state.gameOver){
         bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
