@@ -1,134 +1,182 @@
-// app.js — wire loader, engine, UI and debug
-(function(){
-  // --- Debug bootstrap (panel + API) ---
-  const qs = new URLSearchParams(location.search);
-  const DEBUG = Number(qs.get('debug') || '0'); // 0=off,1=basic,2=verbose
-  (function initDebug(){
-    if(!DEBUG){ window.DBG = { log(){}, info(){}, error(){}, panel:null }; return; }
-    const logs = [];
-    function ts(){ return new Date().toISOString(); }
-    const panel = document.createElement('div');
-    panel.id = 'dbg-panel';
-    Object.assign(panel.style, { position:'fixed', left:'1rem', bottom:'1rem', right:'1rem', maxHeight:'40vh', overflow:'auto', background:'#fff', border:'1px solid #b1b4b6', borderRadius:'.5rem', boxShadow:'0 6px 18px rgba(0,0,0,.15)', zIndex:'2000' });
-    panel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;padding:.5rem 1rem;background:#f3f2f1;border-bottom:1px solid #b1b4b6">
-      <strong>Debug</strong>
-      <div>
-        <button id="dbg-download" class="button">Download</button>
-        <button id="dbg-clear" class="button">Clear</button>
-        <button id="dbg-toggle" class="button">Collapse</button>
-      </div>
-    </div>
-    <pre id="dbg-log" style="margin:0;padding:.75rem 1rem;white-space:pre-wrap"></pre>`;
-    document.addEventListener('DOMContentLoaded', ()=> document.body.appendChild(panel));
-    const pre = panel.querySelector ? panel.querySelector('#dbg-log') : null;
-    function push(kind, payload){
-      const line = `[${ts()}] ${kind} ${payload?JSON.stringify(payload):''}`;
-      logs.push(line);
-      if (pre){ pre.textContent = logs.join('\n'); pre.scrollTop = pre.scrollHeight; }
-      console[kind.startsWith('ERROR')?'error':'log'](line);
-    }
-    function dump(){ return logs.slice(); }
-    function clear(){ logs.length = 0; if(pre) pre.textContent=''; }
-    function download(){
-      const blob = new Blob([logs.join('\n')], { type:'text/plain' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = 'legislate-debug.log'; a.click();
-      setTimeout(()=>URL.revokeObjectURL(a.href), 500);
-    }
-    panel.addEventListener('click', (e)=>{
-      if (e.target.id === 'dbg-download') download();
-      if (e.target.id === 'dbg-clear') clear();
-      if (e.target.id === 'dbg-toggle'){
-        const pre = panel.querySelector('#dbg-log');
-        if (pre.style.display === 'none'){ pre.style.display = 'block'; e.target.textContent = 'Collapse'; }
-        else { pre.style.display = 'none'; e.target.textContent = 'Expand'; }
-      }
-    });
-    window.DBG = {
-      log(kind, payload){
-        if (DEBUG >= 2) push(kind, payload);
-        else if (DEBUG >= 1 && (kind.startsWith('INFO') || kind.startsWith('ERROR') || kind.startsWith('EVT'))) push(kind, payload);
-      },
-      info(msg, extra){ push('INFO ' + msg, extra); },
-      error(msg, extra){ push('ERROR ' + msg, extra); },
-      dump, clear, panel
-    };
-    window.DBG.info('[debug enabled]');
-  })();
+// apps/legislate-test/js/app.js
+// Wires Loader → Engine → UI, and handles dice + card modal handshake.
+// Compatible with legacy debug.js (load debug BEFORE this file) or the newer DBG logger.
 
+(function () {
+  // ---------- Logging helpers (work with either debug.js or DBG panel) ----------
+  const Logger = {
+    log(kind, payload) {
+      try { window.DBG && window.DBG.log && window.DBG.log(kind, payload); } catch (_) {}
+      try { window.LegislateDebug && window.LegislateDebug.log && window.LegislateDebug.log(kind, payload); } catch (_) {}
+    },
+    info(msg, extra) {
+      try { window.DBG && window.DBG.info && window.DBG.info(msg, extra); } catch (_) {}
+      try { window.LegislateDebug && window.LegislateDebug.info && window.LegislateDebug.info(msg, extra); } catch (_) {}
+    },
+    error(msg, extra) {
+      try { window.DBG && window.DBG.error && window.DBG.error(msg, extra); } catch (_) {}
+      try { window.LegislateDebug && window.LegislateDebug.error && window.LegislateDebug.error(msg, extra); } catch (_) {}
+      console.error('[Legislate]', msg, extra || '');
+    }
+  };
+
+  // ---------- DOM helpers ----------
+  const $ = (id) => document.getElementById(id);
+
+  // Avoid rolling while typing in an input/textarea
+  function isTyping() {
+    const a = document.activeElement;
+    return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+  }
+
+  // Possessive banner without stray spaces
+  function turnText(name) {
+    const n = (name || 'Player').trim();
+    return `${n}'s turn`;
+  }
+
+  // ---------- Boot ----------
   document.addEventListener('DOMContentLoaded', boot);
 
-  async function boot(){
-    try{
-      // DOM
-      const rollBtn = document.getElementById('rollBtn');
-      const restartBtn = document.getElementById('restartBtn');
-      const playerCountSel = document.getElementById('playerCount');
-      const boardImg = document.getElementById('boardImg');
-      const modalRoot = document.getElementById('modalRoot');
-      const diceOverlay = document.getElementById('diceOverlay');
-      const dice = document.getElementById('dice');
+  async function boot() {
+    // Snapshot env + DOM presence for debugging
+    Logger.log('ENV', {
+      ua: navigator.userAgent,
+      dpr: window.devicePixelRatio,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+    });
+    Logger.log('DOM', {
+      rollBtn: !!$('rollBtn'),
+      restartBtn: !!$('restartBtn'),
+      playerCount: !!$('playerCount'),
+      boardImg: !!$('boardImg'),
+      tokensLayer: !!$('tokensLayer'),
+      turnIndicator: !!$('turnIndicator'),
+      modalRoot: !!$('modalRoot'),
+      'modal-root': !!$('modal-root'),
+      diceOverlay: !!$('diceOverlay'),
+      dice: !!$('dice'),
+      'dbg-log': !!$('dbg-log')
+    });
 
-      window.DBG.log('ENV', {
-        ua: navigator.userAgent, dpr: window.devicePixelRatio, vw: window.innerWidth, vh: window.innerHeight, tz: Intl.DateTimeFormat().resolvedOptions().timeZone
+    const errorBanner = $('error-banner');
+
+    try {
+      // ---------- Load pack ----------
+      const { board, decks } = await window.LegislateLoader.loadPack('uk-parliament');
+
+      // ---------- Create Engine + UI ----------
+      const playerCountSel = $('playerCount');
+      const startCount = Number(playerCountSel?.value || 4) || 4;
+
+      const engine = window.LegislateEngine.createEngine({
+        board,
+        decks,
+        playerCount: startCount
       });
-      window.DBG.log('DOM', {
-        rollBtn: !!rollBtn, restartBtn: !!restartBtn, playerCount: !!playerCountSel, boardImg: !!boardImg, tokensLayer: !!document.getElementById('tokensLayer'),
-        turnIndicator: !!document.getElementById('turnIndicator'), modalRoot: !!modalRoot, 'modal-root': !!document.getElementById('modal-root'),
-        diceOverlay: !!diceOverlay, dice: !!dice, 'dbg-log': !!document.getElementById('dbg-log')
-      });
 
-      // Load assets
-      const { meta, board, decks } = await window.LegislateLoader.loadPack('uk-parliament');
-      window.DBG.log('EVT PACK', { spaces: board.spaces.length, decks: Object.keys(decks) });
-
-      // Wire UI + Engine
-      const engine = window.LegislateEngine.createEngine({ board, decks, playerCount: Number(playerCountSel.value||4) });
       const modal = window.LegislateUI.createModal();
-      const renderer = window.LegislateUI.createBoardRenderer(board, engine);
+      const boardUI = window.LegislateUI.createBoardRenderer({ board });
 
-      // Event mirroring to debug
-      engine.bus.on('*', (type, payload)=> window.DBG.log('EVT '+type, payload));
+      // Initial render
+      const first = engine.state.players[0];
+      window.LegislateUI.setTurnIndicator(turnText(first?.name));
+      boardUI.render(engine.state.players);
+      Logger.log('EVT BOOT_OK');
 
-      // UI reacts to engine
-      engine.bus.on('DICE_ROLL', async ({value, playerId}) => {
-        window.DBG.log('ROLL', { value });
-        await window.LegislateUI.showDiceRoll(value, 700);
+      // ---------- Engine → UI wiring ----------
+      engine.bus.on('DICE_ROLL', async ({ value, playerId, name }) => {
+        Logger.log('ROLL', { value });
+        // Show dice animation (UI manages its own overlay lifecycle)
+        window.LegislateUI.showDiceRoll(value, 900);
       });
 
-      engine.bus.on('CARD_DRAWN', ({deck, card}) => {
+      engine.bus.on('MOVE_STEP', ({ playerId, position, step, total }) => {
+        const p = engine.state.players.find(x => x.id === playerId);
+        if (p) p.position = position;
+        boardUI.render(engine.state.players);
+      });
+
+      engine.bus.on('LANDED', ({ playerId, position, space }) => {
+        Logger.log('LANDED', { playerId, position, space });
+      });
+
+      engine.bus.on('TURN_BEGIN', ({ index }) => {
+        const p = engine.state.players[index];
+        window.LegislateUI.setTurnIndicator(turnText(p?.name));
+      });
+
+      engine.bus.on('CARD_DRAWN', async ({ deck, card, playerId, position }) => {
+        // Finite deck might be empty; if so, no modal by design
         if (!card) return;
-        const html = `<p><strong>${deck.toUpperCase()}</strong></p><p>${(card.title||'').replace(/</g,'&lt;')}</p><p style="color:#505a5f">${(card.effect||'').replace(/</g,'&lt;')}</p>`;
-        modal.open({ titleText: 'You drew a card', bodyHtml: html, onOk(){ engine.bus.emit('CARD_RESOLVE', { card }); } });
+
+        // Ensure dice overlay is done before showing the card
+        try { await window.LegislateUI.getLastDicePromise(); } catch (_) {}
+        // Short pause so dice doesn't visually overlap the card
+        await new Promise(r => setTimeout(r, 200));
+
+        await modal.open({
+          title: card.title || deck,
+          body: `<p>${(card.text || card.body || '').trim()}</p>`,
+          actions: [{ id: 'ok', label: 'OK' }]
+        });
+
+        // Handshake back to engine so it can apply the effect and continue turn
+        engine.bus.emit('CARD_RESOLVE', { card });
       });
 
-      // Controls
-      rollBtn.addEventListener('click', async function(){
-        if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
-        window.DBG.log('LOG rollBtn click');
-        await engine.takeTurn();
-        renderer.drawAll();
+      engine.bus.on('CARD_APPLIED', ({ card, playerId, position }) => {
+        Logger.log('CARD_APPLIED', { id: card?.id, effect: card?.effect, playerId, position });
+        // Re-render in case the effect moved the player
+        boardUI.render(engine.state.players);
       });
 
-      restartBtn.addEventListener('click', function(){
-        if (!confirm('Restart the game and clear the save?')) return;
-        location.reload();
+      engine.bus.on('TURN_END', ({ playerId }) => {
+        Logger.log('TURN_END', { playerId });
       });
 
-      playerCountSel.addEventListener('change', function(){
-        const n = Number(this.value||4);
-        engine.setPlayerCount(n);
-        renderer.drawAll();
-      });
+      // ---------- Controls ----------
+      const rollBtn = $('rollBtn');
+      const restartBtn = $('restartBtn');
 
-      renderer.drawAll();
-      engine.bus.emit('TURN_BEGIN', { playerId: engine.state.players[0].id, index: 0 });
-      window.DBG.log('EVT BOOT_OK');
-    }catch(err){
-      console.error(err);
-      window.DBG.error('BOOT_FAIL', { error: String(err) });
-      const banner = document.getElementById('error-banner');
-      if (banner){ banner.textContent = 'Boot failed: ' + err; banner.hidden = false; }
+      if (rollBtn) {
+        rollBtn.onclick = async () => {
+          Logger.log('rollBtn click');
+          if (isTyping()) return; // don't roll while typing in a name
+          try {
+            await engine.takeTurn();
+          } catch (e) {
+            Logger.error('ROLL_FAIL', String(e));
+            if (errorBanner) {
+              errorBanner.hidden = false;
+              errorBanner.textContent = 'There was a problem taking a turn.';
+            }
+          }
+        };
+      }
+
+      if (restartBtn) {
+        restartBtn.onclick = () => {
+          if (confirm('Restart the game?')) location.reload();
+        };
+      }
+
+      if (playerCountSel) {
+        playerCountSel.onchange = (e) => {
+          const n = Number(e.target.value || 4) || 4;
+          engine.setPlayerCount(n);
+          boardUI.render(engine.state.players);
+        };
+      }
+
+    } catch (err) {
+      Logger.error('BOOT_FAIL', String(err));
+      if (errorBanner) {
+        errorBanner.hidden = false;
+        errorBanner.textContent = 'There was a problem starting the game.';
+      }
     }
   }
 })();
