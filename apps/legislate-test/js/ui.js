@@ -1,9 +1,9 @@
 /* ui.js — consolidated UI layer
-   - Restores inline name editing
-   - Renders tokens centered at board coordinates
+   - Inline name editing (blocks global hotkeys while typing)
+   - Token rendering centred at board coordinates (with small offset to unstack)
    - Dice overlay animation + DICE_DONE debug hook
-   - Adds UI.toast + UI.openGameOver (end-game modal)
-   - Keeps same public API expected by app.js
+   - Card modal: UI.openCard(card, onConfirm)
+   - Toast + Game Over modal (UI.toast, UI.openGameOver)
 */
 window.LegislateUI = (function () {
   'use strict';
@@ -12,7 +12,6 @@ window.LegislateUI = (function () {
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
   const log = (...args) => { try { window.LegislateDebug?.log(...args); } catch {} };
 
-  // Cache common DOM
   const els = {
     boardImg: $('#boardImg'),
     tokensLayer: $('#tokensLayer') || $('.tokens-layer'),
@@ -23,14 +22,13 @@ window.LegislateUI = (function () {
     modalRoot: $('#modalRoot') || $('#modal-root')
   };
 
-  // ---------- Helpers ----------
+  // ---------- helpers ----------
   function placeTokenDiv(div, xPct, yPct) {
-    // Position using percentages and center using transform to avoid misalignment at different sizes
     div.style.position = 'absolute';
     div.style.left = xPct + '%';
     div.style.top = yPct + '%';
     div.style.transform = 'translate(-50%, -50%)';
-    div.style.willChange = 'transform, left, top';
+    div.style.willChange = 'transform,left,top';
   }
 
   function createTokenEl(color, id) {
@@ -58,35 +56,32 @@ window.LegislateUI = (function () {
     return host;
   }
 
-  function preventHotkeys(e) {
-    // Stop global shortcuts while editing names
-    e.stopPropagation();
-  }
+  function preventHotkeys(e) { e.stopPropagation(); }
 
   function commitPlayerName(playerId, newName) {
-    const name = (newName || '').trim() || undefined;
+    const name = (newName || '').trim();
+    if (!name) return;
     const eng = window.LegislateApp?.engine;
     if (!eng) return;
     const p = eng.state.players.find(pl => pl.id === playerId);
-    if (p && name) {
+    if (p) {
       p.name = name;
-      // Update banner if it's their turn
       if (eng.state.players[eng.state.turnIndex]?.id === p.id) {
         setTurnIndicator(`${p.name}’s turn`);
       }
     }
   }
 
-  // ---------- Public API ----------
+  // ---------- public API ----------
   function setTurnIndicator(text) {
     if (!els.turnIndicator) return;
     els.turnIndicator.textContent = text || '';
   }
 
   function renderPlayers(players, state, board) {
-    // 1) Render name pills (with inline editing)
+    // name pills
     const host = ensurePlayersHost();
-    host.innerHTML = ''; // clear
+    host.innerHTML = '';
     players.forEach(p => {
       const pill = document.createElement('span');
       pill.className = 'player-pill';
@@ -102,40 +97,30 @@ window.LegislateUI = (function () {
       name.dataset.playerId = p.id;
       name.textContent = p.name || '';
       name.title = 'Click to edit name';
-
-      // Accessibility
       name.setAttribute('role', 'textbox');
-      name.setAttribute('aria-label', `Edit name for ${p.name}`);
+      name.setAttribute('aria-label', `Edit name for ${p.name || 'player'}`);
 
-      // Prevent global shortcuts while typing
       name.addEventListener('keydown', preventHotkeys);
       name.addEventListener('keyup', preventHotkeys);
-
       name.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          name.blur();
-        }
+        if (e.key === 'Enter') { e.preventDefault(); name.blur(); }
       });
-      name.addEventListener('blur', () => {
-        commitPlayerName(p.id, name.textContent);
-      });
+      name.addEventListener('blur', () => { commitPlayerName(p.id, name.textContent); });
 
       pill.appendChild(dot);
       pill.appendChild(name);
       host.appendChild(pill);
     });
 
-    // 2) Render tokens at positions
+    // tokens layer
     if (!els.tokensLayer) {
-      // create tokens layer if missing
       const tl = document.createElement('div');
       tl.id = 'tokensLayer';
       tl.className = 'tokens-layer';
       tl.style.position = 'absolute';
       tl.style.inset = '0';
       els.tokensLayer = tl;
-      if (els.boardImg && els.boardImg.parentNode) {
+      if (els.boardImg?.parentNode) {
         els.boardImg.parentNode.style.position = 'relative';
         els.boardImg.parentNode.appendChild(tl);
       } else {
@@ -144,23 +129,19 @@ window.LegislateUI = (function () {
     }
     els.tokensLayer.innerHTML = '';
 
-    // Build an index -> {x,y} map once
     const coords = new Map();
     (board?.spaces || []).forEach(s => coords.set(s.index, { x: s.x, y: s.y }));
 
-    // Group by board index to offset stacked tokens slightly
-    const stacks = new Map(); // index -> count so far
+    const stacks = new Map();
     players.forEach(p => {
       const pos = (typeof p.position === 'number') ? p.position : 0;
       const c = coords.get(pos);
       if (!c) return;
       const t = createTokenEl(p.color, p.id);
-
-      // Stack offset to prevent perfect overlap (small radial fan)
       const n = (stacks.get(pos) || 0);
       stacks.set(pos, n + 1);
-      const angle = (n * 42) * Math.PI / 180; // 42° increments for fun
-      const r = 8; // px radius
+      const angle = (n * 42) * Math.PI / 180;
+      const r = 8;
       const offsetX = (r * Math.cos(angle)) / (els.tokensLayer.clientWidth || 1) * 100;
       const offsetY = (r * Math.sin(angle)) / (els.tokensLayer.clientHeight || 1) * 100;
 
@@ -168,7 +149,7 @@ window.LegislateUI = (function () {
       els.tokensLayer.appendChild(t);
     });
 
-    // Turn banner highlight
+    // highlight current player
     const current = state.players[state.turnIndex];
     $$('.player-pill', host).forEach((pill, i) => {
       pill.style.outline = (players[i]?.id === current?.id) ? '2px solid #1d70b8' : '1px solid var(--border, #b1b4b6)';
@@ -177,21 +158,16 @@ window.LegislateUI = (function () {
 
   function showDiceRoll(value) {
     if (!els.diceOverlay || !els.dice) return;
-    // show overlay
     els.diceOverlay.hidden = false;
     els.diceOverlay.style.display = 'flex';
     els.dice.classList.add('rolling');
 
-    // set face
-    // remove any previous show-* class
     els.dice.classList.remove('show-1','show-2','show-3','show-4','show-5','show-6');
     const face = Math.max(1, Math.min(6, Number(value) || 1));
     els.dice.classList.add(`show-${face}`);
 
-    // short animation then hide overlay
     setTimeout(() => {
       els.dice.classList.remove('rolling');
-      // leave the face visible for a beat
       setTimeout(() => {
         els.diceOverlay.hidden = true;
         els.diceOverlay.style.display = 'none';
@@ -200,7 +176,7 @@ window.LegislateUI = (function () {
     }, 700);
   }
 
-  // ---------- Toast + Game Over modal ----------
+  // ---------- toast ----------
   function ensureToastHost() {
     let host = $('#toastHost');
     if (!host) {
@@ -241,7 +217,9 @@ window.LegislateUI = (function () {
     }, ttl);
   }
 
-  function openGameOver(podium, totalPlayers, onPlayAgain, onClose) {
+  // ---------- card modal ----------
+  function openCard(card, onConfirm) {
+    // Ensure a modal root
     let mount = els.modalRoot;
     if (!mount) {
       mount = document.createElement('div');
@@ -250,7 +228,8 @@ window.LegislateUI = (function () {
       els.modalRoot = mount;
     }
 
-    // Backdrop
+    log('CARD_MODAL_OPEN', { id: card?.id, effect: card?.effect || '' });
+
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     backdrop.style.position = 'fixed';
@@ -262,7 +241,78 @@ window.LegislateUI = (function () {
     backdrop.style.padding = '10vh 1rem';
     backdrop.style.zIndex = '1700';
 
-    // Panel
+    const panel = document.createElement('div');
+    panel.className = 'modal';
+    panel.style.background = '#fff';
+    panel.style.maxWidth = '640px';
+    panel.style.width = '100%';
+    panel.style.borderRadius = '.5rem';
+    panel.style.padding = '1rem';
+    panel.style.boxShadow = '0 12px 40px rgba(0,0,0,.3)';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+
+    const body = document.createElement('div');
+    const p = document.createElement('p');
+    p.style.margin = '0';
+    p.textContent = card?.text || 'Card';
+
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    actions.style.display = 'flex';
+    actions.style.justifyContent = 'flex-end';
+    actions.style.gap = '.5rem';
+    actions.style.marginTop = '1rem';
+
+    const ok = document.createElement('button');
+    ok.className = 'button';
+    ok.textContent = 'OK';
+
+    actions.appendChild(ok);
+    body.appendChild(p);
+    panel.appendChild(body);
+    panel.appendChild(actions);
+    backdrop.appendChild(panel);
+    mount.appendChild(backdrop);
+
+    const prevFocus = document.activeElement;
+    ok.focus();
+
+    function close() {
+      backdrop.remove();
+      if (prevFocus && prevFocus.focus) prevFocus.focus();
+      log('CARD_MODAL_CLOSE', { id: card?.id });
+    }
+
+    ok.addEventListener('click', () => {
+      close();
+      if (typeof onConfirm === 'function') onConfirm();
+    });
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) { close(); if (onConfirm) onConfirm(); }});
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { close(); if (onConfirm) onConfirm(); }}, { once: true });
+  }
+
+  // ---------- game over modal ----------
+  function openGameOver(podium, totalPlayers, onPlayAgain, onClose) {
+    let mount = els.modalRoot;
+    if (!mount) {
+      mount = document.createElement('div');
+      mount.id = 'modalRoot';
+      document.body.appendChild(mount);
+      els.modalRoot = mount;
+    }
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.style.position = 'fixed';
+    backdrop.style.inset = '0';
+    backdrop.style.background = 'rgba(0,0,0,.55)';
+    backdrop.style.display = 'flex';
+    backdrop.style.alignItems = 'flex-start';
+    backdrop.style.justifyContent = 'center';
+    backdrop.style.padding = '10vh 1rem';
+    backdrop.style.zIndex = '1700';
+
     const panel = document.createElement('div');
     panel.className = 'modal';
     panel.style.background = '#fff';
@@ -360,11 +410,12 @@ window.LegislateUI = (function () {
     });
   }
 
-  // Public API
+  // public API
   return {
     setTurnIndicator,
     renderPlayers,
     showDiceRoll,
+    openCard,
     toast,
     openGameOver
   };
