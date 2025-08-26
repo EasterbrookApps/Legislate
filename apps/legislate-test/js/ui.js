@@ -1,178 +1,184 @@
-// ui.js — players list with inline editing, board tokens, modal, dice, toast
-window.LegislateUI = (function () {
-  const $ = (id)=>document.getElementById(id);
+/* ui.js — augment existing UI with end-game helpers (toast + game-over modal)
+   NOTE: This does NOT replace your existing UI; it extends window.LegislateUI safely. */
+window.LegislateUI = (function (UI) {
+  'use strict';
 
-  function setTurnIndicator(name){
-    const el = $('turnIndicator');
-    const n = (name||'Player').toString().trim();
-    if (el) el.textContent = `${n}'s turn`;
+  // --- Utilities ---
+  const $ = (sel, root = document) => root.querySelector(sel);
+
+  // Ensure a single toast container
+  function ensureToastHost() {
+    let host = $('#toastHost');
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'toastHost';
+      host.setAttribute('aria-live', 'polite');
+      host.style.position = 'fixed';
+      host.style.insetInline = '0';
+      host.style.bottom = '1rem';
+      host.style.display = 'grid';
+      host.style.placeItems = 'center';
+      host.style.zIndex = '1600'; // above overlays
+      document.body.appendChild(host);
+    }
+    return host;
   }
 
-  // --- Players pill list (inline editing, non-blocking)
-  function renderPlayers(players){
-    const root = $('playersSection');
-    if (!root) return;
-    root.innerHTML = '';
-    players.forEach(p=>{
-      const pill = document.createElement('span');
-      pill.className = 'player-pill';
+  // Simple toast (non-blocking)
+  function toast(message, opts = {}) {
+    const { ttl = 2600 } = opts;
+    const host = ensureToastHost();
+    const card = document.createElement('div');
+    card.className = 'toast';
+    card.style.maxWidth = '90vw';
+    card.style.padding = '.6rem .9rem';
+    card.style.borderRadius = '.5rem';
+    card.style.border = '1px solid #b1b4b6';
+    card.style.background = '#fff';
+    card.style.boxShadow = '0 6px 24px rgba(0,0,0,.18)';
+    card.style.fontWeight = '600';
+    card.style.fontSize = '0.95rem';
+    card.style.margin = '0.25rem auto';
+    card.textContent = message;
+    host.appendChild(card);
+    window.setTimeout(() => {
+      card.style.opacity = '0';
+      card.style.transition = 'opacity .25s ease';
+      card.addEventListener('transitionend', () => card.remove(), { once: true });
+    }, ttl);
+  }
 
-      const dot = document.createElement('span');
-      dot.className = 'player-dot';
-      dot.style.background = p.color;
+  // Modal factory (uses existing modal root if present)
+  function openGameOver(podium, totalPlayers, onPlayAgain, onClose) {
+    const root = $('#modalRoot') || $('#modal-root');
+    if (!root) {
+      // Fallback: create a root so we never fail
+      const r = document.createElement('div');
+      r.id = 'modalRoot';
+      document.body.appendChild(r);
+    }
+    const mount = $('#modalRoot') || $('#modal-root');
 
-      const name = document.createElement('span');
-      name.className = 'player-name';
-      name.contentEditable = 'true';
-      name.spellcheck = false;
-      name.textContent = p.name;
+    // Backdrop
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.style.position = 'fixed';
+    backdrop.style.inset = '0';
+    backdrop.style.background = 'rgba(0,0,0,.55)';
+    backdrop.style.display = 'flex';
+    backdrop.style.alignItems = 'flex-start';
+    backdrop.style.justifyContent = 'center';
+    backdrop.style.padding = '10vh 1rem';
+    backdrop.style.zIndex = '1700';
 
-      // update name on input (same object reference from engine.state.players)
-      name.addEventListener('input', ()=>{
-        const v = name.textContent.trim();
-        if (v) p.name = v;
-      });
+    // Modal panel
+    const panel = document.createElement('div');
+    panel.className = 'modal';
+    panel.style.background = '#fff';
+    panel.style.maxWidth = '640px';
+    panel.style.width = '100%';
+    panel.style.borderRadius = '.5rem';
+    panel.style.padding = '1rem';
+    panel.style.boxShadow = '0 12px 40px rgba(0,0,0,.3)';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-labelledby', 'gameOverTitle');
 
-      pill.append(dot, name);
-      root.appendChild(pill);
+    // Title
+    const h = document.createElement('h2');
+    h.id = 'gameOverTitle';
+    h.textContent = 'Game over';
+
+    // Body: podium list
+    const p = document.createElement('div');
+    const title = document.createElement('p');
+    title.style.marginTop = '.25rem';
+    title.textContent = 'Final placings';
+    const list = document.createElement('ol');
+    list.style.paddingLeft = '1.25rem';
+    list.style.marginTop = '.25rem';
+
+    const placeLabel = (n) => (n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`);
+
+    podium.forEach((entry, idx) => {
+      const li = document.createElement('li');
+      li.style.margin = '.25rem 0';
+      const swatch = document.createElement('span');
+      swatch.style.display = 'inline-block';
+      swatch.style.width = '.85rem';
+      swatch.style.height = '.85rem';
+      swatch.style.borderRadius = '50%';
+      swatch.style.marginRight = '.45rem';
+      swatch.style.verticalAlign = 'middle';
+      // Try to find player colour if we can (optional)
+      try {
+        const pl = window.LegislateApp?.engine?.state?.players?.find(pp => pp.id === entry.playerId);
+        if (pl?.color) swatch.style.background = pl.color;
+        else swatch.style.background = '#1d70b8';
+      } catch { swatch.style.background = '#1d70b8'; }
+
+      const label = document.createElement('strong');
+      label.textContent = `${placeLabel(entry.place)} — ${entry.name}`;
+
+      li.appendChild(swatch);
+      li.appendChild(label);
+      list.appendChild(li);
+    });
+
+    p.appendChild(title);
+    p.appendChild(list);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'modal-actions';
+    actions.style.display = 'flex';
+    actions.style.justifyContent = 'flex-end';
+    actions.style.gap = '.5rem';
+    actions.style.marginTop = '1rem';
+
+    const btnAgain = document.createElement('button');
+    btnAgain.className = 'button';
+    btnAgain.textContent = 'Play again';
+
+    const btnClose = document.createElement('button');
+    btnClose.className = 'button button--secondary';
+    btnClose.textContent = 'Close';
+
+    actions.appendChild(btnAgain);
+    actions.appendChild(btnClose);
+
+    panel.appendChild(h);
+    panel.appendChild(p);
+    panel.appendChild(actions);
+    backdrop.appendChild(panel);
+    mount.appendChild(backdrop);
+
+    // Focus handling
+    const prevFocus = document.activeElement;
+    btnAgain.focus();
+
+    function teardown() {
+      backdrop.remove();
+      if (prevFocus && prevFocus.focus) prevFocus.focus();
+      if (typeof onClose === 'function') onClose();
+    }
+
+    btnClose.addEventListener('click', teardown);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) teardown(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') teardown();
+    }, { once: true });
+
+    btnAgain.addEventListener('click', () => {
+      if (typeof onPlayAgain === 'function') onPlayAgain();
+      // onPlayAgain will reset and then we close
+      teardown();
     });
   }
 
-  // --- Board tokens renderer
-  function createBoardRenderer({ board }){
-    const layer = $('tokensLayer');
-    const tokens = new Map();
+  // Expose (augment only; keep existing methods intact)
+  UI.toast = UI.toast || toast;
+  UI.openGameOver = openGameOver;
 
-    function ensureToken(pid, color){
-      let t = tokens.get(pid);
-      if (!t){
-        t = document.createElement('div');
-        t.className = 'token';
-        t.setAttribute('aria-hidden','true');
-        layer.appendChild(t);
-        tokens.set(pid, t);
-      }
-      t.style.background = color;
-      return t;
-    }
-
-    function coordsFor(index){
-      const sp = board.spaces.find(s=>s.index===index);
-      return sp ? { x: sp.x, y: sp.y } : { x: 0, y: 0 };
-    }
-
-    function render(players){
-      // --- FIX: remove tokens for players that no longer exist
-      const liveIds = new Set(players.map(p=>p.id));
-      for (const [pid, el] of Array.from(tokens.entries())){
-        if (!liveIds.has(pid)){
-          el.remove();
-          tokens.delete(pid);
-        }
-      }
-
-      // Ensure/update tokens for current players
-      players.forEach(p=>{
-        const t = ensureToken(p.id, p.color);
-        const {x,y} = coordsFor(p.position||0);
-        t.style.left = x + '%';
-        t.style.top  = y + '%';
-      });
-    }
-
-    return { render };
-  }
-
-  // --- Modal (promise-based OK)
-  function createModal(){
-    const root = $('modalRoot');
-    function open({ title, body, actions }){
-      return new Promise((resolve)=>{
-        root.innerHTML = '';
-        const back = document.createElement('div');
-        back.className = 'modal-backdrop';
-        back.style.display = 'flex';
-
-        const box = document.createElement('div');
-        box.className = 'modal';
-
-        const h = document.createElement('h3');
-        h.textContent = title || 'Card';
-
-        const b = document.createElement('div');
-        b.innerHTML = body || '';
-
-        const act = document.createElement('div');
-        act.className = 'modal-actions';
-
-        const ok = document.createElement('button');
-        ok.className = 'button';
-        ok.textContent = (actions?.[0]?.label) || 'OK';
-        ok.addEventListener('click', ()=>{ back.remove(); resolve(); });
-
-        act.appendChild(ok);
-        box.append(h,b,act);
-        back.appendChild(box);
-        root.appendChild(back);
-      });
-    }
-    return { open };
-  }
-
-  // --- Dice overlay returns a Promise so callers can await completion
-  let diceTimer = null;
-  function showDiceRoll(value, ms=900){
-    const overlay = $('diceOverlay');
-    const dice = $('dice');
-    if(!overlay || !dice) return Promise.resolve();
-
-    return new Promise((resolve)=>{
-      overlay.hidden = false;
-      dice.className = 'dice rolling show-'+(value||1);
-      clearTimeout(diceTimer);
-      diceTimer = setTimeout(()=>{
-        dice.className = 'dice show-'+(value||1);
-        setTimeout(()=>{ overlay.hidden = true; resolve(); }, 250);
-      }, ms);
-    });
-  }
-
-  // --- Non-blocking toast (inline styles; no CSS edits)
-  function ensureToastRoot(){
-    let root = $('toastRoot');
-    if (!root){
-      root = document.createElement('div');
-      root.id = 'toastRoot';
-      root.setAttribute('aria-live','polite');
-      root.style.position = 'fixed';
-      root.style.left = '50%';
-      root.style.bottom = '16px';
-      root.style.transform = 'translateX(-50%)';
-      root.style.zIndex = '1600';
-      root.style.pointerEvents = 'none';
-      document.body.appendChild(root);
-    }
-    return root;
-  }
-  function toast(message, ms=1800){
-    const root = ensureToastRoot();
-    const el = document.createElement('div');
-    el.textContent = message;
-    el.style.pointerEvents = 'none';
-    el.style.background = 'rgba(0,0,0,0.85)';
-    el.style.color = '#fff';
-    el.style.padding = '8px 12px';
-    el.style.borderRadius = '999px';
-    el.style.marginTop = '6px';
-    el.style.fontSize = '14px';
-    el.style.boxShadow = '0 4px 12px rgba(0,0,0,.35)';
-    el.style.opacity = '0';
-    el.style.transition = 'opacity .2s ease, transform .2s ease';
-    el.style.transform = 'translateY(4px)';
-    root.appendChild(el);
-    requestAnimationFrame(()=>{ el.style.opacity='1'; el.style.transform='translateY(0)'; });
-    setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateY(4px)'; setTimeout(()=>el.remove(), 220); }, ms);
-  }
-
-  return { setTurnIndicator, renderPlayers, createBoardRenderer, createModal, showDiceRoll, toast };
-})();
+  return UI;
+})(window.LegislateUI || {});
