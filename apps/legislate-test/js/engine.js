@@ -1,110 +1,118 @@
-// engine.js – last confirmed working version
+// engine.js
+const Engine = (() => {
+  let state = {
+    spaces: [],
+    decks: {},
+    players: [],
+    currentTurn: 0,
+    skipTurns: {},
+    extraRoll: null,
+  };
 
-export function setupEngine({ state, send, on }) {
-  let playerIndex = 0;
-  let skipTurns = {};
+  const init = (board, decks, players) => {
+    state.spaces = board;
+    state.decks = decks;
+    state.players = players.map((id, i) => ({
+      id,
+      position: 0,
+      index: i,
+      finished: false,
+    }));
+    state.currentTurn = 0;
+    state.skipTurns = {};
+    state.extraRoll = null;
 
-  function nextTurn() {
-    playerIndex = (playerIndex + 1) % state.players.length;
-    const next = state.players[playerIndex];
-    if (skipTurns[next.id] && skipTurns[next.id] > 0) {
-      skipTurns[next.id]--;
-      send("TURN_SKIPPED", { playerId: next.id, remaining: skipTurns[next.id] });
-      send("TURN_END", { playerId: next.id });
-      nextTurn();
+    logEvent("PACK", {
+      spaces: board.length,
+      decks: Object.keys(decks),
+    });
+    emit("BOOT_OK");
+  };
+
+  const currentPlayer = () => state.players[state.currentTurn];
+
+  const nextTurn = () => {
+    let p = currentPlayer();
+    emit("TURN_END", { playerId: p.id });
+
+    if (state.extraRoll === p.id) {
+      state.extraRoll = null;
+      emit("TURN_BEGIN", { playerId: p.id, index: p.index });
       return;
     }
-    state.activePlayerId = next.id;
-    send("TURN_BEGIN", { playerId: next.id, index: playerIndex });
-  }
 
-  on("ROLL", () => {
-    const roll = Math.floor(Math.random() * 6) + 1;
-    send("DICE_ROLL", { value: roll });
-    let steps = 0;
-    const player = state.players[playerIndex];
-    function step() {
-      steps++;
-      player.position++;
-      send("MOVE_STEP", {
+    do {
+      state.currentTurn = (state.currentTurn + 1) % state.players.length;
+      p = currentPlayer();
+
+      if (state.skipTurns[p.id] && state.skipTurns[p.id] > 0) {
+        state.skipTurns[p.id]--;
+        emit("TURN_SKIPPED", { playerId: p.id, remaining: state.skipTurns[p.id] });
+        emit("TURN_END", { playerId: p.id });
+      } else {
+        break;
+      }
+    } while (true);
+
+    emit("TURN_BEGIN", { playerId: p.id, index: p.index });
+  };
+
+  const roll = () => {
+    const player = currentPlayer();
+    const value = Math.floor(Math.random() * 6) + 1;
+    emit("DICE_ROLL", { value, playerId: player.id, name: player.name });
+    movePlayer(player, value);
+  };
+
+  const movePlayer = (player, steps) => {
+    for (let i = 1; i <= steps; i++) {
+      player.position = Math.min(player.position + 1, state.spaces.length - 1);
+      emit("MOVE_STEP", {
         playerId: player.id,
         position: player.position,
-        step: steps,
-        total: roll,
+        step: i,
+        total: steps,
       });
-      if (steps < roll) {
-        setTimeout(step, 200);
-      } else {
-        send("LANDED", {
-          playerId: player.id,
-          position: player.position,
-          space: state.spaces[player.position],
-        });
-        send("DICE_DONE", { value: roll });
-      }
     }
-    step();
-  });
 
-  on("CARD_APPLIED", ({ effect, playerId }) => {
+    const space = state.spaces[player.position];
+    emit("LANDED", { playerId: player.id, position: player.position, space });
+
+    if (space.deck && state.decks[space.deck]?.length > 0) {
+      const card = state.decks[space.deck].shift();
+      emit("DECK_CHECK", { name: space.deck, len: state.decks[space.deck].length });
+      emit("CARD_DRAWN", { deck: space.deck, card });
+    } else {
+      nextTurn();
+    }
+  };
+
+  const applyCardEffect = (playerId, effect) => {
     const player = state.players.find((p) => p.id === playerId);
+    if (!player || !effect) return;
 
     if (effect.startsWith("move:")) {
-      const offset = parseInt(effect.split(":")[1], 10);
-      player.position += offset;
-      send("MOVE_STEP", {
-        playerId: player.id,
-        position: player.position,
-        step: offset,
-        total: offset,
-      });
-    }
-
-    if (effect.startsWith("goto:")) {
+      const delta = parseInt(effect.split(":")[1], 10);
+      player.position = Math.max(0, Math.min(state.spaces.length - 1, player.position + delta));
+      emit("MOVE_STEP", { playerId: player.id, position: player.position, step: delta, total: delta });
+      const space = state.spaces[player.position];
+      emit("LANDED", { playerId: player.id, position: player.position, space });
+    } else if (effect.startsWith("goto:")) {
       const target = parseInt(effect.split(":")[1], 10);
       player.position = target;
-      send("MOVE_STEP", {
-        playerId: player.id,
-        position: player.position,
-        step: target,
-        total: target,
-      });
+      emit("MOVE_STEP", { playerId: player.id, position: player.position, step: target, total: target });
+      const space = state.spaces[player.position];
+      emit("LANDED", { playerId: player.id, position: player.position, space });
+    } else if (effect === "miss_turn") {
+      state.skipTurns[player.id] = (state.skipTurns[player.id] || 0) + 1;
+      emit("TURN_SKIPPED", { playerId: player.id, remaining: state.skipTurns[player.id] });
+    } else if (effect === "extra_roll") {
+      state.extraRoll = player.id;
+      emit("EFFECT_EXTRA_ROLL", { playerId: player.id });
     }
 
-    if (effect === "miss_turn") {
-      skipTurns[playerId] = (skipTurns[playerId] || 0) + 1;
-      send("EFFECT_MISS_TURN", { playerId });
-    }
-
-    if (effect === "extra_roll") {
-      send("EFFECT_EXTRA_ROLL", { playerId });
-      // Player immediately goes again
-      state.activePlayerId = player.id;
-      send("TURN_BEGIN", { playerId: player.id, index: playerIndex });
-      return;
-    }
-
-    send("TURN_END", { playerId });
     nextTurn();
-  });
+  };
 
-  on("RESTART", () => {
-    playerIndex = 0;
-    skipTurns = {};
-    state.players.forEach((p, i) => {
-      p.position = 0;
-      send("PLAYER_UPDATE", { playerId: p.id, position: 0 });
-    });
-    state.activePlayerId = state.players[0].id;
-    send("TURN_BEGIN", { playerId: state.players[0].id, index: 0 });
-  });
-
-  // Boot
-  state.players = [
-    { id: "p1", name: "Player 1", color: "red", position: 0 },
-    { id: "p2", name: "Player 2", color: "blue", position: 0 },
-  ];
-  state.activePlayerId = state.players[0].id;
-  send("PLAYER_UPDATE", {});
-  send("TURN_BEGIN", { playerId: state.players[0].id, index: 0 });
-}
+  return { init, roll, applyCardEffect, nextTurn };
+})();
