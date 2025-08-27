@@ -144,9 +144,48 @@
           engine.takeTurn();
 });
 
-      $('restartBtn')?.addEventListener('click', ()=>{
-        if (confirm('Restart the game?')) location.reload();
-      });
+// --- fail-safe restart ---
+function hardReset() {
+  // 1) clear persisted save
+  try { window.LegislateStorage?.clear?.(); } catch (e) {}
+
+  // 2) hide/clear overlays
+  try {
+    const modalRoot = document.getElementById('modalRoot');
+    if (modalRoot) modalRoot.innerHTML = '';
+    const diceOverlay = document.getElementById('diceOverlay');
+    if (diceOverlay) { diceOverlay.hidden = true; diceOverlay.style.display = 'none'; }
+  } catch (e) {}
+
+  // 3) reset in-memory engine state (best-effort; safe if engine present)
+  try {
+    const s = engine.state;
+    s.turnIndex = 0;
+    (s.players || []).forEach(p => { p.position = 0; p.skip = 0; p.extraRoll = false; });
+  } catch (e) {}
+
+  // 4) refresh UI (best-effort)
+  try {
+    boardUI?.render?.(engine.state.players);
+    window.LegislateUI?.setTurnIndicator?.(engine.state.players?.[0]?.name || 'Player 1');
+  } catch (e) {}
+
+  // 5) clear game-over flag used by the Roll button guard
+  try { gameOver = false; } catch (e) {}
+}
+
+// Replace your existing restart handler with this:
+document.getElementById('restartBtn')?.addEventListener('click', () => {
+  if (!confirm('Restart the game?')) return;
+
+  // In-place reset so the UI responds immediately…
+  hardReset();
+
+  // …then guarantee a clean boot with a cache-busting reload.
+  const url = new URL(location.href);
+  url.searchParams.set('t', Date.now().toString());
+  location.replace(url.toString());
+});
 
       $('playerCount')?.addEventListener('change', (e)=>{
         const n = Number(e.target.value||4) || 4;
