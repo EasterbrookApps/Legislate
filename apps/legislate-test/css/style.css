@@ -1,132 +1,132 @@
-/* ===============================
-   Legislate?! — UI styles
-   Safe, drop-in replacement
-   =============================== */
+/* =========================================
+   Legislate?! — FULL STYLESHEET (drop-in)
+   Visual uplift + preserves all existing hooks
+   ========================================= */
 
-/* Theme */
+/* Font for the Legislate title only */
+@import url('https://fonts.googleapis.com/css2?family=Quintessential&display=swap');
+
+/* ---- Theme tokens ---- */
 :root{
   --bg: #ffffff;
-  --text: #0b0c0c;
+  --bg-grad-top: #fdfcf8;
+  --bg-grad-bot: #f3e9dc;
+  --text: #0b0c0c;        /* GOV.UK black */
   --muted: #505a5f;
-  --link: #1d70b8;
+  --link: #1d70b8;        /* GOV.UK blue */
   --border: #d8dadd;
   --panel: #f7f8f9;
-  --accent: #3b82f6;
+  --accent: #1d70b8;
   --accent-2: #10b981;
   --danger: #d4351c;
-  --shadow: 0 1px 1px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.08);
+  --frame: #bfa77a;       /* subtle gold frame */
+  --shadow-soft: 0 1px 1px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.08);
 }
 
-/* Base */
-*{ box-sizing: border-box; }
-html,body{ height:100%; }
+/* ---- Base & layout ---- */
+*{ box-sizing:border-box; }
+html, body{ height:100%; }
 body{
   margin:0;
   color:var(--text);
-  background:var(--bg);
-  font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  background: linear-gradient(180deg, var(--bg-grad-top), var(--bg-grad-bot));
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height:1.45;
 }
 
-/* Layout */
+/* Containers used in your markup */
 .page-header, .page-main{
   max-width: 1100px;
   margin: 0 auto;
   padding: 1rem 1.25rem;
 }
 .page-header{
-  display:flex;
-  align-items:flex-end;
-  gap: 1rem;
-  flex-wrap: wrap;
-  border-bottom: 1px solid var(--border);
-  background: #fff;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-}
-
-/* Brand + controls */
-.brand{
-  font-weight: 800;
-  font-size: clamp(1.15rem, 1.5vw + .8rem, 1.6rem);
-  letter-spacing: .2px;
-}
-.controls{
-  display:flex;
-  align-items:center;
-  gap:.5rem;
-  flex-wrap:wrap;
-}
-
-/* Buttons */
-.button{
-  appearance:none;
-  border:1px solid var(--border);
+  display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap;
+  border-bottom:1px solid var(--border);
   background:#fff;
-  padding:.45rem .8rem;
-  border-radius:.45rem;
-  cursor:pointer;
-  font-weight:600;
+  position:sticky; top:0; z-index:20;
+}
+
+/* ---- Brand / Title ---- */
+.brand{
+  /* Title uses Quintessential only */
+  font-family: 'Quintessential', serif;
+  font-size: clamp(1.4rem, 2vw + 1rem, 2rem);
+  letter-spacing: .5px;
+  font-weight: 700;
+}
+
+/* ---- Controls row ---- */
+.controls{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+
+/* Buttons used by your markup (.button and variants) */
+.button{
+  appearance:none; border:1px solid var(--border); background:#fff;
+  padding:.48rem .85rem; border-radius:.5rem; cursor:pointer; font-weight:600;
   transition: transform .06s ease, box-shadow .2s ease, background .2s ease, border-color .2s ease;
   box-shadow: 0 0 0 0 transparent;
 }
 .button:hover{ background:var(--panel); }
 .button:active{ transform: translateY(1px); }
 .button--primary{
-  background:var(--accent);
-  color:#fff;
-  border-color:transparent;
+  background:var(--accent); color:#fff; border-color:transparent;
 }
 .button--primary:hover{ filter: brightness(0.96); }
 .button--secondary{ background:#fff; }
 
-/* Turn indicator */
-.turn{
+/* Also style any plain <button> / <select> controls, non-intrusively */
+button, select{
+  font-family: inherit;
+}
+button:hover{ cursor:pointer; }
+
+/* ---- Turn indicator ---- */
+.turn, #turnIndicator{
   margin:.25rem 0 0;
   font-weight:700;
 }
 
-/* Board */
+/* ---- Board & tokens ---- */
 .board-wrap{ position:relative; user-select:none; }
-#boardImg{ display:block; width:100%; height:auto; border-radius: .25rem; }
-.tokens-layer{ position:absolute; inset:0; pointer-events:none; }
+#boardImg{
+  display:block; width:100%; height:auto; border-radius:.25rem;
+  background:#fff;
+  border: 6px solid var(--frame);
+  box-shadow: 0 6px 15px rgba(0,0,0,.15);
+}
+/* Your overlay container (keep both id & class forms you’ve used) */
+.tokens-layer, #tokensLayer{ position:absolute; inset:0; pointer-events:none; }
 .token{
   position:absolute; width:20px; height:20px; border-radius:50%;
   box-shadow: 0 1px 2px rgba(0,0,0,.2);
-  transform: translate(-50%, -50%); /* center on coordinate */
+  transform: translate(-50%, -50%); /* center token on coordinate */
+  outline: 1px solid rgba(0,0,0,.08); /* subtle ring for contrast */
 }
 
-/* Players list */
-.players-section{ margin-top: .5rem; }
+/* ---- Players list / inline editing ---- */
+.players-section{ margin-top:.5rem; }
 .player-pill{
   display:inline-flex; align-items:center; gap:.45rem;
   padding:.3rem .6rem; margin:.25rem .3rem 0 0;
   border:1px solid var(--border); border-radius:999px;
-  background:#fff; box-shadow: var(--shadow);
+  background:#fff; box-shadow: var(--shadow-soft);
 }
 .player-dot{ width:.85rem; height:.85rem; border-radius:50%; flex:0 0 auto; }
 .player-name{
-  min-width:6ch;
-  border:1px solid transparent;
-  padding:.1rem .25rem;
-  border-radius:.35rem;
+  min-width:6ch; border:1px solid transparent; padding:.1rem .25rem; border-radius:.35rem;
 }
 .player-name:focus{
-  outline: none;
-  border-color: var(--link);
+  outline:none; border-color:var(--link);
   box-shadow: 0 0 0 3px rgba(29,112,184,.15);
   background:#fff;
 }
+/* mobile-friendly input variant you’ve used before */
+.player-name-input{ display:inline-block; max-width:12rem; font-size:1rem; }
 
-/* Attribution */
-.attrib{
-  color:var(--muted);
-  margin: 1rem 0 0;
-  font-size:.9rem;
-}
+/* ---- Attribution footer ---- */
+.attrib{ color:var(--muted); margin:1rem 0 0; font-size:.92rem; }
 
-/* Modal (cards & end-game) */
+/* ---- Modal (cards & end-game) ---- */
 .modal-backdrop{
   position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
   background: rgba(0,0,0,.55);
@@ -135,17 +135,15 @@ body{
 }
 .modal{
   width:min(680px, 92vw);
-  background:#fff;
-  border-radius:.65rem;
-  border:1px solid var(--border);
-  box-shadow: var(--shadow);
+  background:#fff; border-radius:.65rem; border:1px solid var(--border);
+  box-shadow: var(--shadow-soft);
   padding: 1rem 1.25rem;
 }
 .modal h2{ margin:.2rem 0 .5rem; font-size:1.25rem; }
 .modal-actions{ display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem; }
 [hidden]{ display:none !important; }
 
-/* Dice overlay */
+/* ---- Dice overlay (full, including face 'one') ---- */
 .dice-overlay{
   position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
   background: radial-gradient(ellipse at center, rgba(0,0,0,.6) 0%, rgba(0,0,0,.85) 100%);
@@ -160,6 +158,7 @@ body{
 }
 .dice.show-1 .one, .dice.show-2 .two, .dice.show-3 .three,
 .dice.show-4 .four, .dice.show-5 .five, .dice.show-6 .six{ display:block; }
+/* generic pattern (overridden by specific faces) */
 .dice .face:before{
   content:""; position:absolute; inset:0;
   background:
@@ -171,7 +170,7 @@ body{
     radial-gradient(circle at 25% 50%, transparent 0 4%, transparent 5%),
     radial-gradient(circle at 75% 50%, transparent 0 4%, transparent 5%);
 }
-/* explicit patterns (incl. one) */
+/* explicit faces (incl. one) */
 .dice .one:before{
   background:
     radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%);
@@ -224,39 +223,33 @@ body{
   .dice.rolling .face{ animation:none; }
 }
 
-/* Toast (created by JS, no extra HTML needed) */
-#toastRoot{ pointer-events:none; }
+/* ---- Toasts ---- */
+/* You have two patterns in repo: #toastRoot (legacy) and programmatic host (.toast-host). Support both. */
+#toastRoot{ position:fixed; left:50%; bottom:1rem; transform:translateX(-50%); z-index:1300; pointer-events:none; }
 #toastRoot > div{
-  background: rgba(0,0,0,.85);
-  color:#fff;
-  border-radius: 999px;
-  padding: 8px 12px;
-  margin-top: 6px;
-  font-size: 14px;
-  box-shadow: 0 4px 12px rgba(0,0,0,.35);
-  transform: translateY(4px);
-  opacity: 0;
+  background: rgba(0,0,0,.85); color:#fff; border-radius: 999px;
+  padding: 8px 12px; margin-top: 6px; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,.35);
+  transform: translateY(4px); opacity: 0;
 }
+.toast-host{ position:fixed; left:50%; bottom:1rem; transform:translateX(-50%); z-index:1300; display:flex; flex-direction:column; gap:.5rem; pointer-events:none; }
+.toast{ background:#0b0c0c; color:#fff; border-radius:.5rem; padding:.6rem .9rem; box-shadow:0 6px 20px rgba(0,0,0,.25); font-size:.95rem; line-height:1.2; opacity:0; transform:translateY(10px); animation:toast-in .18s ease-out forwards; }
+@keyframes toast-in{ to{opacity:1; transform:translateY(0)} }
+@media (prefers-reduced-motion: reduce){ .toast{ animation:none; opacity:1; transform:none } }
 
-/* Debug panel */
+/* ---- Debug panel ---- */
 #dbg-log{
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 12px;
-  line-height: 1.45;
-  background: #111;
-  color: #e6ffed;
-  border-radius: .4rem;
-  padding: .75rem .9rem;
-  max-height: 36vh;
-  overflow:auto;
-  box-shadow: var(--shadow);
+  font-size: 12px; line-height: 1.45;
+  background: #111; color: #e6ffed;
+  border-radius: .4rem; padding: .75rem .9rem;
+  max-height: 36vh; overflow:auto; box-shadow: var(--shadow-soft);
 }
 
-/* Utility links */
-a{ color: var(--link); text-decoration: none; }
-a:hover{ text-decoration: underline; }
+/* ---- Links ---- */
+a{ color:var(--link); text-decoration:none; }
+a:hover{ text-decoration:underline; }
 
-/* Small screens */
+/* ---- Small screens ---- */
 @media (max-width: 640px){
   .page-header{ gap:.6rem; }
   .controls{ gap:.4rem; }
