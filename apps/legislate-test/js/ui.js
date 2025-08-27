@@ -1,113 +1,75 @@
-// ui.js – last confirmed working version
-
-export function setupUI({ state, send, on }) {
-  const rollBtn = document.getElementById("roll-btn-header");
-  const restartBtn = document.getElementById("restart-btn");
-  const playersContainer = document.getElementById("players");
-  const turnIndicator = document.getElementById("turn-indicator");
-  const activeName = document.getElementById("active-name");
-  const activeColor = document.getElementById("active-color");
-  const dbgLog = document.getElementById("dbg-log");
-
-  // Dice overlay
-  const diceOverlay = document.getElementById("dice-overlay");
-  const dice = document.getElementById("dice");
-
-  // Modal root
+// ui.js
+const UI = (() => {
   const modalRoot = document.getElementById("modalRoot");
+  const turnIndicator = document.getElementById("turn-indicator");
+  const playersEl = document.getElementById("players");
+  const tokensLayer = document.getElementById("tokensLayer");
+  const toastRoot = document.getElementById("toast-root");
 
-  // Log helper
-  function log(msg) {
-    if (dbgLog) {
-      const line = document.createElement("div");
-      line.textContent = msg;
-      dbgLog.appendChild(line);
-    }
-  }
+  const tokens = {};
 
-  // Render players
-  function renderPlayers() {
-    playersContainer.innerHTML = "";
-    state.players.forEach((p) => {
-      const span = document.createElement("span");
-      span.className = "player-name";
-      span.contentEditable = true;
-      span.textContent = p.name;
-      span.style.color = p.color;
-      span.addEventListener("input", () => {
-        p.name = span.textContent;
-        if (p.id === state.activePlayerId) {
-          activeName.textContent = p.name;
-        }
-      });
-      playersContainer.appendChild(span);
+  const initPlayers = (players) => {
+    playersEl.innerHTML = "";
+    players.forEach((id, i) => {
+      const div = document.createElement("div");
+      div.className = "player";
+      div.dataset.id = id;
+      div.innerHTML = `<span contenteditable="true" class="player-name">Player ${i + 1}</span>`;
+      playersEl.appendChild(div);
+
+      const token = document.createElement("div");
+      token.className = `token token-${i}`;
+      tokensLayer.appendChild(token);
+      tokens[id] = token;
     });
-  }
+  };
 
-  // Turn indicator
-  function updateTurnIndicator() {
-    const active = state.players.find((p) => p.id === state.activePlayerId);
-    if (active) {
-      activeName.textContent = active.name;
-      activeColor.style.background = active.color;
-    }
-  }
+  const updateTurnIndicator = (playerId) => {
+    const nameEl = playersEl.querySelector(`[data-id="${playerId}"] .player-name`);
+    const activeName = nameEl ? nameEl.innerText : playerId;
+    turnIndicator.innerHTML = `<span class="player-dot"></span> ${activeName}'s turn`;
+  };
 
-  // Dice rendering
-  function showDice(value) {
-    dice.className = "dice show-" + value;
-  }
-
-  // Modal helper
-  function showModal(card, onClose) {
+  const showCard = (card) => {
     modalRoot.innerHTML = `
       <div class="modal">
-        <div class="modal-content">
-          <p>${card.text}</p>
-          <button id="modal-ok">OK</button>
-        </div>
+        <p>${card.text}</p>
+        <button id="card-ok">OK</button>
       </div>
     `;
     modalRoot.style.display = "block";
-    document.getElementById("modal-ok").onclick = () => {
+
+    document.getElementById("card-ok").onclick = () => {
       modalRoot.style.display = "none";
-      onClose();
+      emit("CARD_APPLIED", { id: card.id, effect: card.effect, playerId: Engine.currentPlayer().id, position: Engine.currentPlayer().position });
     };
-  }
+    emit("CARD_MODAL_OPEN", { id: card.id, effect: card.effect });
+  };
 
-  // Events
-  rollBtn.addEventListener("click", () => {
-    send("ROLL");
-    log("rollBtn click");
+  const moveToken = (playerId, position) => {
+    const token = tokens[playerId];
+    const space = Engine.state.spaces[position];
+    if (token && space) {
+      token.style.left = space.x + "%";
+      token.style.top = space.y + "%";
+    }
+  };
+
+  const toast = (msg) => {
+    const div = document.createElement("div");
+    div.className = "toast";
+    div.innerText = msg;
+    toastRoot.appendChild(div);
+    setTimeout(() => div.remove(), 3000);
+  };
+
+  on("TURN_SKIPPED", ({ playerId }) => {
+    toast(`${playerId} misses a turn!`);
   });
 
-  restartBtn.addEventListener("click", () => {
-    send("RESTART");
+  on("EFFECT_EXTRA_ROLL", ({ playerId }) => {
+    toast(`${playerId} gets an extra roll!`);
   });
 
-  on("TURN_BEGIN", () => {
-    updateTurnIndicator();
-  });
-
-  on("PLAYER_UPDATE", () => {
-    renderPlayers();
-    updateTurnIndicator();
-  });
-
-  on("DICE_ROLL", ({ value }) => {
-    diceOverlay.style.display = "flex";
-    showDice(value);
-  });
-
-  on("DICE_DONE", () => {
-    diceOverlay.style.display = "none";
-  });
-
-  on("CARD_MODAL_OPEN", ({ card, onClose }) => {
-    showModal(card, onClose);
-  });
-
-  // Initial render
-  renderPlayers();
-  updateTurnIndicator();
-}
+  return { initPlayers, updateTurnIndicator, showCard, moveToken, toast };
+})();
