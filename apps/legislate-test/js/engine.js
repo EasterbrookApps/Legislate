@@ -49,7 +49,6 @@ window.LegislateEngine = (function(){
 
     } else if (type === 'miss_turn'){
       current().skip = (current().skip || 0) + 1;
-      toast('${current().name} misses a turn');
 
     } else if (type === 'extra_roll'){
       current().extraRoll = true;
