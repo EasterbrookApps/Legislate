@@ -144,89 +144,9 @@
           engine.takeTurn();
 });
 
-// --- restart wiring (safe + instrumented) ---
-
-// 0) tiny helpers
-const $ = (id) => document.getElementById(id);
-const log = (t, o) => { try { window.LegislateDebug?.log(t, o); } catch (e) {} };
-
-// 1) optional confirmation gate (set to true if you want the prompt)
-const REQUIRE_CONFIRM = false;
-
-// 2) immediate in-place reset so the UI visibly clears even if reload is flaky
-function hardResetInPlace() {
-  log('RESTART_BEGIN');
-
-  // Clear persisted save
-  try { window.LegislateStorage?.clear?.(); } catch {}
-
-  // Hide/clear overlays
-  try {
-    const modalRoot = $('modalRoot'); if (modalRoot) modalRoot.innerHTML = '';
-    const diceOverlay = $('diceOverlay'); if (diceOverlay) { diceOverlay.hidden = true; diceOverlay.style.display = 'none'; }
-  } catch {}
-
-  // Reset in-memory engine state (best-effort)
-  try {
-    const s = window.engine?.state;
-    if (s) {
-      s.turnIndex = 0;
-      (s.players || []).forEach(p => { p.position = 0; p.skip = 0; p.extraRoll = false; });
-    }
-  } catch {}
-
-  // Re-render UI (best-effort)
-  try {
-    window.boardUI?.render?.(window.engine?.state?.players || []);
-    const firstName = window.engine?.state?.players?.[0]?.name || 'Player 1';
-    window.LegislateUI?.setTurnIndicator?.(firstName);
-  } catch {}
-
-  // Clear any UI guard you use
-  try { window.gameOver = false; } catch {}
-
-  log('RESTART_INPLACE_DONE');
-}
-
-// 3) cache-busting reload that avoids bfcache
-function hardReload() {
-  try {
-    const url = new URL(location.href);
-    url.searchParams.set('t', Date.now().toString());
-    log('RESTART_RELOAD', { url: url.toString() });
-    // assign() is more reliable than replace() for busting certain caches on iOS
-    location.assign(url.toString());
-  } catch (e) {
-    // last-resort
-    location.href = location.href.split('#')[0] + (location.search ? '&' : '?') + 't=' + Date.now();
-  }
-}
-
-// 4) wire up the button robustly (both onclick and addEventListener)
-(function attachRestart() {
-  const btn = $('restartBtn');
-  if (!btn) { log('RESTART_BTN_MISSING'); return; }
-
-  const handler = (ev) => {
-    ev?.preventDefault?.();
-    if (REQUIRE_CONFIRM && !confirm('Restart the game?')) return;
-
-    hardResetInPlace();
-    // Give the UI a tick to paint the cleared state, then reload.
-    setTimeout(hardReload, 50);
-  };
-
-  // overwrite any previous handlers to avoid accidental stacking
-  btn.onclick = null;
-  btn.removeEventListener('click', handler);
-  btn.addEventListener('click', handler);
-  // fallback inline hook
-  btn.onclick = handler;
-
-  log('RESTART_WIRED');
-})();
-
-});
+      $('restartBtn')?.addEventListener('click', ()=>{
+        if (confirm('Restart the game?')) location.reload();
+      });
 
       $('playerCount')?.addEventListener('change', (e)=>{
         const n = Number(e.target.value||4) || 4;
