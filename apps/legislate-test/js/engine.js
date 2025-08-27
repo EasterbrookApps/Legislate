@@ -34,22 +34,39 @@ window.LegislateEngine = (function(){
     function drawFrom(name){ const d=state.decks[name]; if(!d||!d.length) return null; const c=d.shift(); return c; }
 
     function applyCard(card){
-      if (!card) return;
-      if (typeof card.effect === 'string' && card.effect.length){
-        const [type, arg] = card.effect.split(':');
-        if (type === 'move'){
-          const n = Number(arg||0);
-          const p=current(); let i=p.position+n;
-          if(i<0)i=0; if(i>endIndex)i=endIndex; p.position=i;
-        } else if (type === 'miss_turn'){
-          current().skip = (current().skip||0) + 1;
-        } else if (type === 'extra_roll'){
-          current().extraRoll = true;
-        } else if (type === 'pingpong'){
-          current().position = endIndex;
-        }
-      }
+  if (!card) return;
+
+  if (typeof card.effect === 'string' && card.effect.length){
+    const [type, arg] = card.effect.split(':');
+
+    if (type === 'move'){
+      const n = Number(arg || 0);
+      const p = current();
+      let i = p.position + n;
+      if (i < 0) i = 0;
+      if (i > endIndex) i = endIndex;
+      p.position = i;
+
+    } else if (type === 'miss_turn'){
+      current().skip = (current().skip || 0) + 1;
+
+    } else if (type === 'extra_roll'){
+      current().extraRoll = true;
+
+    } else if (type === 'pingpong'){
+      current().position = endIndex;
+
+    } else if (type === 'goto'){
+      const p = current();
+      let i = Number(arg || 0);
+      if (i < 0) i = 0;
+      if (i > endIndex) i = endIndex;
+      p.position = i;
+      // Optional: this keeps our debug stream informative without changing behaviour
+      bus.emit('EFFECT_GOTO', { playerId: p.id, index: i });
     }
+  }
+}
 
     async function moveSteps(n){
       const p=current(); const step=n>=0?1:-1; const count=Math.abs(n);
