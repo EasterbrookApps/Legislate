@@ -144,47 +144,88 @@
           engine.takeTurn();
 });
 
-// --- fail-safe restart ---
-function hardReset() {
-  // 1) clear persisted save
-  try { window.LegislateStorage?.clear?.(); } catch (e) {}
+// --- restart wiring (safe + instrumented) ---
 
-  // 2) hide/clear overlays
+// 0) tiny helpers
+const $ = (id) => document.getElementById(id);
+const log = (t, o) => { try { window.LegislateDebug?.log(t, o); } catch (e) {} };
+
+// 1) optional confirmation gate (set to true if you want the prompt)
+const REQUIRE_CONFIRM = false;
+
+// 2) immediate in-place reset so the UI visibly clears even if reload is flaky
+function hardResetInPlace() {
+  log('RESTART_BEGIN');
+
+  // Clear persisted save
+  try { window.LegislateStorage?.clear?.(); } catch {}
+
+  // Hide/clear overlays
   try {
-    const modalRoot = document.getElementById('modalRoot');
-    if (modalRoot) modalRoot.innerHTML = '';
-    const diceOverlay = document.getElementById('diceOverlay');
-    if (diceOverlay) { diceOverlay.hidden = true; diceOverlay.style.display = 'none'; }
-  } catch (e) {}
+    const modalRoot = $('modalRoot'); if (modalRoot) modalRoot.innerHTML = '';
+    const diceOverlay = $('diceOverlay'); if (diceOverlay) { diceOverlay.hidden = true; diceOverlay.style.display = 'none'; }
+  } catch {}
 
-  // 3) reset in-memory engine state (best-effort; safe if engine present)
+  // Reset in-memory engine state (best-effort)
   try {
-    const s = engine.state;
-    s.turnIndex = 0;
-    (s.players || []).forEach(p => { p.position = 0; p.skip = 0; p.extraRoll = false; });
-  } catch (e) {}
+    const s = window.engine?.state;
+    if (s) {
+      s.turnIndex = 0;
+      (s.players || []).forEach(p => { p.position = 0; p.skip = 0; p.extraRoll = false; });
+    }
+  } catch {}
 
-  // 4) refresh UI (best-effort)
+  // Re-render UI (best-effort)
   try {
-    boardUI?.render?.(engine.state.players);
-    window.LegislateUI?.setTurnIndicator?.(engine.state.players?.[0]?.name || 'Player 1');
-  } catch (e) {}
+    window.boardUI?.render?.(window.engine?.state?.players || []);
+    const firstName = window.engine?.state?.players?.[0]?.name || 'Player 1';
+    window.LegislateUI?.setTurnIndicator?.(firstName);
+  } catch {}
 
-  // 5) clear game-over flag used by the Roll button guard
-  try { gameOver = false; } catch (e) {}
+  // Clear any UI guard you use
+  try { window.gameOver = false; } catch {}
+
+  log('RESTART_INPLACE_DONE');
 }
 
-// Replace your existing restart handler with this:
-document.getElementById('restartBtn')?.addEventListener('click', () => {
-  if (!confirm('Restart the game?')) return;
+// 3) cache-busting reload that avoids bfcache
+function hardReload() {
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('t', Date.now().toString());
+    log('RESTART_RELOAD', { url: url.toString() });
+    // assign() is more reliable than replace() for busting certain caches on iOS
+    location.assign(url.toString());
+  } catch (e) {
+    // last-resort
+    location.href = location.href.split('#')[0] + (location.search ? '&' : '?') + 't=' + Date.now();
+  }
+}
 
-  // In-place reset so the UI responds immediately…
-  hardReset();
+// 4) wire up the button robustly (both onclick and addEventListener)
+(function attachRestart() {
+  const btn = $('restartBtn');
+  if (!btn) { log('RESTART_BTN_MISSING'); return; }
 
-  // …then guarantee a clean boot with a cache-busting reload.
-  const url = new URL(location.href);
-  url.searchParams.set('t', Date.now().toString());
-  location.replace(url.toString());
+  const handler = (ev) => {
+    ev?.preventDefault?.();
+    if (REQUIRE_CONFIRM && !confirm('Restart the game?')) return;
+
+    hardResetInPlace();
+    // Give the UI a tick to paint the cleared state, then reload.
+    setTimeout(hardReload, 50);
+  };
+
+  // overwrite any previous handlers to avoid accidental stacking
+  btn.onclick = null;
+  btn.removeEventListener('click', handler);
+  btn.addEventListener('click', handler);
+  // fallback inline hook
+  btn.onclick = handler;
+
+  log('RESTART_WIRED');
+})();
+
 });
 
       $('playerCount')?.addEventListener('change', (e)=>{
