@@ -17,7 +17,7 @@
   {
     "id": "Early04",
     "text": "No. 10 are not prepared to support your idea. Go back to square 1.",
-    "effect": ""
+    "effect": "goto:0"
   },
   {
     "id": "Early05",
@@ -42,7 +42,7 @@
   {
     "id": "Early09",
     "text": "House Authorities say Bill potentially hybrid. Go back to square 1.",
-    "effect": ""
+    "effect": "goto:0"
   },
   {
     "id": "Early10",
