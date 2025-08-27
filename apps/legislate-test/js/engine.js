@@ -195,18 +195,13 @@ window.LegislateEngine = (function () {
         return;
       }
 
-      if (p.skip > 0) {
-  p.skip--;
-  bus.emit('TURN_SKIPPED', { playerId: p.id, name: p.name, remaining: p.skip });
+      if (p.skip>0){
+        p.skip--;
+        bus.emit('TURN_SKIPPED', { playerId: p.id, name: p.name, remaining: p.skip });
+        endTurn(false);
+        return;
+      }
 
-  // Properly end this turn and advance to the next active player
-  bus.emit('TURN_END', { playerId: p.id });
-  state.turnIndex = advanceToNextActive((state.turnIndex + 1) % state.players.length);
-  if (!state.gameOver) {
-    bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
-  }
-  return;
-}
       const roll = 1 + Math.floor(rng()*6);
       bus.emit('DICE_ROLL', { value: roll, playerId: p.id, name: p.name });
       await moveSteps(roll);
