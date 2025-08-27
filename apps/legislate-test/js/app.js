@@ -81,6 +81,22 @@
         window.LegislateUI.setTurnIndicator(possessive(cur?.name));
         log('TURN_BEGIN',{ playerId: cur?.id, index });
       });
+      
+      // --- toast on missed turn ---
+      function playerName(id) {
+        const p = engine.state.players.find(p => p.id === id);
+        return p ? p.name : id;
+      }
+      
+      // When a turn is actually skipped (emitted by the engine at the start of that player's turn)
+      bus.on('TURN_SKIPPED', ({ playerId }) => {
+        LegislateUI.toast(`${playerName(playerId)}’s turn is skipped`);
+      });
+      
+      // (Optional, nice UX) When the card is applied, inform that a skip is scheduled
+      bus.on('EFFECT_MISS_TURN', ({ playerId }) => {
+        LegislateUI.toast(`${playerName(playerId)} will miss a turn`);
+      });
 
       engine.bus.on('TURN_END', ({ playerId })=>{
         log('TURN_END',{ playerId });
