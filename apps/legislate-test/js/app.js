@@ -27,6 +27,9 @@
       boardUI.render(engine.state.players);
       window.LegislateUI.setTurnIndicator(possessive(engine.state.players[0]?.name));
       log('EVT BOOT_OK');
+      
+      // --- game-over flag (UI only; engine unchanged)
+      let gameOver = false;
 
       // engine → ui
       engine.bus.on('DICE_ROLL', ({ value })=>{
@@ -98,15 +101,48 @@
       engine.bus.on('EFFECT_MISS_TURN', ({ playerId }) => {
         LegislateUI.toast(`${playerName(playerId)} will miss a turn`);
       });
+      
+      engine.bus.on('LANDED', ({ playerId, space }) => {
+      // We only care about the very first arrival at an 'end' space
+      if (gameOver || !space || space.stage !== 'end') return;
+
+      gameOver = true;
+
+      // Resolve a friendly name
+      const p = engine.state.players.find(x => x.id === playerId);
+      const name = p?.name || 'Player';
+    
+      // Nice little toast (optional)
+      window.LegislateUI?.toast?.(`${name} wins!`);
+    
+      // Single, simple modal that won’t interfere with dice/cards
+      window.LegislateUI?.createModal?.({
+        title: 'Winner!',
+        body: `${name} reached the finish.`,
+        primary: {
+          label: 'Restart',
+          onClick: () => location.reload()
+        },
+        secondary: {
+          label: 'Close'
+          // no onClick needed; default close is fine
+        }
+      })?.open?.();
+    });
       engine.bus.on('TURN_END', ({ playerId })=>{
         log('TURN_END',{ playerId });
       });
 
       // controls
       $('rollBtn')?.addEventListener('click', ()=>{
-        log('rollBtn click');
-        engine.takeTurn();
-      });
+          if (gameOver) {
+            // non-blocking UX; no CSS dependency
+            window.LegislateUI?.toast?.('Game over — restart to play again.');
+            return;
+          }
+          log('rollBtn click');
+          engine.takeTurn();
+});
 
       $('restartBtn')?.addEventListener('click', ()=>{
         if (confirm('Restart the game?')) location.reload();
