@@ -1,263 +1,302 @@
-<!-- File: apps/legislate-test/js/ui.js -->
-<script>
-window.LegislateUI = (function () {
-  // ---------- small helpers ----------
-  const $id = (id) => document.getElementById(id);
-  const el = (tag, cls, text) => {
+// js/ui.js
+// Lightweight, DOM-only UI helpers exposed on window.LegislateUI
+// NOTE: keep API stable — used by app.js
+
+(function () {
+  // ---------- DOM utils ----------
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const el = (tag, props = {}, children = []) => {
     const n = document.createElement(tag);
-    if (cls) n.className = cls;
-    if (text != null) n.textContent = text;
+    Object.entries(props).forEach(([k, v]) => {
+      if (k === "class") n.className = v;
+      else if (k === "style" && typeof v === "object") Object.assign(n.style, v);
+      else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+      else if (v != null) n.setAttribute(k, v);
+    });
+    (Array.isArray(children) ? children : [children])
+      .filter(Boolean)
+      .forEach(c => n.appendChild(typeof c === "string" ? document.createTextNode(c) : c));
     return n;
   };
 
-  // ---------- simple setters used by app.js ----------
-  function setAlt(img, text) {
-    if (img) img.alt = text || '';
-  }
-  function setSrc(img, src) {
-    if (img) img.src = src;
-  }
-  function setTurnIndicator(elm, text) {
-    if (!elm) return;
-    elm.textContent = text;
+  // ---------- Simple logger hook (no-op if debug.js not loaded yet) ----------
+  function log(kind, data) {
+    try {
+      if (window.LegislateDebug && typeof window.LegislateDebug.log === "function") {
+        window.LegislateDebug.log(kind, data);
+      }
+    } catch (_) { /* ignore */ }
   }
 
-  // ---------- modal infrastructure ----------
-  // build a single modal inside #modalRoot and control it here.
-  function createModal(root) {
-    const host = root || $id('modalRoot');
-    if (!host) throw new Error('modalRoot not found');
+  // ---------- Basic setters ----------
+  function setAlt(img, text) { if (img) img.alt = text || ""; }
+  function setSrc(img, src) { if (img) img.src = src; }
+  function setTurnIndicator(target, text) { if (target) target.textContent = text || ""; }
 
-    // if we already initialised, just return the controller we stashed
-    if (host.__controller) return host.__controller;
+  // ---------- Modal (card / alerts) ----------
+  // Exposes: createModal(rootEl?) -> { open({title,body,okLabel}) : Promise<void> }
+  function createModal(rootEl) {
+    const host = rootEl || $("#modalRoot") || $("#modal-root") || document.body;
 
-    const backdrop = el('div', 'modal-backdrop', '');
-    backdrop.style.display = 'none';
-
-    const modal = el('div', 'modal', '');
-    const h2 = el('h2', '', '');
-    const body = el('div', 'modal-body', '');
-    const actions = el('div', 'modal-actions', '');
-    const okBtn = el('button', 'button', 'OK');
-    okBtn.id = 'modalOK';
-
-    actions.appendChild(okBtn);
-    modal.append(h2, body, actions);
-    backdrop.appendChild(modal);
+    // Build a single modal container that we show/hide
+    const backdrop = el("div", { class: "modal-backdrop", hidden: "hidden", role: "presentation" });
+    const dialog = el("div", { class: "modal", role: "dialog", "aria-modal": "true" }, [
+      el("h2", { id: "ui-modal-title", class: "modal-title" }),
+      el("div", { id: "ui-modal-body", class: "modal-body" }),
+      el("div", { class: "modal-actions" }, [
+        el("button", { id: "ui-modal-ok", class: "button" }, "OK")
+      ])
+    ]);
+    backdrop.appendChild(dialog);
     host.appendChild(backdrop);
 
-    let resolver = null;
-    function open({ title = '', html = '' }) {
-      h2.textContent = title || '';
-      body.innerHTML = html || '';
-      backdrop.style.display = 'flex';
-      okBtn.focus();
-      return new Promise((resolve) => {
-        resolver = resolve;
+    const titleEl = $("#ui-modal-title", dialog);
+    const bodyEl  = $("#ui-modal-body", dialog);
+    const okBtn   = $("#ui-modal-ok", dialog);
+
+    function open(opts = {}) {
+      const { title = "Card", body = "", okLabel = "OK" } = opts;
+      titleEl.textContent = title;
+      if (typeof body === "string") {
+        bodyEl.textContent = body;
+      } else if (body instanceof Node) {
+        bodyEl.innerHTML = "";
+        bodyEl.appendChild(body);
+      }
+      okBtn.textContent = okLabel;
+      backdrop.hidden = false;
+      dialog.focus();
+      return new Promise(resolve => {
+        const close = () => {
+          backdrop.hidden = true;
+          okBtn.removeEventListener("click", onOk);
+          backdrop.removeEventListener("click", onClickBackdrop);
+          resolve();
+        };
+        const onOk = () => { log("CARD_MODAL_CLOSE", {}); close(); };
+        const onClickBackdrop = (e) => { if (e.target === backdrop) close(); };
+        okBtn.addEventListener("click", onOk);
+        backdrop.addEventListener("click", onClickBackdrop);
       });
     }
-    function close(result) {
-      backdrop.style.display = 'none';
-      body.innerHTML = '';
-      if (resolver) {
-        const r = resolver;
-        resolver = null;
-        r(result);
-      }
+
+    return { open };
+  }
+
+  // ---------- Dice overlay ----------
+  // Public: showDiceRoll({value, durationMs}) -> Promise<void>
+  function showDiceRoll(opts = {}) {
+    const { value = 1, durationMs = 800 } = opts;
+    const overlay = $("#diceOverlay");
+    const dice = $("#dice");
+    if (!overlay || !dice) {
+      log("WARN", { msg: "dice overlay not found" });
+      return Promise.resolve();
     }
-    okBtn.addEventListener('click', () => close(true));
-    backdrop.addEventListener('click', (e) => {
-      // only close if user clicks outside the modal box
-      if (e.target === backdrop) close(false);
+
+    // set the face
+    dice.classList.remove("show-1", "show-2", "show-3", "show-4", "show-5", "show-6", "rolling");
+    dice.classList.add(`show-${Math.max(1, Math.min(6, value))}`, "rolling");
+
+    overlay.hidden = false;
+    overlay.style.display = "flex";
+    log("OVERLAY", {
+      hidden: overlay.hidden,
+      display: overlay.style.display || "",
+      vis: overlay.style.visibility || "visible",
+      z: getComputedStyle(overlay).zIndex,
+      pe: getComputedStyle(overlay).pointerEvents
     });
 
-    const controller = { open, close, elements: { backdrop, modal, body, okBtn } };
-    host.__controller = controller;
-    return controller;
-  }
-
-  // Show a card using the shared modal; resolves when user presses OK
-  async function showCardModal(card) {
-    const ctrl = createModal($id('modalRoot'));
-    const title = card?.id || 'Card';
-    const html = `
-      <p>${(card?.text || '').replace(/\n/g, '<br>')}</p>
-      ${card?.effect ? `<p><em>Effect:</em> ${card.effect}</p>` : ''}
-    `;
-    return ctrl.open({ title, html });
-  }
-
-  // ---------- dice overlay ----------
-  // Uses #diceOverlay and #dice from index.html
-  function showDiceRoll(value, durationMs = 1100) {
-    return new Promise((resolve) => {
-      const overlay = $id('diceOverlay');
-      const dice = $id('dice');
-      if (!overlay || !dice) {
-        // if markup missing, just resolve immediately
-        return resolve();
-      }
-
-      // honour reduced motion
-      const prefersReduced =
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const dur = prefersReduced ? 300 : durationMs;
-
-      // Set visible + animate between faces quickly, then settle on final
-      overlay.hidden = false;
-      overlay.style.display = 'flex';
-      overlay.setAttribute('aria-hidden', 'false');
-
-      dice.classList.remove(
-        'show-1',
-        'show-2',
-        'show-3',
-        'show-4',
-        'show-5',
-        'show-6'
-      );
-      dice.classList.add('rolling');
-
-      // quick jitter to make it feel alive
-      const temp = setInterval(() => {
-        const r = 1 + Math.floor(Math.random() * 6);
-        dice.className = `dice rolling show-${r}`;
-      }, 120);
-
+    return new Promise(res => {
       setTimeout(() => {
-        clearInterval(temp);
-        dice.className = `dice show-${value}`;
-
-        // small pause with the final face visible
+        dice.classList.remove("rolling");
+        // small pause to let the user read the face
         setTimeout(() => {
           overlay.hidden = true;
-          overlay.style.display = 'none';
-          overlay.setAttribute('aria-hidden', 'true');
-          resolve();
-        }, prefersReduced ? 250 : 450);
-      }, dur);
+          overlay.style.display = "none";
+          log("OVERLAY", {
+            hidden: overlay.hidden,
+            display: overlay.style.display || "",
+            vis: overlay.style.visibility || "visible",
+            z: getComputedStyle(overlay).zIndex,
+            pe: getComputedStyle(overlay).pointerEvents
+          });
+          res();
+        }, 250);
+      }, Math.max(200, durationMs));
     });
   }
 
-  // ---------- toast (subtle notifications) ----------
-  function toast(message, ms = 2200) {
-    const root = $id('modalRoot') || document.body;
-    let box = root.querySelector('.toast');
+  // ---------- Toasts (non-blocking notices) ----------
+  // Minimal; CSS uses .toast fixed bottom-right
+  function showToast(text, ms = 2200) {
+    let box = $("#ui-toast");
     if (!box) {
-      box = el('div', 'toast', '');
-      // minimal inline style so it works without extra CSS
-      box.style.position = 'fixed';
-      box.style.right = '12px';
-      box.style.bottom = '12px';
-      box.style.background = '#111';
-      box.style.color = '#fff';
-      box.style.padding = '8px 10px';
-      box.style.borderRadius = '6px';
-      box.style.fontSize = '14px';
-      box.style.zIndex = '1600';
-      root.appendChild(box);
+      box = el("div", { id: "ui-toast", class: "toast", style: {
+        position: "fixed", right: "12px", bottom: "12px",
+        background: "#0b0c0c", color: "#fff", padding: "8px 12px",
+        borderRadius: "8px", fontSize: "14px", zIndex: "1600",
+        boxShadow: "0 6px 24px rgba(0,0,0,.25)"
+      }});
+      document.body.appendChild(box);
     }
-    box.textContent = message || '';
-    box.style.opacity = '1';
-    clearTimeout(box.__t);
-    box.__t = setTimeout(() => {
-      box.style.opacity = '0';
-    }, ms);
+    box.textContent = text;
+    box.style.opacity = "1";
+    clearTimeout(box._t);
+    box._t = setTimeout(() => { box.style.opacity = "0"; }, ms);
   }
 
-  // ---------- board + tokens ----------
-  // Creates a token renderer bound to the image + overlay layer.
+  // ---------- Board & token renderer ----------
+  // Exposes: createBoardRenderer(boardImgEl, tokensLayerEl, spaces)
+  // API: { placeToken(playerId, index, color), clearTokens(), summary() }
   function createBoardRenderer(boardImgEl, tokensLayerEl, spaces) {
     if (!boardImgEl || !tokensLayerEl) {
-      throw new Error('Board image or tokens layer missing');
+      throw new Error("createBoardRenderer requires board image and tokens layer");
     }
 
-    // Ensure overlay is positioned correctly
-    tokensLayerEl.style.position = 'absolute';
-    tokensLayerEl.style.inset = '0';
+    // token nodes keyed by playerId
+    const nodes = new Map();
 
-    // cache player elements by id
-    const tokenMap = new Map();
-
-    function ensureToken(id, color) {
-      if (tokenMap.has(id)) return tokenMap.get(id);
-      const dot = el('div', 'token');
-      // minimal style so it works regardless of CSS
-      dot.style.position = 'absolute';
-      dot.style.width = '2.2%';
-      dot.style.height = '2.2%';
-      dot.style.borderRadius = '50%';
-      dot.style.boxShadow = '0 1px 4px rgba(0,0,0,.35)';
-      dot.style.transform = 'translate(-50%, -50%)';
-      dot.style.pointerEvents = 'none';
-      dot.style.zIndex = '5';
-      dot.style.background = color || '#d4351c';
-      dot.dataset.playerId = id;
-      tokensLayerEl.appendChild(dot);
-      tokenMap.set(id, dot);
-      return dot;
-    }
-
-    function positionForIndex(index) {
-      const s = Array.isArray(spaces) ? spaces.find((t) => t.index === index) : null;
-      if (!s) return null;
-      return { x: s.x, y: s.y }; // percentages 0..100
-    }
-
-    function placeToken(player) {
-      const pos = positionForIndex(player.position);
-      const dot = ensureToken(player.id, player.color);
-      if (!pos) {
-        dot.style.display = 'none';
-        return;
+    // Convert a board index -> {x,y} in pixels based on image size
+    function project(index) {
+      const s = spaces.find(sp => sp.index === index);
+      if (!s) {
+        // default to start (index 0)
+        const z = spaces.find(sp => sp.index === 0) || { x: 0, y: 0 };
+        return { x: z.x, y: z.y };
       }
-      dot.style.display = 'block';
-      dot.style.left = pos.x + '%';
-      dot.style.top = pos.y + '%';
+      // x,y are percentages [0..100]
+      const rect = boardImgEl.getBoundingClientRect();
+      const x = (s.x / 100) * rect.width;
+      const y = (s.y / 100) * rect.height;
+      return { x, y };
     }
 
-    function renderPlayers(players) {
-      if (!players) return;
-      players.forEach(placeToken);
+    function ensureNode(id, color) {
+      if (nodes.has(id)) return nodes.get(id);
+      const n = el("div", { class: "token", style: {
+        position: "absolute",
+        width: "18px", height: "18px",
+        borderRadius: "50%",
+        border: "2px solid #fff",
+        boxShadow: "0 2px 8px rgba(0,0,0,.35)",
+        background: color || "#6f72af",
+        transform: "translate(-50%, -50%)"
+      }});
+      n.dataset.playerId = id;
+      tokensLayerEl.appendChild(n);
+      nodes.set(id, n);
+      return n;
     }
 
-    return { renderPlayers, placeToken };
+    function placeToken(playerId, index, color) {
+      const node = ensureNode(playerId, color);
+      const { x, y } = project(index);
+      node.style.left = `${x}px`;
+      node.style.top  = `${y}px`;
+      node.style.background = color || node.style.background;
+    }
+
+    function clearTokens(keepIds = []) {
+      // remove any tokens whose id is not in keepIds
+      nodes.forEach((node, pid) => {
+        if (!keepIds.includes(pid)) {
+          node.remove();
+          nodes.delete(pid);
+        }
+      });
+    }
+
+    function summary() {
+      // helpful for debug
+      const byIdx = {};
+      nodes.forEach((node) => {
+        const idx = node.dataset.index || "?";
+        byIdx[idx] = (byIdx[idx] || 0) + 1;
+      });
+      return byIdx;
+    }
+
+    // keep tokens aligned on resize
+    function reflowAll() {
+      // find each node's intended index from dataset
+      nodes.forEach((node) => {
+        const idx = parseInt(node.dataset.index || "0", 10);
+        const { x, y } = project(idx);
+        node.style.left = `${x}px`;
+        node.style.top  = `${y}px`;
+      });
+    }
+    window.addEventListener("resize", () => requestAnimationFrame(reflowAll));
+
+    return {
+      placeToken(indexOrPlayer, indexMaybe, colorMaybe) {
+        // support both signatures for backwards compat:
+        // (playerId, index, color)   or   ({id,color,position})
+        if (typeof indexOrPlayer === "object") {
+          const p = indexOrPlayer;
+          const node = ensureNode(p.id, p.color);
+          node.dataset.index = String(p.position || 0);
+          const { x, y } = project(p.position || 0);
+          node.style.left = `${x}px`;
+          node.style.top  = `${y}px`;
+          node.style.background = p.color || node.style.background;
+        } else {
+          const playerId = indexOrPlayer;
+          const index = indexMaybe || 0;
+          const color = colorMaybe;
+          const node = ensureNode(playerId, color);
+          node.dataset.index = String(index);
+          const { x, y } = project(index);
+          node.style.left = `${x}px`;
+          node.style.top  = `${y}px`;
+          node.style.background = color || node.style.background;
+        }
+      },
+      clearTokens,
+      summary
+    };
   }
 
-  // ---------- players list (header pills) ----------
-  function renderPlayersList(container, players) {
-    if (!container) return;
-    container.innerHTML = '';
+  // ---------- Players list (inline name editing) ----------
+  // Exposes: renderPlayers(containerEl, players, onNameChange?)
+  function renderPlayers(containerEl, players, onNameChange) {
+    if (!containerEl) return;
+    containerEl.innerHTML = "";
     players.forEach((p) => {
-      const pill = el('span', 'player-pill', '');
-      const dot = el('span', 'player-dot', '');
-      dot.style.background = p.color || '#1d70b8';
-
-      const name = el('span', 'player-name', p.name || '');
-      name.contentEditable = 'true';
-      name.spellcheck = false;
-      name.addEventListener('blur', () => {
-        const v = (name.textContent || '').trim();
-        p.name = v || p.name; // app will persist on next save
+      const dot = el("span", { class: "player-dot", style: {
+        background: p.color || "#6f72af",
+        display: "inline-block",
+        width: ".8rem", height: ".8rem", borderRadius: "50%"
+      }});
+      const input = el("input", {
+        type: "text",
+        class: "player-name player-name-input",
+        value: p.name || "",
+        "aria-label": `Name for ${p.id}`
       });
-
-      pill.append(dot, name);
-      container.appendChild(pill);
+      input.addEventListener("change", () => {
+        if (typeof onNameChange === "function") onNameChange(p.id, input.value.trim());
+      });
+      containerEl.appendChild(
+        el("span", { class: "player-pill" }, [dot, input])
+      );
     });
   }
 
-  // Expose all functions app.js expects
-  return {
+  // ---------- Export ----------
+  window.LegislateUI = {
+    // small helpers
     setAlt,
     setSrc,
     setTurnIndicator,
-    createModal,           // << restored and exported
+    // main UI
+    createModal,
     createBoardRenderer,
-    renderPlayers: renderPlayersList,
+    renderPlayers,
     showDiceRoll,
-    showCardModal,
-    toast,
+    showToast
   };
 })();
-</script>
