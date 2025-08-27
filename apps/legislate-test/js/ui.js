@@ -5,7 +5,7 @@ window.LegislateUI = (function () {
   function setTurnIndicator(name){
     const el = $('turnIndicator');
     const n = (name||'Player').toString().trim();
-    if (el) el.textContent = `${n}'s turn`;
+    if (el) el.textContent = n;
   }
 
   // --- Players pill list (inline editing, non-blocking)
