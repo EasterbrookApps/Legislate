@@ -255,3 +255,12 @@ a:hover{ text-decoration:underline; }
   .controls{ gap:.4rem; }
   .players-section{ margin-top:.4rem; }
 }
+
+/* === Background styling === */
+body {
+  background-color: #f9f9f6; /* fallback warm paper tone */
+  background-image: url("assets/textures/paper-noise.svg");
+  background-repeat: repeat;
+  background-size: 320px 320px; /* scale of the paper grain */
+  background-attachment: fixed;
+}
