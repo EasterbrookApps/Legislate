@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Legislate?! — Experimental UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Experimental stylesheet -->
+  <link rel="stylesheet" href="style.experimental.css?v=exp1">
+
+  <!-- NOTE: If your paths differ, update these script/src paths below accordingly. -->
+</head>
+<body>
+  <!-- App frame header -->
+  <header class="app-header" role="banner">
+    <div class="app-header__inner">
+      <a class="brand" href="./">Legislate?!</a>
+      <nav class="app-nav" aria-label="Primary">
+        <a href="./index.html">Classic UI</a>
+        <a href="#" aria-disabled="true">Rules</a>
+        <a href="#" aria-disabled="true">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="app-main" role="main">
+    <section class="board-section">
+      <div class="board-wrap">
+        <!-- Board image -->
+        <!-- If your board lives elsewhere, adjust this path (example below matches common layouts) -->
+        <!-- Example 1: assets path -->
+        <img id="boardImg" class="board-img" src="assets/packs/uk-parliament/board.png" alt="UK legislative board">
+
+        <!-- Example 2 (alternate): content path -->
+        <!-- <img id="boardImg" class="board-img" src="content/packs/uk-parliament/board.png" alt="UK legislative board"> -->
+
+        <!-- Token layer (absolute) -->
+        <div id="tokensLayer" class="tokens-layer" aria-hidden="true"></div>
+
+        <!-- Floating controls dock (keeps existing IDs) -->
+        <div class="control-dock" role="region" aria-label="Game controls">
+          <div id="turnIndicator" class="turn-indicator">Loading…</div>
+          <select id="playerCount" class="control control--select" aria-label="Number of players">
+            <option value="2">2 players</option>
+            <option value="3">3 players</option>
+            <option value="4" selected>4 players</option>
+            <option value="5">5 players</option>
+            <option value="6">6 players</option>
+          </select>
+          <button id="rollBtn" class="control control--button" type="button">Roll</button>
+          <button id="restartBtn" class="control control--button control--danger" type="button">Restart</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer" role="contentinfo">
+    <div class="app-footer__inner">
+      <small id="footerAttrib">
+        Board & cards adapted from the Legislate board game. © Crown copyright and database right. Licensed under the Open Government Licence.
+      </small>
+      <small class="version-pill">Experimental UI Preview</small>
+    </div>
+  </footer>
+
+  <!-- Modals & overlays (IDs preserved) -->
+  <div id="modalRoot" class="modal-root" aria-live="polite"></div>
+
+  <!-- Dice overlay (IDs preserved) -->
+  <div id="diceOverlay" class="dice-overlay" hidden>
+    <div class="dice-wrapper">
+      <div id="dice" class="dice" aria-live="assertive" aria-label="Dice">
+        <div class="face one"></div>
+        <div class="face two"></div>
+        <div class="face three"></div>
+        <div class="face four"></div>
+        <div class="face five"></div>
+        <div class="face six"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug panel (IDs preserved) -->
+  <aside id="dbg-log" class="debug-panel" aria-live="polite" aria-label="Debug log"></aside>
+
+  <!-- Scripts: keep the proven load order -->
+  <script src="storage.js"></script>
+  <script src="loader.js"></script>
+  <script src="engine.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+  <script src="debug.js"></script>
+</body>
+</html>
