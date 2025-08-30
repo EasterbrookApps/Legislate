@@ -1,0 +1,214 @@
+/* ===== Design tokens (tweak freely) ===== */
+:root{
+  --bg: #ffffff;
+  --ink: #0b0c0c;
+  --muted: #505a5f;
+  --border: #b1b4b6;
+
+  --brand: #1d70b8;           /* accent (calm blue) */
+  --danger: #d4351c;          /* danger (GDS red) */
+  --panel: rgba(255,255,255,0.92);
+
+  --radius-sm: .35rem;
+  --radius-md: .5rem;
+  --shadow-1: 0 4px 10px rgba(0,0,0,.12);
+  --shadow-2: 0 8px 24px rgba(0,0,0,.18);
+
+  --space-1: .25rem;
+  --space-2: .5rem;
+  --space-3: .75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  --z-modal: 1500;
+  --z-dice: 1400;
+  --z-dock: 120;
+  --z-header: 110;
+  --z-debug: 100;
+}
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  color:var(--ink);
+  background:var(--bg);
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  line-height:1.45;
+}
+
+/* ===== App frame ===== */
+.app-header{
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.app-header__inner{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.brand{
+  text-decoration:none;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+.app-nav a{
+  color: var(--brand);
+  text-decoration:none;
+  margin-left: var(--space-4);
+}
+.app-nav a[aria-disabled="true"]{
+  color: var(--muted);
+  pointer-events:none;
+}
+
+.app-main{
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4);
+}
+
+/* ===== Board area ===== */
+.board-section{ }
+.board-wrap{
+  position: relative; /* anchors the dock & tokens */
+  width: 100%;
+}
+.board-img{
+  display:block;
+  width:100%;
+  height:auto;
+  user-select:none;
+}
+.tokens-layer{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  /* tokens themselves can enable pointer events if needed */
+}
+
+/* ===== Floating control dock ===== */
+.control-dock{
+  position:absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display:flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items:center;
+
+  background: var(--panel);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: var(--shadow-1);
+  z-index: var(--z-dock);
+}
+
+.turn-indicator{
+  font-weight: 600;
+  margin-right: var(--space-2);
+}
+
+.control{
+  font: inherit;
+  color: var(--ink);
+  border:1px solid var(--border);
+  background:#fff;
+  border-radius: var(--radius-sm);
+  padding: .4rem .6rem;
+}
+.control--button{
+  cursor:pointer;
+}
+.control--button:hover{
+  border-color: var(--ink);
+}
+.control--danger{
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Stack dock vertically on very small screens */
+@media (max-width: 520px){
+  .control-dock{
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    bottom: var(--space-4);
+    justify-content: center;
+    row-gap: var(--space-2);
+  }
+}
+
+/* ===== Modals & dice (preserve your z-index expectations) ===== */
+.modal-root{ z-index: var(--z-modal); }
+
+.dice-overlay{
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.6) 0%, rgba(0,0,0,.85) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-dice);
+}
+.dice-wrapper{
+  width: min(70vmin, 720px);
+  height: min(70vmin, 720px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+.dice{ position:relative; width:100%; height:100%; display:grid; place-items:center; }
+.dice .face{
+  display:none; position:absolute; inset:0; margin:auto; border-radius:3%;
+  background:#fff; box-shadow:0 10px 30px rgba(0,0,0,.35); width:100%; height:100%;
+}
+.dice.show-1 .one, .dice.show-2 .two, .dice.show-3 .three, .dice.show-4 .four, .dice.show-5 .five, .dice.show-6 .six{ display:block; }
+
+/* ===== Debug panel (kept minimal, still visible) ===== */
+.debug-panel{
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-debug);
+  background: #111;
+  color: #eaeaea;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: .85rem;
+  max-height: 30vh;
+  overflow: auto;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid #333;
+}
+
+/* ===== Footer ===== */
+.app-footer{
+  border-top: 1px solid var(--border);
+  margin-top: var(--space-6);
+}
+.app-footer__inner{
+  max-width:1100px;
+  margin:0 auto;
+  padding: var(--space-4);
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--muted);
+}
+.version-pill{
+  border:1px solid var(--border);
+  border-radius:999px;
+  padding: .15rem .5rem;
+}
