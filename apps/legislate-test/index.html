@@ -7,32 +7,54 @@
   <link rel="stylesheet" href="./css/style.css?v=LG-1">
 </head>
 <body>
+
+  <!-- Header with brand title and new placeholder menu -->
   <header class="page-header">
     <div class="brand">Legislate?!</div>
-    <div class="controls">
-      <label for="playerCount">Players</label>
-      <select id="playerCount" aria-label="Number of players">
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4" selected>4</option>
-        <option value="5">5</option>
-        <option value="6">6</option>
-      </select>
-      <button id="rollBtn" class="button">Roll</button>
-      <button id="restartBtn" class="button button--secondary">Restart</button>
-    </div>
-    <div id="turnIndicator" class="turn">Loading…</div>
+    <nav class="header-menu">
+      <a href="#" class="menu-link">Home</a>
+      <a href="#" class="menu-link">About</a>
+      <a href="#" class="menu-link">Contact Us</a>
+    </nav>
   </header>
 
+  <!-- Control Bar -->
+  <div class="control-bar">
+    <div class="control-col control-col--actions">
+      <div class="control-box">
+        <h2 class="control-heading">Controls</h2>
+        <div class="button-row">
+          <button id="rollBtn" class="button">Roll</button>
+          <button id="restartBtn" class="button button--secondary">Restart</button>
+        </div>
+      </div>
+    </div>
+    <div class="control-col control-col--turn">
+      <div class="control-box">
+        <div id="turnIndicator" class="turn">Loading…</div>
+      </div>
+    </div>
+    <div class="control-col control-col--players">
+      <div class="control-box">
+        <label for="playerCount">Players</label>
+        <select id="playerCount" aria-label="Number of players">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+        <section id="playersSection" class="players-section" aria-label="Players"></section>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Content -->
   <main class="page-main">
     <div class="board-wrap">
-      <img id="boardImg" src="./assets/packs/uk-parliament/board.png" alt="UK Parliament board">
+      <img id="boardImg" src="https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/board.png" alt="UK Parliament board">
       <div id="tokensLayer" class="tokens-layer" aria-live="polite"></div>
     </div>
-
-    <section id="playersSection" class="players-section" aria-label="Players"></section>
-
-    <!-- Modal & Dice roots -->
     <div id="modalRoot"></div>
     <div id="diceOverlay" class="dice-overlay" hidden>
       <div class="dice-wrapper">
@@ -46,16 +68,14 @@
         </div>
       </div>
     </div>
-
     <p class="attrib" id="footerAttrib">
       Created by Dan Easterbrook. Inspired by the “Legislate?!” board game created by Hayley Rogers. Utilises assets created by Terence Eden, licensed under the Open Government License.
     </p>
   </main>
 
-  <!-- Always-on legacy debug sink -->
-  <pre id="dbg-log" style="max-height:200px;overflow:auto;background:#111;color:#0f0;font-size:12px;padding:6px;margin:0;white-space:pre-wrap;"></pre>
+  <pre id="dbg-log"></pre>
 
-  <!-- Script order: storage → debug → engine → loader → ui → app -->
+  <!-- Scripts -->
   <script src="./js/storage.js?v=LG-1"></script>
   <script src="./js/debug.js?v=LG-1"></script>
   <script src="./js/engine.js?v=LG-1"></script>
