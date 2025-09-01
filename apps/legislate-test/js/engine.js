@@ -107,9 +107,44 @@ window.LegislateEngine = (function(){
     }
 
     function endTurn(extra){
-      if(!extra){ state.turnIndex = (state.turnIndex+1) % state.players.length; }
-      bus.emit('TURN_BEGIN',{ playerId: current().id, index: state.turnIndex });
+  // If extra roll, keep the same player and just begin next turn as usual
+  if (extra) {
+    bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
+    return;
+  }
+
+  // Advance to the next eligible player, consuming any pending skips.
+  // Guard against edge cases by looping at most players.length times.
+  for (let hops = 0; hops < state.players.length; hops++) {
+    // Move to next player
+    state.turnIndex = (state.turnIndex + 1) % state.players.length;
+    const p = current();
+
+    if (p.skip > 0) {
+      // Consume one skip and notify
+      p.skip -= 1;
+      bus.emit('MISS_TURN', { playerId: p.id, name: p.name, remaining: p.skip });
+
+      // Also emit a DOM event so existing UI toast wiring ("effect:miss_turn") works immediately
+      try {
+        window.dispatchEvent(new CustomEvent('effect:miss_turn', {
+          detail: { playerId: p.id, playerName: p.name, remaining: p.skip }
+        }));
+      } catch (_) { /* no-op if window unavailable */ }
+
+      // Continue loop to evaluate the next player
+      continue;
     }
+
+    // Found an eligible player: begin their turn
+    bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
+    return;
+  }
+
+  // If we somehow looped all players (all had skip>0 and were consumed),
+  // start the turn for whoever we landed on.
+  bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
+}
 
     function setPlayerCount(n){
       const names = state.players.map(p=>p.name);
