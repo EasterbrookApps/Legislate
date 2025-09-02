@@ -9,6 +9,7 @@
   }
 
   // ---------- Players list (inline editor UI) ----------
+  // (Your app.js handles editing/updates. This keeps parity and doesn't interfere.)
   function renderPlayers(players /*, board (unused) */) {
     const section = $('playersSection');
     if (!section) return;
@@ -35,12 +36,11 @@
 
   // ---------- Board / tokens renderer ----------
   // Usage in app.js: const boardUI = LegislateUI.createBoardRenderer({ board });
-  // This version supports EITHER a plain board object OR { board }.
+  // Supports EITHER a plain board object OR { board }.
   function createBoardRenderer(arg) {
     const layer = $('tokensLayer');
     if (!layer) return { render: () => {} };
 
-    // Accept { board } OR board
     const board = (arg && arg.board) ? arg.board : arg;
 
     // board.json stores x/y as PERCENT values (0..100)
@@ -164,6 +164,7 @@
   }
 
   // ---------- Dice overlay ----------
+  // Keeps contract with app.js: showDiceRoll(value, ms)
   function showDiceRoll(value, ms = 900) {
     const overlay = $('diceOverlay');
     const diceEl  = $('dice');
@@ -179,14 +180,46 @@
     });
   }
 
-  // ---------- Toast helper ----------
-  function toast(message) {
+  // ---------- Toasts ----------
+  (function ensureToast(){
+    if (document.getElementById('toastRoot')) return;
+    const root = document.createElement('div');
+    root.id = 'toastRoot';
+    root.style.position = 'fixed';
+    root.style.right = '12px';
+    root.style.top = '12px';
+    root.style.zIndex = '2000';
+    root.style.display = 'flex';
+    root.style.flexDirection = 'column';
+    root.style.gap = '8px';
+    document.body.appendChild(root);
+  })();
+
+  function toast(message, { kind='info', ttl=2200 } = {}) {
+    const root = document.getElementById('toastRoot');
     const el = document.createElement('div');
-    el.className = 'toast';
+    el.className = `toast toast--${kind}`;
+    el.style.padding = '10px 12px';
+    el.style.background = kind === 'error' ? '#d4351c' : (kind === 'success' ? '#00703c' : '#1d70b8');
+    el.style.color = '#fff';
+    el.style.borderRadius = '8px';
+    el.style.boxShadow = '0 6px 16px rgba(0,0,0,.15)';
+    el.style.fontWeight = '600';
+    el.style.maxWidth = '320px';
+    el.style.wordBreak = 'break-word';
     el.textContent = message;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 2000);
+    root.appendChild(el);
+
+    setTimeout(()=> {
+      el.style.transition = 'opacity .25s ease, transform .25s ease';
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(-4px)';
+      setTimeout(()=> el.remove(), 300);
+    }, ttl);
   }
+
+  // Global shim if something calls window.toast(...)
+  window.toast = window.toast || ((msg, opts) => toast(msg, opts));
 
   // ---------- Export UI API ----------
   window.LegislateUI = {
