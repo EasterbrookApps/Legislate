@@ -67,6 +67,14 @@ window.LegislateEngine = (function () {
       return c;
     }
 
+    // ---- NEW: minimal helper to fire end-of-game when on endIndex ----
+    function maybeEndGame(p) {
+      if (p.position === endIndex) {
+        bus.emit('GAME_END', { winnerId: p.id, name: p.name, position: p.position });
+      }
+    }
+    // ---- END NEW ----
+
     function applyCard(card) {
       if (!card) return;
 
@@ -81,6 +89,9 @@ window.LegislateEngine = (function () {
           if (i > endIndex) i = endIndex;
           p.position = i;
 
+          // NEW: check for end after a move effect
+          maybeEndGame(p);
+
         } else if (type === 'miss_turn') {
           current().skip = (current().skip || 0) + 1;
 
@@ -93,8 +104,11 @@ window.LegislateEngine = (function () {
           if (i < 0) i = 0;
           if (i > endIndex) i = endIndex;
           p.position = i;
-          // Optional: keep debug stream informative without changing behaviour
+          // Optional: debug signal; behaviour unchanged
           bus.emit('EFFECT_GOTO', { playerId: p.id, index: i });
+
+          // NEW: check for end after a goto effect
+          maybeEndGame(p);
         }
       }
     }
@@ -141,7 +155,7 @@ window.LegislateEngine = (function () {
       p.extraRoll = false;
     }
 
-    // ---- Proper, minimal fix: centralised next-turn selection with skip consumption ----
+    // ---- Centralised next-turn selection with skip consumption ----
     function nextEligibleTurnIndex() {
       const skipped = [];
       const max = state.players.length || 0;
@@ -185,7 +199,7 @@ window.LegislateEngine = (function () {
 
       bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
     }
-    // ---- end fix ----
+    // ---- end centralised skip handling ----
 
     function setPlayerCount(n) {
       const names = state.players.map(p => p.name);
