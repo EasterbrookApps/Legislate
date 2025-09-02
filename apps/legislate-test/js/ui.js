@@ -9,7 +9,6 @@
   }
 
   // ---------- Players list (inline editor UI) ----------
-  // (Your app.js also manages player editing; this keeps parity with existing UI.)
   function renderPlayers(players /*, board (unused) */) {
     const section = $('playersSection');
     if (!section) return;
@@ -35,13 +34,14 @@
   }
 
   // ---------- Board / tokens renderer ----------
-  // Usage: const br = LegislateUI.createBoardRenderer(board); br.render(engine.state.players);
-  function createBoardRenderer(board) {
+  // Usage in app.js: const boardUI = LegislateUI.createBoardRenderer({ board });
+  // This version supports EITHER a plain board object OR { board }.
+  function createBoardRenderer(arg) {
     const layer = $('tokensLayer');
-    if (!layer) {
-      // No layer yet; return no-op renderer
-      return { render: () => {} };
-    }
+    if (!layer) return { render: () => {} };
+
+    // Accept { board } OR board
+    const board = (arg && arg.board) ? arg.board : arg;
 
     // board.json stores x/y as PERCENT values (0..100)
     const coordsFor = (index) => {
@@ -52,7 +52,6 @@
       };
     };
 
-    // Ensure a token el exists for player id/color
     function ensureToken(id, color) {
       let el = layer.querySelector(`[data-id="${id}"]`);
       if (!el) {
@@ -62,7 +61,7 @@
         el.style.background = color;
         layer.appendChild(el);
       } else {
-        el.style.background = color; // keep color fresh
+        el.style.background = color;
       }
       return el;
     }
@@ -80,7 +79,7 @@
 
       const seenIds = new Set();
       const TAU = Math.PI * 2;
-      const RADIUS_PCT = 2.5; // fan radius as % of board (good on mobile/desktop)
+      const RADIUS_PCT = 2.5; // fan radius as % of board
 
       for (const [key, group] of groups.entries()) {
         const posIndex = Number(key);
@@ -114,7 +113,6 @@
       });
     }
 
-    // Return bound renderer so `board` stays in scope
     return { render };
   }
 
@@ -166,7 +164,6 @@
   }
 
   // ---------- Dice overlay ----------
-  // Keeps contract with app.js: showDiceRoll(value, ms)
   function showDiceRoll(value, ms = 900) {
     const overlay = $('diceOverlay');
     const diceEl  = $('dice');
@@ -174,9 +171,9 @@
 
     return new Promise((resolve) => {
       overlay.hidden = false;
-      diceEl.className = 'dice rolling'; // wobble
+      diceEl.className = 'dice rolling';
       setTimeout(() => {
-        diceEl.className = 'dice show-' + (value || 1); // reveal face at end
+        diceEl.className = 'dice show-' + (value || 1);
         setTimeout(() => { overlay.hidden = true; resolve(); }, 250);
       }, ms);
     });
