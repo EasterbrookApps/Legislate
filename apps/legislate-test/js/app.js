@@ -35,7 +35,7 @@
     }
   };
 
-  // Dice overlay API used by listeners
+  // Dice overlay API used by listeners (kept compatible with ui.css)
   let diceTimer = 0;
   async function showDiceRoll(value, ms=900){
     const overlay = $('diceOverlay');
@@ -49,6 +49,7 @@
       setTimeout(()=>{ overlay.hidden = true; }, 250);
     }, ms);
   }
+  // expose through UI object without smashing other exports
   window.LegislateUI = Object.assign({}, window.LegislateUI, { showDiceRoll });
 
   // Load assets and boot engine
@@ -88,8 +89,8 @@
       const space = board.spaces.find(s=>s.index===posIndex);
       if(!space) return;
       // board.json uses percent coordinates (0..100)
-      el.style.left = space.x + '%';
-      el.style.top  = space.y + '%';
+      el.style.left = (space.x) + '%';
+      el.style.top  = (space.y) + '%';
     }
 
     // Initial tokens
@@ -149,7 +150,7 @@
     }
     renderPlayers();
 
-    // ----- Board renderer with fan-out is handled in ui.js; keep pixel/percent consistent -----
+    // ----- Board renderer with fan-out in ui.js -----
     const boardUI = window.LegislateUI.createBoardRenderer({ board });
 
     // ----- Events -----
@@ -218,10 +219,32 @@
       if (boardUI && boardUI.render) {
         boardUI.render(engine.state.players);
       }
+
+      // --- Toasts for card effects ---
+      if (card && typeof card.effect === 'string') {
+        const [type] = card.effect.split(':');
+        if (type === 'extra_roll') {
+          window.LegislateUI.toast(`${p?.name || 'Player'} gets an extra roll`, { kind: 'success' });
+        }
+        if (type === 'miss_turn') {
+          window.LegislateUI.toast(`${p?.name || 'Player'} will miss their next turn`, { kind: 'info' });
+        }
+      }
     });
 
     engine.bus.on('MISS_TURN', ({ name })=>{
+      window.LegislateUI.toast(`${name} misses a turn`, { kind: 'info' });
       log(`MISS_TURN: ${name}`);
+    });
+
+    engine.bus.on('EFFECT_GOTO', ({ playerId, index })=>{
+      const p = engine.state.players.find(x=>x.id===playerId);
+      window.LegislateUI.toast(`${p?.name || 'Player'} jumps to ${index}`, { kind: 'info', ttl: 1800 });
+    });
+
+    engine.bus.on('GAME_END', ({ name })=>{
+      window.LegislateUI.toast(`${name} reached the end!`, { kind: 'success', ttl: 2600 });
+      // You can also show a modal here if you want a blocking message.
     });
 
     // Keep tokens aligned on resize/scroll
