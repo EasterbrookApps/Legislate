@@ -1,6 +1,5 @@
-// app.js — wires Loader → Engine → UI; sequential dice→card
+// app.js
 (function (){
-
   // Human-friendly deck titles
   const DECK_LABELS = {
     early: "Early Stages",
@@ -9,172 +8,238 @@
     lords: "House of Lords",
     pingpong: "Ping Pong",
   };
+
   const $ = (id)=>document.getElementById(id);
-  function log(kind, payload){ try{ window.LegislateDebug.log(kind, payload);}catch(e){} }
-  const possessive = (name)=>`${(name||'Player').trim()}'s turn`;
+  const $$ = (sel,el=document)=>Array.from(el.querySelectorAll(sel));
+  const log = (msg)=>{ const pre=$('dbg-log'); if(pre){ pre.textContent += (typeof msg==='string'?msg:JSON.stringify(msg,null,2))+'\n'; } };
 
-  let lastDicePromise = null; // holds the in-flight dice animation promise for this turn
-
-  document.addEventListener('DOMContentLoaded', boot);
-
-  async function boot(){
-    log('ENV',{ ua:navigator.userAgent, dpr:devicePixelRatio, vw:innerWidth, vh:innerHeight, tz:Intl.DateTimeFormat().resolvedOptions().timeZone });
-    log('DOM',{ rollBtn:!!$('rollBtn'), restartBtn:!!$('restartBtn'), playerCount:!!$('playerCount'), boardImg:!!$('boardImg'), tokensLayer:!!$('tokensLayer'), turnIndicator:!!$('turnIndicator'), modalRoot:!!$('modalRoot'), diceOverlay:!!$('diceOverlay'), dice:!!$('dice'), 'dbg-log':!!$('dbg-log') });
-
-    try {
-      const { board, decks } = await window.LegislateLoader.loadPack('uk-parliament');
-      log('PACK',{ spaces: Array.isArray(board?.spaces)?board.spaces.length:-1, decks: Object.keys(decks||{}) });
-
-      const engine = window.LegislateEngine.createEngine({ board, decks });
-      if(!engine || !engine.bus){ throw new Error('engine missing'); }
-
-      const modal = window.LegislateUI.createModal();
-      const boardUI = window.LegislateUI.createBoardRenderer({ board });
-
-      // initial render
-      window.LegislateUI.renderPlayers(engine.state.players);
-      boardUI.render(engine.state.players);
-      window.LegislateUI.setTurnIndicator(possessive(engine.state.players[0]?.name));
-      log('EVT BOOT_OK');
-      
-      // Keep turn indicator fresh if current player's name is edited
-      $('playersSection')?.addEventListener('input', (e)=>{
-        const cur = engine.state.players[engine.state.turnIndex];
-        if (cur) window.LegislateUI.setTurnIndicator(possessive(cur.name));
+  // Simple modal helper that returns a promise
+  const modal = {
+    open({ title='', body='', actions }){
+      return new Promise((resolve)=>{
+        const root = $('modalRoot');
+        if (!root) return resolve();
+        root.innerHTML = `
+          <div class="modal-backdrop">
+            <div class="modal">
+              <h2>${title}</h2>
+              <div class="modal-body">${body}</div>
+              <div class="modal-actions">
+                <button id="modalOk" class="button button--primary">OK</button>
+              </div>
+            </div>
+          </div>
+        `;
+        $('modalOk').addEventListener('click', ()=>{ root.innerHTML=''; resolve(); });
       });
-
-      
-      // --- game-over flag (UI only; engine unchanged)
-      let gameOver = false;
-
-      // engine → ui
-      engine.bus.on('DICE_ROLL', ({ value })=>{
-        log('DICE_ROLL',{ value });
-        // store the promise so CARD_DRAWN can await it
-        lastDicePromise = window.LegislateUI.showDiceRoll(value, 900).then(()=>{
-          log('DICE_DONE', { value });
-          return true;
-        });
-      });
-
-      engine.bus.on('MOVE_STEP', ({ playerId, position, step, total })=>{
-        const p = engine.state.players.find(x=>x.id===playerId);
-        if (p) p.position = position;
-        boardUI.render(engine.state.players);
-        log('MOVE_STEP',{ playerId, position, step, total });
-      });
-
-      engine.bus.on('LANDED', ({ playerId, position, space })=>{
-        log('LANDED',{ playerId, position, space });
-      });
-
-      engine.bus.on('DECK_CHECK', ({ name, len })=>{
-        log('DECK_CHECK',{ name, len });
-      });
-
-      engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
-        log('CARD_DRAWN',{ deck, card });
-        if (!card) return;
-
-        // **Key change**: ensure dice fully finishes before showing the card
-        try { if (lastDicePromise) await lastDicePromise; } catch(_) {}
-        lastDicePromise = null;
-
-        log('CARD_MODAL_OPEN', { id: card.id, effect: card.effect });
-        await modal.open({
-          title: (card.title || (DECK_LABELS[deck] || deck)),
-          body: `<p>${(card.text||'').trim()}</p>`,
-          actions: [{ id:'ok', label:'OK' }]
-        });
-        log('CARD_MODAL_CLOSE', { id: card.id });
-        engine.bus.emit('CARD_RESOLVE', { card });
-      });
-
-      engine.bus.on('CARD_APPLIED', ({ card, playerId, position })=>{
-        log('CARD_APPLIED',{ id:card?.id, effect:card?.effect, playerId, position });
-        boardUI.render(engine.state.players);
-      });
-
-      engine.bus.on('TURN_BEGIN', ({ index })=>{
-        const cur = engine.state.players[index];
-        window.LegislateUI.setTurnIndicator(possessive(cur?.name));
-        log('TURN_BEGIN',{ playerId: cur?.id, index });
-      });
-      
-      
-      // --- toast on missed turn ---
-      function playerName(id) {
-        const p = engine.state.players.find(p => p.id === id);
-        return p ? p.name : id;
-      }
-      
-      // When a turn is actually skipped (emitted by the engine)
-      engine.bus.on('TURN_SKIPPED', ({ playerId }) => {
-        LegislateUI.toast(`${playerName(playerId)}’s turn is skipped`);
-      });
-      
-      // (Optional, nice UX) When the card is applied, before the skip
-      engine.bus.on('EFFECT_MISS_TURN', ({ playerId }) => {
-        LegislateUI.toast(`${playerName(playerId)} will miss a turn`);
-      });
-      
-      engine.bus.on('LANDED', ({ playerId, space }) => {
-      // We only care about the very first arrival at an 'end' space
-      if (gameOver || !space || space.stage !== 'end') return;
-
-      gameOver = true;
-
-      // Resolve a friendly name
-      const p = engine.state.players.find(x => x.id === playerId);
-      const name = p?.name || 'Player';
-    
-      // Nice little toast (optional)
-      window.LegislateUI?.toast?.(`${name} wins!`);
-    
-      // Single, simple modal that won’t interfere with dice/cards
-      window.LegislateUI?.createModal?.({
-        title: 'Winner!',
-        body: `${name} reached the finish.`,
-        primary: {
-          label: 'Restart',
-          onClick: () => location.reload()
-        },
-        secondary: {
-          label: 'Close'
-          // no onClick needed; default close is fine
-        }
-      })?.open?.();
-    });
-      engine.bus.on('TURN_END', ({ playerId })=>{
-        log('TURN_END',{ playerId });
-      });
-
-      // controls
-      $('rollBtn')?.addEventListener('click', ()=>{
-          if (gameOver) {
-            // non-blocking UX; no CSS dependency
-            window.LegislateUI?.toast?.('Game over — restart to play again.');
-            return;
-          }
-          log('rollBtn click');
-          engine.takeTurn();
-});
-
-      $('restartBtn')?.addEventListener('click', ()=>{
-        if (confirm('Restart the game?')) location.reload();
-      });
-
-      $('playerCount')?.addEventListener('change', (e)=>{
-        const n = Number(e.target.value||4) || 4;
-        engine.setPlayerCount(n);
-        window.LegislateUI.renderPlayers(engine.state.players);
-        boardUI.render(engine.state.players);
-        log('TURN_BEGIN',{ playerId: engine.state.players[engine.state.turnIndex]?.id, index: engine.state.turnIndex });
-      });
-
-    } catch (err){
-      log('BOOT_FAIL', String(err));
-      const ti=$('turnIndicator'); if(ti) ti.textContent='There was a problem starting the game.';
     }
+  };
+
+  // Dice overlay API used by listeners
+  let diceTimer = 0;
+  async function showDiceRoll(value, ms=900){
+    const overlay = $('diceOverlay');
+    const dice = $('dice');
+    if(!overlay || !dice) return;
+    overlay.hidden = false;
+    dice.className = 'dice rolling';
+    clearTimeout(diceTimer);
+    diceTimer = setTimeout(()=>{
+      dice.className = 'dice show-'+(value||1);
+      setTimeout(()=>{ overlay.hidden = true; }, 250);
+    }, ms);
   }
+  window.LegislateUI = Object.assign({}, window.LegislateUI, { showDiceRoll });
+
+  // Load assets and boot engine
+  async function boot(){
+    const packUrl = 'assets/packs/uk-parliament';
+    const [board, commons, early, lords, pingpong, implementation] = await Promise.all([
+      fetch(`${packUrl}/board.json`).then(r=>r.json()),
+      fetch(`${packUrl}/cards/commons.json`).then(r=>r.json()),
+      fetch(`${packUrl}/cards/early.json`).then(r=>r.json()),
+      fetch(`${packUrl}/cards/lords.json`).then(r=>r.json()),
+      fetch(`${packUrl}/cards/pingpong.json`).then(r=>r.json()),
+      fetch(`${packUrl}/cards/implementation.json`).then(r=>r.json()),
+    ]);
+
+    const engine = window.LegislateEngine.createEngine({
+      board,
+      decks: { commons, early, lords, pingpong, implementation },
+      playerCount: Number($('playerCount').value) || 4
+    });
+
+    // ----- Tokens -----
+    const tokensLayer = $('tokensLayer');
+    const tokenEls = new Map();
+
+    function ensureToken(id, color){
+      if (tokenEls.has(id)) return tokenEls.get(id);
+      const el = document.createElement('div');
+      el.className = 'token';
+      el.style.background = color;
+      el.setAttribute('data-id', id);
+      tokensLayer.appendChild(el);
+      tokenEls.set(id, el);
+      return el;
+    }
+
+    function positionToken(el, posIndex){
+      const space = board.spaces.find(s=>s.index===posIndex);
+      if(!space) return;
+      // board.json uses percent coordinates (0..100)
+      el.style.left = space.x + '%';
+      el.style.top  = space.y + '%';
+    }
+
+    // Initial tokens
+    engine.state.players.forEach(p=>{
+      const el = ensureToken(p.id, p.color);
+      positionToken(el, p.position);
+    });
+
+    // ----- Controls -----
+    $('rollBtn').addEventListener('click', ()=> engine.takeTurn());
+    $('restartBtn').addEventListener('click', ()=> { engine.reset(); renderPlayers(); });
+
+    $('playerCount').addEventListener('change', (e)=>{
+      engine.setPlayerCount(Number(e.target.value)||4);
+      // Rebuild tokens for new players
+      tokensLayer.innerHTML = ''; tokenEls.clear();
+      engine.state.players.forEach(p=>{
+        const el = ensureToken(p.id, p.color);
+        positionToken(el, p.position);
+      });
+      renderPlayers();
+    });
+
+    // ----- Players: pills with inline name editor -----
+    function renderPlayers(){
+      const root = $('playersSection');
+      root.innerHTML = '';
+      engine.state.players.forEach((p,i)=>{
+        const pill = document.createElement('div');
+        pill.className = 'player-pill';
+
+        const dot = document.createElement('div');
+        dot.className = 'player-dot';
+        dot.style.background = p.color;
+
+        const name = document.createElement('span');
+        name.className = 'player-name';
+        name.contentEditable = 'true';
+        name.textContent = p.name;
+
+        // Immediate state update + turn label refresh
+        function applyName(){
+          const v = (name.textContent || '').trim();
+          if (!v) return;
+          engine.state.players[i].name = v;
+          if (i === engine.state.turnIndex) {
+            $('turnIndicator').textContent = `${v}'s turn`;
+          }
+        }
+        name.addEventListener('input', applyName);
+        name.addEventListener('blur', applyName);
+
+        pill.appendChild(dot);
+        pill.appendChild(name);
+        root.appendChild(pill);
+      });
+    }
+    renderPlayers();
+
+    // ----- Board renderer with fan-out is handled in ui.js; keep pixel/percent consistent -----
+    const boardUI = window.LegislateUI.createBoardRenderer({ board });
+
+    // ----- Events -----
+    engine.bus.on('TURN_BEGIN', ({ index })=>{
+      const p = engine.state.players[index];
+      $('turnIndicator').textContent = `${p.name}'s turn`;
+
+      // Re-position all tokens (keep aligned on turn)
+      engine.state.players.forEach(pl=>{
+        const el = ensureToken(pl.id, pl.color);
+        positionToken(el, pl.position);
+      });
+
+      // Render via board UI (handles fan-out)
+      if (boardUI && boardUI.render) {
+        boardUI.render(engine.state.players);
+      }
+    });
+
+    engine.bus.on('MOVE_STEP', ({ playerId, position })=>{
+      const p = engine.state.players.find(x=>x.id===playerId);
+      const el = ensureToken(playerId, p.color);
+      positionToken(el, position);
+
+      if (boardUI && boardUI.render) {
+        boardUI.render(engine.state.players);
+      }
+    });
+
+    engine.bus.on('DICE_ROLL', ({ value })=>{
+      window.LegislateUI.showDiceRoll(value, 900);
+    });
+
+    engine.bus.on('LANDED', ({ playerId, position, space })=>{
+      log({LANDED:{playerId,position,space}});
+    });
+
+    engine.bus.on('DECK_CHECK', ({ name, len })=>{
+      log(`Deck ${name} has ${len} cards left`);
+    });
+
+    engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
+      log({CARD_DRAWN:{deck,card}});
+      if (!card){
+        await modal.open({
+          title: 'No card',
+          body: `<p>The ${DECK_LABELS[deck] || deck} deck is empty.</p>`
+        });
+        engine.bus.emit('CARD_RESOLVE');
+        return;
+      }
+
+      await modal.open({
+        title: (card.title || (DECK_LABELS[deck] || deck)),
+        body: `<p>${(card.text||'').trim()}</p>`
+      });
+
+      engine.bus.emit('CARD_RESOLVE');
+    });
+
+    engine.bus.on('CARD_APPLIED', ({ card, playerId })=>{
+      const p = engine.state.players.find(x=>x.id===playerId);
+      const el = ensureToken(playerId, p.color);
+      positionToken(el, p.position);
+
+      if (boardUI && boardUI.render) {
+        boardUI.render(engine.state.players);
+      }
+    });
+
+    engine.bus.on('MISS_TURN', ({ name })=>{
+      log(`MISS_TURN: ${name}`);
+    });
+
+    // Keep tokens aligned on resize/scroll
+    const alignAll = ()=> engine.state.players.forEach(pl=>{
+      const el = ensureToken(pl.id, pl.color);
+      positionToken(el, pl.position);
+    });
+    window.addEventListener('resize', ()=>{ alignAll(); boardUI.render(engine.state.players); });
+    window.addEventListener('scroll', ()=>{ alignAll(); boardUI.render(engine.state.players); });
+
+    // Initial turn UI
+    engine.bus.emit('TURN_BEGIN', { index: engine.state.turnIndex, playerId: engine.state.players[engine.state.turnIndex].id });
+
+    log('EVT BOOT_OK');
+  }
+
+  boot().catch(err=>{
+    console.error('BOOT_FAIL', err);
+    const pre=$('dbg-log'); if(pre) pre.textContent += 'BOOT_FAIL '+ (err && err.stack || err);
+  });
 })();
