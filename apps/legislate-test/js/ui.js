@@ -1,140 +1,155 @@
-// ui.js — handles UI rendering and events
+// ui.js
+(function(){
+  const $ = (id) => document.getElementById(id);
 
-function renderBoard(board, boardImg) {
-  if (!boardImg) return;
-  boardImg.src = board.image;
-}
+  function setTurnIndicator(text){
+    $('turnIndicator').textContent = text;
+  }
 
-function renderPlayers(players, board) {
-  const layer = document.getElementById("tokensLayer");
-  if (!layer) return;
-  layer.innerHTML = "";
+  function renderPlayers(players, board){
+    const wrap = $('playersSection');
+    wrap.innerHTML = '';
+    players.forEach(p=>{
+      const row = document.createElement('div');
+      row.className = 'player-row';
 
-  // group players by board position
-  const grouped = {};
-  players.forEach(p => {
-    if (!grouped[p.position]) grouped[p.position] = [];
-    grouped[p.position].push(p);
-  });
+      const swatch = document.createElement('span');
+      swatch.className = 'player-swatch';
+      swatch.style.backgroundColor = p.color;
+      row.appendChild(swatch);
 
-  for (const [pos, group] of Object.entries(grouped)) {
-    const space = board.spaces.find(s => s.index === Number(pos));
-    if (!space) continue;
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = p.name;
+      input.dataset.id = p.id;
+      row.appendChild(input);
 
-    const cx = space.x;
-    const cy = space.y;
+      wrap.appendChild(row);
+    });
+  }
 
-    if (group.length === 1) {
-      // single token, centre it
-      const p = group[0];
-      const el = document.createElement("div");
-      el.className = "token";
-      el.style.background = p.color;
-      el.style.left = `${cx}%`;
-      el.style.top = `${cy}%`;
-      el.title = p.name;
-      layer.appendChild(el);
-    } else {
-      // multiple tokens on same square → fan them in a small circle
-      const radius = 3; // % offset, adjust for spacing
-      group.forEach((p, i) => {
-        const angle = (i / group.length) * 2 * Math.PI;
-        const ox = Math.cos(angle) * radius;
-        const oy = Math.sin(angle) * radius;
-        const el = document.createElement("div");
-        el.className = "token";
-        el.style.background = p.color;
-        el.style.left = `${cx + ox}%`;
-        el.style.top = `${cy + oy}%`;
-        el.title = p.name;
+  function createBoardRenderer(board){
+    const layer = $('tokensLayer');
+    const coordsFor = (i) => {
+      const space = board.spaces.find(s=>s.index===i);
+      return { x: space?.x || 0, y: space?.y || 0 };
+    };
+
+    function ensureToken(id,color){
+      let el = layer.querySelector(`[data-id="${id}"]`);
+      if(!el){
+        el = document.createElement('div');
+        el.className = 'token';
+        el.dataset.id = id;
+        el.style.backgroundColor = color;
         layer.appendChild(el);
+      }
+      return el;
+    }
+
+    function render(players){
+      // Group players by square
+      const groups = new Map();
+      players.forEach(p=>{
+        const key = String(p.position || 0);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(p);
+      });
+
+      const TAU = Math.PI * 2;
+      const RADIUS_PCT = 3; // spread radius in % of board size
+
+      for (const [key, group] of groups.entries()){
+        const posIndex = Number(key);
+        const { x, y } = coordsFor(posIndex);
+
+        if (group.length === 1){
+          const p = group[0];
+          const t = ensureToken(p.id, p.color);
+          t.style.left = x + '%';
+          t.style.top  = y + '%';
+          continue;
+        }
+
+        const n = group.length;
+        group.forEach((p,i)=>{
+          const angle = (i / n) * TAU;
+          const ox = Math.cos(angle) * RADIUS_PCT;
+          const oy = Math.sin(angle) * RADIUS_PCT;
+          const t = ensureToken(p.id, p.color);
+          t.style.left = (x + ox) + '%';
+          t.style.top  = (y + oy) + '%';
+        });
+      }
+    }
+
+    return { render };
+  }
+
+  // --- Modal (promise-based OK) ---
+  function createModal(){
+    const root = $('modalRoot');
+    function open({ title, body, actions }){
+      return new Promise((resolve)=>{
+        root.innerHTML = '';
+        const back = document.createElement('div');
+        back.className = 'modal-backdrop';
+        back.style.display = 'flex';
+
+        const box = document.createElement('div');
+        box.className = 'modal';
+
+        const h = document.createElement('h3');
+        h.textContent = title || 'Card';
+
+        const b = document.createElement('div');
+        b.innerHTML = body || '';
+
+        const act = document.createElement('div');
+        act.className = 'modal-actions';
+
+        (actions||[{label:'OK',value:true}]).forEach(a=>{
+          const btn = document.createElement('button');
+          btn.textContent = a.label;
+          btn.className = 'button';
+          btn.onclick = ()=>{ root.innerHTML=''; resolve(a.value); };
+          act.appendChild(btn);
+        });
+
+        box.appendChild(h);
+        box.appendChild(b);
+        box.appendChild(act);
+        back.appendChild(box);
+        root.appendChild(back);
       });
     }
+    return { open };
   }
-}
 
-function renderTurnIndicator(currentPlayer) {
-  const el = document.getElementById("turnIndicator");
-  if (!el) return;
-  el.textContent = `Turn: ${currentPlayer.name}`;
-  el.style.color = currentPlayer.color;
-}
+  function showDiceRoll(value){
+    const overlay = $('diceOverlay');
+    const dice = $('dice');
+    overlay.hidden = false;
+    dice.className = 'dice';
+    dice.classList.add(['','one','two','three','four','five','six'][value]);
+    setTimeout(()=>{ overlay.hidden = true; }, 2500);
+  }
 
-function renderPlayersList(players) {
-  const section = document.getElementById("playersSection");
-  if (!section) return;
-  section.innerHTML = "";
-  players.forEach((p, i) => {
-    const row = document.createElement("div");
-    row.className = "player-row";
+  function toast(msg){
+    const div = document.createElement('div');
+    div.className = 'toast';
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(()=>div.remove(), 2000);
+  }
 
-    const colorBox = document.createElement("span");
-    colorBox.className = "player-color";
-    colorBox.style.background = p.color;
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = p.name;
-    input.dataset.index = i;
-    input.className = "player-name-input";
-
-    row.appendChild(colorBox);
-    row.appendChild(input);
-    section.appendChild(row);
-  });
-}
-
-function showModalCard(deckLabel, card, onResolve) {
-  const root = document.getElementById("modalRoot");
-  if (!root) return;
-  root.innerHTML = "";
-
-  const overlay = document.createElement("div");
-  overlay.className = "modal-overlay";
-
-  const modal = document.createElement("div");
-  modal.className = "modal-card";
-
-  const title = document.createElement("h2");
-  title.textContent = deckLabel;
-
-  const body = document.createElement("p");
-  body.textContent = card.text;
-
-  const btn = document.createElement("button");
-  btn.textContent = "OK";
-  btn.className = "button";
-  btn.addEventListener("click", () => {
-    root.innerHTML = "";
-    onResolve();
-  });
-
-  modal.appendChild(title);
-  modal.appendChild(body);
-  modal.appendChild(btn);
-  overlay.appendChild(modal);
-  root.appendChild(overlay);
-}
-
-function showDiceOverlay(value) {
-  const overlay = document.getElementById("diceOverlay");
-  const diceEl = document.getElementById("dice");
-  if (!overlay || !diceEl) return;
-
-  overlay.hidden = false;
-  diceEl.setAttribute("data-roll", value);
-
-  // hide after animation (~2.5s)
-  setTimeout(() => {
-    overlay.hidden = true;
-  }, 2500);
-}
-
-window.LegislateUI = {
-  renderBoard,
-  renderPlayers,
-  renderTurnIndicator,
-  renderPlayersList,
-  showModalCard,
-  showDiceOverlay,
-};
+  // Export everything
+  window.LegislateUI = {
+    setTurnIndicator,
+    renderPlayers,
+    createBoardRenderer,
+    createModal,
+    showDiceRoll,
+    toast,
+  };
+})();
