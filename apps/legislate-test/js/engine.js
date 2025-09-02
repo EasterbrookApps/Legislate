@@ -106,7 +106,7 @@ window.LegislateEngine = (function(){
       p.extraRoll = false;
     }
 
-   function endTurn(extra){
+    function endTurn(extra){
   // If extra roll, keep the same player and just begin next turn as usual
   if (extra) {
     bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
@@ -135,16 +135,6 @@ window.LegislateEngine = (function(){
       // Continue loop to evaluate the next player
       continue;
     }
-
-    // Found an eligible player: begin their turn
-    bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
-    return;
-  }
-
-  // If we somehow looped all players (all had skip>0 and were consumed),
-  // start the turn for whoever we landed on.
-  bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
-}
 
     // Found an eligible player: begin their turn
     bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
