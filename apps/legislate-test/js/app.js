@@ -1,17 +1,19 @@
-// app.js — main orchestration (UI wiring, engine hookup, etc.)
-(function(){
-  const $ = id => document.getElementById(id);
+// app.js — minimal boot; UI owns all wiring
+(function () {
+  const $ = (id) => document.getElementById(id);
 
-  async function boot(){
+  async function boot() {
     try {
+      const pack = './assets/packs/uk-parliament';
+
       const [board, commons, early, lords, pingpong, implementation] = await Promise.all([
-  fetch('./assets/packs/uk-parliament/board.json').then(r => r.json()),
-  fetch('./assets/packs/uk-parliament/cards/commons.json').then(r => r.json()),
-  fetch('./assets/packs/uk-parliament/cards/early.json').then(r => r.json()),
-  fetch('./assets/packs/uk-parliament/cards/lords.json').then(r => r.json()),
-  fetch('./assets/packs/uk-parliament/cards/pingpong.json').then(r => r.json()),
-  fetch('./assets/packs/uk-parliament/cards/implementation.json').then(r => r.json()),
-]);
+        fetch(`${pack}/board.json`).then(r => r.json()),
+        fetch(`${pack}/cards/commons.json`).then(r => r.json()),
+        fetch(`${pack}/cards/early.json`).then(r => r.json()),
+        fetch(`${pack}/cards/lords.json`).then(r => r.json()),
+        fetch(`${pack}/cards/pingpong.json`).then(r => r.json()),
+        fetch(`${pack}/cards/implementation.json`).then(r => r.json()),
+      ]);
 
       const engine = window.LegislateEngine.createEngine({
         board,
@@ -19,14 +21,14 @@
         playerCount: Number($('playerCount').value) || 4,
       });
 
-      // 🔧 Fix: expose for debug.js (and optional use elsewhere)
+      // Expose for debug.js and manual inspection
       window.engine = engine;
       window.board = board;
 
-      const ui = window.LegislateUI.create({
+      // UI takes over from here (wires events, toasts, dice, tokens, etc.)
+      window.LegislateUI.create({
         board,
         engine,
-        root: document.body,
         playersSection: $('playersSection'),
         tokensLayer: $('tokensLayer'),
         turnIndicator: $('turnIndicator'),
@@ -37,39 +39,20 @@
         diceOverlay: $('diceOverlay'),
       });
 
-      // --- Toast wiring ---
-      engine.bus.on('MISS_TURN', ({ name }) => {
-        window.LegislateUI.toast(`${name} misses a turn`, { kind: 'info' });
-      });
-
-      engine.bus.on('CARD_APPLIED', ({ card, playerId }) => {
-        if (!card || typeof card.effect !== 'string') return;
-        const [type] = card.effect.split(':');
-        const p = engine.state.players.find(x => x.id === playerId);
-
-        if (type === 'extra_roll') {
-          window.LegislateUI.toast(`${p?.name || 'Player'} gets an extra roll`, { kind: 'success' });
-        }
-        if (type === 'miss_turn') {
-          window.LegislateUI.toast(`${p?.name || 'Player'} will miss their next turn`, { kind: 'info' });
-        }
-      });
-
-      engine.bus.on('EFFECT_GOTO', ({ playerId, index }) => {
-        const p = engine.state.players.find(x => x.id === playerId);
-        window.LegislateUI.toast(`${p?.name || 'Player'} jumps to ${index}`, { kind: 'info', ttl: 1800 });
-      });
-
-      engine.bus.on('GAME_END', ({ name }) => {
-        window.LegislateUI.toast(`${name} reached the end!`, { kind: 'success', ttl: 2600 });
-      });
-
       console.log('[EVT] BOOT_OK');
+      const dbg = $('dbg-log');
+      if (dbg) dbg.textContent += 'EVT BOOT_OK\n';
     } catch (err) {
       console.error('BOOT_FAIL', err);
-      $('dbg-log').textContent = 'BOOT_FAIL ' + err;
+      const dbg = document.getElementById('dbg-log');
+      if (dbg) dbg.textContent += 'BOOT_FAIL ' + (err && err.stack || err) + '\n';
     }
   }
 
-  window.addEventListener('DOMContentLoaded', boot);
+  // Start when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
 })();
