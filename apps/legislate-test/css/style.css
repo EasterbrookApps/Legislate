@@ -82,9 +82,10 @@ body {
 #boardImg {
   display: block;
   width: 100%;
+  max-height: calc(100vh - 350px);
+  object-fit: contain;
   border-radius: .25rem;
   background: #fff;
-  border: 6px solid var(--border);
   box-shadow: 0 6px 15px rgba(0,0,0,.15);
 }
 .tokens-layer, #tokensLayer {
@@ -283,7 +284,105 @@ body {
 /* Make Roll/Restart container stay visible during scroll */
 .control-col--actions {
   position: sticky;
-  top: 4rem; /* Adjust this to match your header + control-bar height */
+  top: 4rem;
   z-index: 5;
   background: var(--bg);
 }
+
+/* ------- Modal & Dice overlays ------- */
+#modalRoot:empty { display: none; }
+#modalRoot:not(:empty) {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+#modalRoot .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.5);
+}
+#modalRoot .modal {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  max-width: 680px;
+  width: min(96vw, 680px);
+  box-shadow: 0 12px 30px rgba(0,0,0,.25);
+  padding: 1rem 1.25rem;
+}
+
+/* Dice Overlay */
+#diceOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.6) 0%, rgba(0,0,0,.85) 100%);
+  z-index: 1400;
+}
+#diceOverlay:not([hidden]) { display: flex; }
+#diceOverlay .dice-wrapper {
+  width: min(70vmin, 640px);
+  height: min(70vmin, 640px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#diceOverlay .dice {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+#diceOverlay .dice .face {
+  display: none;
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 100%;
+  height: 100%;
+  border-radius: 3%;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+#diceOverlay .dice.show-1 .one,
+#diceOverlay .dice.show-2 .two,
+#diceOverlay .dice.show-3 .three,
+#diceOverlay .dice.show-4 .four,
+#diceOverlay .dice.show-5 .five,
+#diceOverlay .dice.show-6 .six { display: block; }
+
+/* pips */
+#diceOverlay .dice .face:before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 25%, transparent 0 4%, transparent 5%),
+    radial-gradient(circle at 25% 75%, transparent 0 4%, transparent 5%),
+    radial-gradient(circle at 25% 50%, transparent 0 4%, transparent 5%),
+    radial-gradient(circle at 75% 50%, transparent 0 4%, transparent 5%);
+}
+#diceOverlay .dice .one:before { background: radial-gradient(circle at 50% 50%, #000 0 4%, transparent 5%); }
+#diceOverlay .dice .two:before { background:
+  radial-gradient(circle at 25% 25%, #000 0 4%, transparent 5%),
+  radial-gradient(circle at 75% 75%, #000 0 4%, transparent 5%); }
+/* …etc faces already defined … */
+
+@keyframes dice-wobble {
+  0% { transform: rotate(0) scale(1); }
+  25% { transform: rotate(8deg) scale(1.02); }
+  50% { transform: rotate(-8deg) scale(1.04); }
+  75% { transform: rotate(5deg) scale(1.02); }
+  100% { transform: rotate(0) scale(1); }
+}
+#diceOverlay .dice.rolling .face { animation: dice-wobble .35s ease-in-out infinite; }
