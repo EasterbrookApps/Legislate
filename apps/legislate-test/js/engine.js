@@ -114,7 +114,6 @@ window.LegislateEngine = (function () {
 
     async function takeTurn() {
       const p = current();
-      if (p.skip > 0) { p.skip--; endTurn(false); return; }
 
       const roll = dice(rng);
       state.lastRoll = roll;
