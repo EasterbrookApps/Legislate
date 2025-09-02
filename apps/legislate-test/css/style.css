@@ -82,7 +82,6 @@ body {
 #boardImg {
   display: block;
   width: 100%;
-  max-height: calc(100vh - 350px);
   object-fit: contain;
   border-radius: .25rem;
   background: #fff;
