@@ -9,8 +9,8 @@
   }
 
   // ---------- Players list (inline editor UI) ----------
-  // Note: your app.js may handle player list; this stays available and non-invasive.
-  function renderPlayers(players /*, board (unused here) */) {
+  // (Your app.js also manages player editing; this keeps parity with existing UI.)
+  function renderPlayers(players /*, board (unused) */) {
     const section = $('playersSection');
     if (!section) return;
     section.innerHTML = '';
@@ -35,16 +35,15 @@
   }
 
   // ---------- Board / tokens renderer ----------
-  // Creates a renderer bound to a specific board object.
   // Usage: const br = LegislateUI.createBoardRenderer(board); br.render(engine.state.players);
   function createBoardRenderer(board) {
     const layer = $('tokensLayer');
     if (!layer) {
-      // Return a no-op renderer to avoid crashes if DOM not ready yet
+      // No layer yet; return no-op renderer
       return { render: () => {} };
     }
 
-    // Find normalised coordinates (percentages) for a board index
+    // board.json stores x/y as PERCENT values (0..100)
     const coordsFor = (index) => {
       const space = board && board.spaces && board.spaces.find(s => s.index === index);
       return {
@@ -53,7 +52,7 @@
       };
     };
 
-    // Ensure a token element exists for a given player id/color
+    // Ensure a token el exists for player id/color
     function ensureToken(id, color) {
       let el = layer.querySelector(`[data-id="${id}"]`);
       if (!el) {
@@ -63,17 +62,15 @@
         el.style.background = color;
         layer.appendChild(el);
       } else {
-        // keep color updated in case it changed
-        el.style.background = color;
+        el.style.background = color; // keep color fresh
       }
       return el;
     }
 
-    // Public render method — paints tokens, fanning out any overlaps
     function render(players) {
       if (!Array.isArray(players)) return;
 
-      // Group players by their board position
+      // Group players by space index
       const groups = new Map();
       players.forEach(p => {
         const key = String(p.position || 0);
@@ -81,12 +78,9 @@
         groups.get(key).push(p);
       });
 
-      // We won’t remove nodes each frame to avoid GC churn; instead we position existing tokens
-      // and create missing ones on demand.
       const seenIds = new Set();
-
       const TAU = Math.PI * 2;
-      const RADIUS_PCT = 3; // token spread radius (as % of board size)
+      const RADIUS_PCT = 2.5; // fan radius as % of board (good on mobile/desktop)
 
       for (const [key, group] of groups.entries()) {
         const posIndex = Number(key);
@@ -113,16 +107,14 @@
         });
       }
 
-      // Optionally hide tokens for players not present (e.g., after player count changes)
+      // Remove any tokens no longer representing active players
       layer.querySelectorAll('.token').forEach(el => {
         const id = el.getAttribute('data-id');
-        if (!seenIds.has(id)) {
-          el.remove();
-        }
+        if (!seenIds.has(id)) el.remove();
       });
     }
 
-    // Important: return the bound renderer so `board` stays in scope
+    // Return bound renderer so `board` stays in scope
     return { render };
   }
 
@@ -174,7 +166,7 @@
   }
 
   // ---------- Dice overlay ----------
-  // Keep this signature compatible with app.js: showDiceRoll(value, ms)
+  // Keeps contract with app.js: showDiceRoll(value, ms)
   function showDiceRoll(value, ms = 900) {
     const overlay = $('diceOverlay');
     const diceEl  = $('dice');
@@ -182,11 +174,9 @@
 
     return new Promise((resolve) => {
       overlay.hidden = false;
-      // wobble during roll
-      diceEl.className = 'dice rolling';
-      // reveal face at the end of wobble
+      diceEl.className = 'dice rolling'; // wobble
       setTimeout(() => {
-        diceEl.className = 'dice show-' + (value || 1);
+        diceEl.className = 'dice show-' + (value || 1); // reveal face at end
         setTimeout(() => { overlay.hidden = true; resolve(); }, 250);
       }, ms);
     });
