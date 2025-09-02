@@ -5,13 +5,13 @@
   async function boot(){
     try {
       const [board, commons, early, lords, pingpong, implementation] = await Promise.all([
-        fetch('./assets/packs/uk-parliament/board.json').then(r=>r.json()),
-        fetch('./cards/commons.json').then(r=>r.json()),
-        fetch('./cards/early.json').then(r=>r.json()),
-        fetch('./cards/lords.json').then(r=>r.json()),
-        fetch('./cards/pingpong.json').then(r=>r.json()),
-        fetch('./cards/implementation.json').then(r=>r.json()),
-      ]);
+  fetch('./assets/packs/uk-parliament/board.json').then(r => r.json()),
+  fetch('./assets/packs/uk-parliament/cards/commons.json').then(r => r.json()),
+  fetch('./assets/packs/uk-parliament/cards/early.json').then(r => r.json()),
+  fetch('./assets/packs/uk-parliament/cards/lords.json').then(r => r.json()),
+  fetch('./assets/packs/uk-parliament/cards/pingpong.json').then(r => r.json()),
+  fetch('./assets/packs/uk-parliament/cards/implementation.json').then(r => r.json()),
+]);
 
       const engine = window.LegislateEngine.createEngine({
         board,
