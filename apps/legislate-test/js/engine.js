@@ -106,35 +106,51 @@ window.LegislateEngine = (function(){
       p.extraRoll = false;
     }
 
-    function endTurn(extra){
-  // If extra roll, keep the same player and just begin next turn as usual
-  if (extra) {
+    function endTurn(extra) {
+  // If the current player has an extra roll, keep turn ownership.
+  if (extra === true) {
     bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
     return;
   }
 
-  // Advance to the next eligible player, consuming any pending skips.
-  // Guard against edge cases by looping at most players.length times.
-  for (let hops = 0; hops < state.players.length; hops++) {
+  // Advance until we find a player with no pending skip.
+  // Hard cap at players.length to avoid accidental infinite loops.
+  var max = state.players.length || 0;
+  var hops = 0;
+
+  while (hops < max) {
     // Move to next player
     state.turnIndex = (state.turnIndex + 1) % state.players.length;
-    const p = current();
+    var p = current();
 
     if (p.skip > 0) {
-      // Consume one skip and notify
+      // Consume one skip and notify listeners
       p.skip -= 1;
       bus.emit('MISS_TURN', { playerId: p.id, name: p.name, remaining: p.skip });
 
-      // Also emit a DOM event so existing UI toast wiring ("effect:miss_turn") works immediately
-      try {
-        window.dispatchEvent(new CustomEvent('effect:miss_turn', {
-          detail: { playerId: p.id, playerName: p.name, remaining: p.skip }
-        }));
-      } catch (_) { /* no-op if window unavailable */ }
+      // Fire DOM event for UI toast (only if available)
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        try {
+          window.dispatchEvent(new CustomEvent('effect:miss_turn', {
+            detail: { playerId: p.id, playerName: p.name, remaining: p.skip }
+          }));
+        } catch (_err) { /* ignore if CustomEvent unsupported */ }
+      }
 
       // Continue loop to evaluate the next player
+      hops += 1;
       continue;
     }
+
+    // Found an eligible player; begin their turn.
+    bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
+    return;
+  }
+
+  // Fallback: if we consumed skips on everyone, start with whoever we landed on.
+  bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
+}
+
 
     // Found an eligible player: begin their turn
     bus.emit('TURN_BEGIN', { playerId: p.id, index: state.turnIndex });
