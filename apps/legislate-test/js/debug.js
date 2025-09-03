@@ -1,29 +1,48 @@
-// debug.js — restore verbose logging
+// debug.js — resilient event logger (works regardless of script order)
 (function () {
-  function log(msg, data) {
-    const el = document.getElementById('dbg-log');
-    if (!el) return;
+  const LOG_ID = 'dbg-log';
+  let attached = false;
+  let tries = 0;
+  const MAX_TRIES = 200; // ~10s at 50ms intervals
 
-    const line = document.createElement('div');
-    line.textContent = `[${new Date().toISOString()}] ${msg}` + (data ? ' ' + JSON.stringify(data) : '');
-    el.appendChild(line);
-    el.scrollTop = el.scrollHeight;
+  function print(line, data) {
+    const pre = document.getElementById(LOG_ID);
+    if (!pre) return;
+    const ts = new Date().toISOString();
+    try {
+      pre.textContent += `[${ts}] ${line}` + (data !== undefined ? ' ' + JSON.stringify(data) : '') + '\n';
+      pre.scrollTop = pre.scrollHeight;
+    } catch {
+      pre.textContent += `[${ts}] ${line}\n`;
+    }
   }
 
-  window.addEventListener('error', e => {
-    log('BOOT_FAIL ' + e.message);
+  function attach() {
+    if (attached) return true;
+    const eng = window.engine;
+    if (!eng || !eng.bus || typeof eng.bus.on !== 'function') return false;
+
+    // wildcard logger (your bus supports '*' -> (type, payload))
+    eng.bus.on('*', (type, payload) => {
+      print(type, payload);
+    });
+    attached = true;
+    print('DEBUG_ATTACHED');
+    return true;
+  }
+
+  // Log synchronous boot errors early
+  window.addEventListener('error', (e) => {
+    print('BOOT_FAIL', { message: e.message, file: e.filename, line: e.lineno, col: e.colno });
   });
 
-  window.addEventListener('DOMContentLoaded', () => {
-    log('BOOT_OK');
+  // Basic lifecycle logs
+  document.addEventListener('DOMContentLoaded', () => print('BOOT_OK'));
 
-    if (window.LegislateEngine) {
-      const engine = window.engine;
-      if (engine && engine.bus) {
-        engine.bus.on('*', (type, payload) => {
-          log(type, payload);
-        });
-      }
-    }
-  });
+  // Try immediately, then retry until engine is ready (no script-order assumptions)
+  if (!attach()) {
+    const t = setInterval(() => {
+      if (attach() || (++tries > MAX_TRIES)) clearInterval(t);
+    }, 50);
+  }
 })();
