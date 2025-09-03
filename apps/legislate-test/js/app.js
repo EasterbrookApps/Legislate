@@ -1,4 +1,4 @@
-// app.js — classic wiring; only toasts + dice→modal wait added
+// app.js — classic wiring; toasts + dice→modal wait; dice face coercion
 (function (){
   const $ = (id)=>document.getElementById(id);
   const log = (msg)=>{ const pre=$('dbg-log'); if(pre){ pre.textContent += (typeof msg==='string'?msg:JSON.stringify(msg))+'\n'; } };
@@ -125,9 +125,12 @@
         boardUI.render(engine.state.players);
       });
 
-      engine.bus.on('DICE_ROLL', ({ value })=>{
-        // Promise-based, but we don't await here; CARD_DRAWN will wait.
-        window.LegislateUI.showDiceRoll(value);
+      // ✅ Dice face coercion + fallback to lastRoll to guarantee correctness
+      engine.bus.on('DICE_ROLL', (payload)=>{
+        const v = Number(
+          (payload && payload.value != null ? payload.value : engine.state.lastRoll)
+        ) || 1;
+        window.LegislateUI.showDiceRoll(Math.max(1, Math.min(6, v)));
       });
 
       // Friendly deck titles for modals
