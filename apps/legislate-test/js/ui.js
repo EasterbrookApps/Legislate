@@ -139,16 +139,16 @@ window.LegislateUI = (function () {
     __diceDone__ = new Promise((resolve) => {
       if (!overlay || !diceEl) { resolve(); return; }
 
-      // reset then animate
       overlay.hidden = false;
       diceEl.className = 'dice rolling';
 
-      // reveal the rolled face after wobble start
+      // Reveal the rolled face after wobble begins (original behaviour)
       setTimeout(() => {
-        diceEl.className = 'dice show-' + (value || 1);
+        const v = Math.max(1, Math.min(6, Number(value) || 1));
+        diceEl.className = 'dice show-' + v;
       }, 900);
 
-      // hide overlay and resolve once fully done
+      // Hide overlay and reset after ~2.5s total
       setTimeout(() => {
         overlay.hidden = true;
         diceEl.className = 'dice';
