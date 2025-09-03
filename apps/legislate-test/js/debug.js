@@ -1,22 +1,39 @@
-// debug.js — legacy always-on <pre id="dbg-log">
+// debug.js — robust attach to engine bus (works regardless of script order)
 (function () {
-  function sink(){
-    let el = document.getElementById('dbg-log');
-    if (!el) {
-      el = document.createElement('pre');
-      el.id = 'dbg-log';
-      el.style.cssText = 'max-height:200px;overflow:auto;background:#111;color:#0f0;font-size:12px;padding:6px;margin:0;white-space:pre-wrap;';
-      document.body.appendChild(el);
+  const LOG_ID = 'dbg-log';
+
+  function line(type, payload) {
+    const pre = document.getElementById(LOG_ID);
+    if (!pre) return;
+    try {
+      pre.textContent += payload === undefined
+        ? `${type}\n`
+        : `${type} ${JSON.stringify(payload)}\n`;
+    } catch {
+      pre.textContent += `${type} [payload]\n`;
     }
-    return el;
   }
-  const out = sink();
-  function write(kind, payload){
-    const ts = new Date().toISOString();
-    const line = `[${ts}] ${kind} ${typeof payload==='string'?payload:JSON.stringify(payload||'')}`;
-    out.textContent += line + '\n';
-    out.scrollTop = out.scrollHeight;
+
+  function attach() {
+    const eng = window.engine;
+    if (!eng || !eng.bus || typeof eng.bus.on !== 'function') return false;
+
+    // Avoid double attach
+    if (attach._attached) return true;
+    attach._attached = true;
+
+    // Wildcard listener (your event bus supports '*' and passes (type, payload))
+    eng.bus.on('*', (type, payload) => line(type, payload));
+
+    line('DEBUG_ATTACHED');
+    return true;
   }
-  window.LegislateDebug = { log: write, info: write, error: write };
-  write('INFO','[debug enabled]');
+
+  // Try immediately, then retry briefly until engine exists (max ~10s)
+  if (!attach()) {
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (attach() || (++tries > 200)) clearInterval(timer);
+    }, 50);
+  }
 })();
