@@ -1,39 +1,29 @@
-// debug.js — robust attach to engine bus (works regardless of script order)
+// debug.js — restore verbose logging
 (function () {
-  const LOG_ID = 'dbg-log';
+  function log(msg, data) {
+    const el = document.getElementById('dbg-log');
+    if (!el) return;
 
-  function line(type, payload) {
-    const pre = document.getElementById(LOG_ID);
-    if (!pre) return;
-    try {
-      pre.textContent += payload === undefined
-        ? `${type}\n`
-        : `${type} ${JSON.stringify(payload)}\n`;
-    } catch {
-      pre.textContent += `${type} [payload]\n`;
+    const line = document.createElement('div');
+    line.textContent = `[${new Date().toISOString()}] ${msg}` + (data ? ' ' + JSON.stringify(data) : '');
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  window.addEventListener('error', e => {
+    log('BOOT_FAIL ' + e.message);
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    log('BOOT_OK');
+
+    if (window.LegislateEngine) {
+      const engine = window.engine;
+      if (engine && engine.bus) {
+        engine.bus.on('*', (type, payload) => {
+          log(type, payload);
+        });
+      }
     }
-  }
-
-  function attach() {
-    const eng = window.engine;
-    if (!eng || !eng.bus || typeof eng.bus.on !== 'function') return false;
-
-    // Avoid double attach
-    if (attach._attached) return true;
-    attach._attached = true;
-
-    // Wildcard listener (your event bus supports '*' and passes (type, payload))
-    eng.bus.on('*', (type, payload) => line(type, payload));
-
-    line('DEBUG_ATTACHED');
-    return true;
-  }
-
-  // Try immediately, then retry briefly until engine exists (max ~10s)
-  if (!attach()) {
-    let tries = 0;
-    const timer = setInterval(() => {
-      if (attach() || (++tries > 200)) clearInterval(timer);
-    }, 50);
-  }
+  });
 })();
