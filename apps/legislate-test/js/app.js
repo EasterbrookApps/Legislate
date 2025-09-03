@@ -1,4 +1,4 @@
-// app.js — classic wiring (UI primitives; no facade)
+// app.js — classic wiring (UI primitives; dice→modal sequencing fixed)
 (function (){
   const $ = (id)=>document.getElementById(id);
   const log = (msg)=>{ const pre=$('dbg-log'); if(pre){ pre.textContent += (typeof msg==='string'?msg:JSON.stringify(msg))+'\n'; } };
@@ -126,11 +126,12 @@
       });
 
       engine.bus.on('DICE_ROLL', ({ value })=>{
+        // showDiceRoll now returns a Promise; we don't await here,
+        // CARD_DRAWN handler will await waitForDice() before showing modal.
         window.LegislateUI.showDiceRoll(value);
       });
 
-      // Modal on card draw
-      const modal = window.LegislateUI.createModal();
+      // Friendly deck titles for modals
       const DECK_LABELS = {
         early: "Early Stages",
         commons: "House of Commons",
@@ -140,11 +141,17 @@
       };
 
       engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
+        // ✅ Wait until dice overlay is fully done before showing the card
+        await window.LegislateUI.waitForDice();
+
+        const modal = window.LegislateUI.createModal();
+
         if (!card){
           await modal.open({ title: 'No card', body: `<p>The ${DECK_LABELS[deck] || deck} deck is empty.</p>` });
           engine.bus.emit('CARD_RESOLVE');
           return;
         }
+
         await modal.open({
           title: (card.title || (DECK_LABELS[deck] || deck)),
           body: `<p>${(card.text||'').trim()}</p>`
