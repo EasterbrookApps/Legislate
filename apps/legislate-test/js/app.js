@@ -1,4 +1,4 @@
-// app.js — classic wiring (UI primitives; dice→modal sequencing fixed)
+// app.js — classic wiring; only toasts + dice→modal wait added
 (function (){
   const $ = (id)=>document.getElementById(id);
   const log = (msg)=>{ const pre=$('dbg-log'); if(pre){ pre.textContent += (typeof msg==='string'?msg:JSON.stringify(msg))+'\n'; } };
@@ -126,8 +126,7 @@
       });
 
       engine.bus.on('DICE_ROLL', ({ value })=>{
-        // showDiceRoll now returns a Promise; we don't await here,
-        // CARD_DRAWN handler will await waitForDice() before showing modal.
+        // Promise-based, but we don't await here; CARD_DRAWN will wait.
         window.LegislateUI.showDiceRoll(value);
       });
 
