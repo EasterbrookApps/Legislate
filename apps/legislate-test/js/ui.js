@@ -1,4 +1,4 @@
-// ui.js — rendering helpers (no facade)
+// ui.js — rendering helpers (classic primitives)
 window.LegislateUI = (function () {
   const $ = (id) => document.getElementById(id);
 
@@ -77,7 +77,7 @@ window.LegislateUI = (function () {
         });
       }
 
-      // Remove tokens for non-active players (e.g., after count change)
+      // Remove tokens for players no longer present
       layer.querySelectorAll('.token').forEach(el => {
         const id = el.getAttribute('data-id');
         if (!seen.has(id)) el.remove();
@@ -129,16 +129,34 @@ window.LegislateUI = (function () {
     return { open };
   }
 
-  // ---- Dice overlay (original stable timing) ----
+  // ---- Dice overlay (original timing, promise-based) ----
+  let __diceDone__ = Promise.resolve();
+
   function showDiceRoll(value) {
     const overlay = $('diceOverlay');
     const diceEl  = $('dice');
-    if (!overlay || !diceEl) return;
-    overlay.hidden = false;
-    diceEl.className = 'dice rolling';
-    setTimeout(() => { diceEl.className = 'dice show-' + (value || 1); }, 900);
-    setTimeout(() => { overlay.hidden = true; diceEl.className = 'dice'; }, 2500);
+
+    __diceDone__ = new Promise((resolve) => {
+      if (!overlay || !diceEl) { resolve(); return; }
+
+      overlay.hidden = false;
+      diceEl.className = 'dice rolling';
+
+      setTimeout(() => {
+        diceEl.className = 'dice show-' + (value || 1);
+      }, 900);
+
+      setTimeout(() => {
+        overlay.hidden = true;
+        diceEl.className = 'dice';
+        resolve(); // resolve when fully hidden
+      }, 2500);
+    });
+
+    return __diceDone__;
   }
+
+  function waitForDice(){ return __diceDone__; }
 
   // ---- Toasts (tiny, no CSS changes) ----
   (function ensureToast(){
@@ -180,6 +198,7 @@ window.LegislateUI = (function () {
     createBoardRenderer,
     createModal,
     showDiceRoll,
+    waitForDice,
     toast
   };
 })();
