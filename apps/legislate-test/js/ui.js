@@ -145,7 +145,7 @@ window.LegislateUI = (function () {
       // Reveal the rolled face after wobble begins (original behaviour)
       setTimeout(() => {
         const v = Math.max(1, Math.min(6, Number(value) || 1));
-        diceEl.className = 'dice show-' + v;
+        diceEl.className = 'dice show-' + v + ' rolling';
       }, 300);
 
       // Hide overlay and reset after ~2.5s total
