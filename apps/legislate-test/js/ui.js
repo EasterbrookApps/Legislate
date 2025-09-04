@@ -146,7 +146,7 @@ window.LegislateUI = (function () {
       setTimeout(() => {
         const v = Math.max(1, Math.min(6, Number(value) || 1));
         diceEl.className = 'dice show-' + v;
-      }, 900);
+      }, 300);
 
       // Hide overlay and reset after ~2.5s total
       setTimeout(() => {
