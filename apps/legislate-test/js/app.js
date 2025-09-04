@@ -125,13 +125,10 @@
         boardUI.render(engine.state.players);
       });
 
-      // ✅ Dice face coercion + fallback to lastRoll to guarantee correctness
-      engine.bus.on('DICE_ROLL', (payload)=>{
-        const v = Number(
-          (payload && payload.value != null ? payload.value : engine.state.lastRoll)
-        ) || 1;
-        window.LegislateUI.showDiceRoll(Math.max(1, Math.min(6, v)));
-      });
+      engine.bus.on('DICE_ROLL', () => {
+  const v = engine.state.lastRoll;   // always 1–6 from engine
+  window.LegislateUI.showDiceRoll(v);
+});
 
       // Friendly deck titles for modals
       const DECK_LABELS = {
