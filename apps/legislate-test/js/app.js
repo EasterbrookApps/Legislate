@@ -1,4 +1,4 @@
-// app.js — classic wiring; toasts + dice→modal wait; dice face coercion
+// app.js — dice → move → card sequencing + existing toasts/fan-out
 (function (){
   const $ = (id)=>document.getElementById(id);
   const log = (msg)=>{ const pre=$('dbg-log'); if(pre){ pre.textContent += (typeof msg==='string'?msg:JSON.stringify(msg))+'\n'; } };
@@ -105,6 +105,39 @@
       // ---- Board renderer (fan-out) ----
       const boardUI = window.LegislateUI.createBoardRenderer({ board });
 
+      // ==========================================================
+      // Dice → Move → Card sequencing
+      // Buffer MOVE_STEP while dice overlay is shown; replay after.
+      // ==========================================================
+      let diceRunning = false;
+      let stepQueue = [];
+      let flushingSteps = false;
+
+      function applyStep({ playerId, position }) {
+        const p = engine.state.players.find(x=>x.id===playerId);
+        if (!p) return;
+        const el = ensureToken(playerId, p.color);
+        positionToken(el, position);
+        boardUI.render(engine.state.players);
+      }
+
+      function flushStepQueue() {
+        if (flushingSteps) return;
+        flushingSteps = true;
+        const tick = () => {
+          const item = stepQueue.shift();
+          if (!item) {
+            flushingSteps = false;
+            // final render to be safe
+            boardUI.render(engine.state.players);
+            return;
+          }
+          applyStep(item);
+          setTimeout(tick, 180); // keep engine's step cadence
+        };
+        tick();
+      }
+
       // ---- Events ----
       engine.bus.on('TURN_BEGIN', ({ index })=>{
         const p = engine.state.players[index];
@@ -119,16 +152,22 @@
       });
 
       engine.bus.on('MOVE_STEP', ({ playerId, position })=>{
-        const p = engine.state.players.find(x=>x.id===playerId);
-        const el = ensureToken(playerId, p.color);
-        positionToken(el, position);
-        boardUI.render(engine.state.players);
+        if (diceRunning || flushingSteps) {
+          stepQueue.push({ playerId, position });
+        } else {
+          applyStep({ playerId, position });
+        }
       });
 
+      // Dice: show, then when it finishes, flush queued steps
       engine.bus.on('DICE_ROLL', () => {
-  const v = engine.state.lastRoll;   // always 1–6 from engine
-  window.LegislateUI.showDiceRoll(v);
-});
+        const v = engine.state.lastRoll; // engine already guarantees 1–6
+        diceRunning = true;
+        window.LegislateUI.showDiceRoll(v).finally(() => {
+          diceRunning = false;
+          flushStepQueue();
+        });
+      });
 
       // Friendly deck titles for modals
       const DECK_LABELS = {
@@ -139,8 +178,8 @@
         pingpong: "Ping Pong",
       };
 
+      // Show card only after dice is fully done (still true with the queue)
       engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
-        // ✅ Wait until dice overlay is fully done before showing the card
         await window.LegislateUI.waitForDice();
 
         const modal = window.LegislateUI.createModal();
