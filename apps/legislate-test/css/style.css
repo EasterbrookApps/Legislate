@@ -262,6 +262,10 @@ body {
     flex-direction: column;
     align-items: flex-start;
   }
+    .control-box {
+    height: auto;   /* shrink to fit content instead of stretching */
+    padding: 0.5rem;
+  }
 }
 
 /* Header Menu */
