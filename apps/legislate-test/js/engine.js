@@ -1,7 +1,6 @@
 // engine.js — simple, stable engine with step-by-step movement + deck draw
 window.LegislateEngine = (function () {
   function delay(ms) { return new Promise(res => setTimeout(res, ms)); }
-
   function createEventBus() {
     const map = new Map();
     return {
@@ -16,7 +15,6 @@ window.LegislateEngine = (function () {
       },
     };
   }
-
   function makeRng(seed) {
     let t = seed >>> 0;
     return function () {
@@ -26,7 +24,6 @@ window.LegislateEngine = (function () {
       return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
     };
   }
-
   function dice(rng) { return 1 + Math.floor(rng() * 6); }
 
   function createEngine({ board, decks, rng = makeRng(Date.now()), playerCount = 4, colors } = {}) {
@@ -35,7 +32,6 @@ window.LegislateEngine = (function () {
     const endIndex = (board.spaces.slice().reverse().find(s => s.stage === 'end') || board.spaces[board.spaces.length - 1]).index;
 
     const palette = colors || ['#d4351c', '#1d70b8', '#00703c', '#6f72af', '#b58840', '#912b88'];
-
     function initPlayers(n) {
       const max = Math.max(2, Math.min(6, n || 4));
       state.players = [];
@@ -67,14 +63,6 @@ window.LegislateEngine = (function () {
       return c;
     }
 
-    // ---- NEW: minimal helper to fire end-of-game when on endIndex ----
-    function maybeEndGame(p) {
-      if (p.position === endIndex) {
-        bus.emit('GAME_END', { winnerId: p.id, name: p.name, position: p.position });
-      }
-    }
-    // ---- END NEW ----
-
     function applyCard(card) {
       if (!card) return;
 
@@ -89,9 +77,6 @@ window.LegislateEngine = (function () {
           if (i > endIndex) i = endIndex;
           p.position = i;
 
-          // NEW: check for end after a move effect
-          maybeEndGame(p);
-
         } else if (type === 'miss_turn') {
           current().skip = (current().skip || 0) + 1;
 
@@ -104,11 +89,7 @@ window.LegislateEngine = (function () {
           if (i < 0) i = 0;
           if (i > endIndex) i = endIndex;
           p.position = i;
-          // Optional: debug signal; behaviour unchanged
           bus.emit('EFFECT_GOTO', { playerId: p.id, index: i });
-
-          // NEW: check for end after a goto effect
-          maybeEndGame(p);
         }
       }
     }
@@ -126,13 +107,28 @@ window.LegislateEngine = (function () {
       }
     }
 
+    // --- NEW: minimal win check helper ---
+    function checkWin(p) {
+      if (p.position >= endIndex) {
+        bus.emit('GAME_END', { playerId: p.id, name: p.name, position: p.position });
+        return true;
+      }
+      return false;
+    }
+    // -------------------------------------
+
     async function takeTurn() {
       const p = current();
+      if (p.skip > 0) { p.skip--; endTurn(false); return; }
 
       const roll = dice(rng);
       state.lastRoll = roll;
       bus.emit('DICE_ROLL', { value: roll, playerId: p.id, name: p.name });
+
       await moveSteps(roll);
+
+      // If movement alone reached the end, stop the turn here.
+      if (checkWin(p)) return;
 
       const space = spaceFor(p.position);
       bus.emit('LANDED', { playerId: p.id, position: p.position, space });
@@ -149,13 +145,17 @@ window.LegislateEngine = (function () {
           });
           applyCard(card);
           bus.emit('CARD_APPLIED', { card, playerId: p.id, position: p.position });
+
+          // If a card (e.g., goto end) put us at the end, stop the turn here.
+          if (checkWin(p)) return;
         }
       }
+
       endTurn(p.extraRoll);
       p.extraRoll = false;
     }
 
-    // ---- Centralised next-turn selection with skip consumption ----
+    // ---- centralised next-turn selection with skip consumption ----
     function nextEligibleTurnIndex() {
       const skipped = [];
       const max = state.players.length || 0;
@@ -170,24 +170,18 @@ window.LegislateEngine = (function () {
           p.skip -= 1;
           skipped.push({ playerId: p.id, name: p.name, remaining: p.skip });
           hops += 1;
-          continue; // keep looking
+          continue;
         }
-
         return { index: idx, skipped };
       }
-
-      // If everyone had a skip consumed this pass, return where we landed.
       return { index: idx, skipped };
     }
 
     function endTurn(extra) {
-      // Extra roll: same player keeps the turn.
       if (extra === true) {
         bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
         return;
       }
-
-      // Pick next eligible player and emit MISS_TURN for anyone we skipped.
       const sel = nextEligibleTurnIndex();
       state.turnIndex = sel.index;
 
@@ -196,10 +190,9 @@ window.LegislateEngine = (function () {
           bus.emit('MISS_TURN', sel.skipped[i]);
         }
       }
-
       bus.emit('TURN_BEGIN', { playerId: current().id, index: state.turnIndex });
     }
-    // ---- end centralised skip handling ----
+    // ---- end fix ----
 
     function setPlayerCount(n) {
       const names = state.players.map(p => p.name);
