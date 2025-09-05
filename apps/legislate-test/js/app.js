@@ -107,11 +107,14 @@
 
       // ==========================================================
       // Dice → Move → Card sequencing
-      // Buffer MOVE_STEP while dice overlay is shown; replay after.
+      // Buffer MOVE_STEP while dice overlay is shown; replay after it hides.
+      // Also ensure card modal waits for both dice + movement flush to finish.
       // ==========================================================
+      let diceGate = Promise.resolve(); // resolves when dice overlay fully hides
       let diceRunning = false;
       let stepQueue = [];
       let flushingSteps = false;
+      let flushDone = Promise.resolve(); // resolves when queued steps are fully applied
 
       function applyStep({ playerId, position }) {
         const p = engine.state.players.find(x=>x.id===playerId);
@@ -123,17 +126,21 @@
 
       function flushStepQueue() {
         if (flushingSteps) return;
+
         flushingSteps = true;
+        let resolveFlush;
+        flushDone = new Promise(res => resolveFlush = res);
+
         const tick = () => {
           const item = stepQueue.shift();
           if (!item) {
             flushingSteps = false;
-            // final render to be safe
             boardUI.render(engine.state.players);
+            resolveFlush();
             return;
           }
           applyStep(item);
-          setTimeout(tick, 180); // keep engine's step cadence
+          setTimeout(tick, 180); // same cadence as engine movement
         };
         tick();
       }
@@ -152,6 +159,7 @@
       });
 
       engine.bus.on('MOVE_STEP', ({ playerId, position })=>{
+        // While dice overlay is up or we're flushing, queue steps
         if (diceRunning || flushingSteps) {
           stepQueue.push({ playerId, position });
         } else {
@@ -159,14 +167,15 @@
         }
       });
 
-      // Dice: show, then when it finishes, flush queued steps
+      // Dice: show; when it fully finishes (overlay hidden), flush queued steps
       engine.bus.on('DICE_ROLL', () => {
         const v = engine.state.lastRoll; // engine already guarantees 1–6
         diceRunning = true;
-        window.LegislateUI.showDiceRoll(v).finally(() => {
-          diceRunning = false;
-          flushStepQueue();
-        });
+        diceGate = window.LegislateUI.showDiceRoll(v)
+          .finally(() => {
+            diceRunning = false;   // overlay fully hidden here (showDiceRoll resolves here)
+            flushStepQueue();      // now play the buffered MOVE_STEPs
+          });
       });
 
       // Friendly deck titles for modals
@@ -178,9 +187,9 @@
         pingpong: "Ping Pong",
       };
 
-      // Show card only after dice is fully done (still true with the queue)
+      // Show card only after dice is fully done AND movement has fully flushed
       engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
-        await window.LegislateUI.waitForDice();
+        await Promise.all([ diceGate, flushDone ]);
 
         const modal = window.LegislateUI.createModal();
 
