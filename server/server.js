@@ -17,10 +17,10 @@ const decks = {
 
 // ---- Engine: import your browser engine in Node ----
 // Option A: if you've added module.exports in your engine.js
-// const { createEngine, makeRng } = require('../apps/legislate/js/engine.js');
+// const { createEngine, makeRng } = require('../apps/legislate-test/js/engine.js');
 // Option B: quick inline require by evaluating the file and reading window.LegislateEngine
 const vm = require('vm');
-const engineCode = fs.readFileSync(path.resolve(__dirname, '../apps/legislate/js/engine.js'), 'utf8');
+const engineCode = fs.readFileSync(path.resolve(__dirname, '../apps/legislate-test/js/engine.js'), 'utf8');
 const sandbox = { window: {} };
 vm.createContext(sandbox);
 vm.runInContext(engineCode, sandbox);
