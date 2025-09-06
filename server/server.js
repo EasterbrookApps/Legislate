@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 // ---- Load board & decks (shared assets path) ----
-const ASSETS = path.resolve(__dirname, '../apps/legislate-test/assets/packs/uk-parliament');
+const ASSETS = path.resolve(__dirname, 'https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament');
 const board = JSON.parse(fs.readFileSync(path.join(ASSETS, 'board.json')));
 const decks = {
   commons: JSON.parse(fs.readFileSync(path.join(ASSETS, 'cards/commons.json'))),
