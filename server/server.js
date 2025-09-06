@@ -1,149 +1,206 @@
+// server/server.js — multiplayer relay for Legislate?!
+//
+// Runs on Render: provides /healthz and a WebSocket endpoint /game
+// Loads board.json + decks from apps/legislate-test and reuses engine.js
+
 require('dotenv').config();
 const http = require('http');
 const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 
-// ---- Load board & decks (shared assets path) ----
-const ASSETS = path.resolve(__dirname, 'https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament');
-const board = JSON.parse(fs.readFileSync(path.join(ASSETS, 'board.json')));
+// --- Allowed Origins --------------------------------------------------------
+const ALLOWED = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
+
+function originAllowed(origin) {
+  return !ALLOWED.length || ALLOWED.includes(origin || '');
+}
+
+// --- Local Assets -----------------------------------------------------------
+const PACK_DIR = '../apps/legislate-test/assets/packs/uk-parliament';
+const ASSETS = path.resolve(__dirname, PACK_DIR);
+
+const board = JSON.parse(
+  fs.readFileSync(path.join(ASSETS, 'board.json'), 'utf8')
+);
 const decks = {
-  commons: JSON.parse(fs.readFileSync(path.join(ASSETS, 'cards/commons.json'))),
-  early: JSON.parse(fs.readFileSync(path.join(ASSETS, 'cards/early.json'))),
-  lords: JSON.parse(fs.readFileSync(path.join(ASSETS, 'cards/lords.json'))),
-  pingpong: JSON.parse(fs.readFileSync(path.join(ASSETS, 'cards/pingpong.json'))),
-  implementation: JSON.parse(fs.readFileSync(path.join(ASSETS, 'cards/implementation.json')))
+  commons: JSON.parse(
+    fs.readFileSync(path.join(ASSETS, 'cards/commons.json'), 'utf8')
+  ),
+  early: JSON.parse(
+    fs.readFileSync(path.join(ASSETS, 'cards/early.json'), 'utf8')
+  ),
+  lords: JSON.parse(
+    fs.readFileSync(path.join(ASSETS, 'cards/lords.json'), 'utf8')
+  ),
+  pingpong: JSON.parse(
+    fs.readFileSync(path.join(ASSETS, 'cards/pingpong.json'), 'utf8')
+  ),
+  implementation: JSON.parse(
+    fs.readFileSync(path.join(ASSETS, 'cards/implementation.json'), 'utf8')
+  ),
 };
 
-// ---- Engine: import your browser engine in Node ----
-// Option A: if you've added module.exports in your engine.js
-// const { createEngine, makeRng } = require('../apps/legislate-test/js/engine.js');
-// Option B: quick inline require by evaluating the file and reading window.LegislateEngine
-const vm = require('vm');
-const engineCode = fs.readFileSync(path.resolve(__dirname, '../apps/legislate-test/js/engine.js'), 'utf8');
+// --- Load engine.js via VM --------------------------------------------------
+const enginePath = path.resolve(
+  __dirname,
+  '../apps/legislate-test/js/engine.js'
+);
+const engineCode = fs.readFileSync(enginePath, 'utf8');
 const sandbox = { window: {} };
 vm.createContext(sandbox);
 vm.runInContext(engineCode, sandbox);
 const { createEngine, makeRng } = sandbox.window.LegislateEngine;
 
-// ---- HTTP server (WS only) ----
-const server = http.createServer((req, res) => {
-  // Optional: health check
-  if (req.url === '/healthz') { res.writeHead(200).end('ok'); return; }
-  res.writeHead(404).end();
-});
+// --- WebSocket Rooms --------------------------------------------------------
+const rooms = new Map();
 
-const wss = new WebSocket.Server({ server, path: '/game' });
-const rooms = new Map(); // roomCode -> { engine, clients:Set<ws>, seq, phase }
-
-// Origin check (very light)
-const ALLOWED = (process.env.ALLOWED_ORIGINS || '').split(',').map(s=>s.trim()).filter(Boolean);
-function originAllowed(origin){ return !ALLOWED.length || ALLOWED.includes(origin || ''); }
-
-function createRoom(roomCode, playerCount=4){
-  const rng = makeRng(Date.now() ^ Math.floor(Math.random()*1e9));
-  const engine = createEngine({ board, decks, rng, playerCount });
-  const room = { engine, clients: new Set(), seq: 0, phase: 'TURN_BEGIN' };
-
-  engine.bus.on('*', (type, payload) => {
-    room.seq += 1;
-    const msg = JSON.stringify({ type, payload, seq: room.seq });
-
-    // track phase for validation
-    if (type === 'DICE_ROLL') room.phase = 'ROLLING';
-    if (type === 'MOVE_STEP') room.phase = 'MOVING';
-    if (type === 'CARD_DRAWN') room.phase = 'CARD_PENDING';
-    if (type === 'CARD_APPLIED' || type === 'TURN_BEGIN') room.phase = 'TURN_BEGIN';
-    if (type === 'GAME_END') room.phase = 'ENDED';
-
-    for (const ws of room.clients) if (ws.readyState === WebSocket.OPEN) ws.send(msg);
-  });
-
-  rooms.set(roomCode, room);
-  return room;
+function getRoom(code) {
+  if (!rooms.has(code)) {
+    const eng = createEngine({
+      board,
+      decks,
+      rng: makeRng(Date.now()),
+      playerCount: 4,
+    });
+    rooms.set(code, { engine: eng, clients: new Set() });
+  }
+  return rooms.get(code);
 }
 
-function safeParse(raw){ try { return JSON.parse(raw); } catch { return null; } }
+// --- HTTP Server ------------------------------------------------------------
+const server = http.createServer((req, res) => {
+  if (req.url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ok');
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
 
-wss.on('connection', (ws, req) => {
-  if (!originAllowed(req.headers.origin)) { ws.close(1008, 'origin not allowed'); return; }
+// --- WebSocket Server -------------------------------------------------------
+const wss = new WebSocket.Server({ noServer: true });
 
-  let room = null;
-  let playerIndex = null;
+server.on('upgrade', (req, socket, head) => {
+  const origin = req.headers.origin;
+  if (!originAllowed(origin)) {
+    socket.destroy();
+    return;
+  }
+  if (req.url === '/game') {
+    wss.handleUpgrade(req, socket, head, ws => {
+      wss.emit('connection', ws, req);
+    });
+  } else {
+    socket.destroy();
+  }
+});
 
-  ws.on('message', (raw) => {
-    const msg = safeParse(raw);
-    if (!msg || typeof msg.type !== 'string') return;
+wss.on('connection', ws => {
+  let currentRoom = null;
 
-    switch (msg.type) {
-      case 'JOIN': {
-        const { roomCode, asIndex, playerCount } = msg;
-        if (typeof roomCode !== 'string' || !roomCode.trim()) return;
+  ws.on('message', async msgBuf => {
+    let msg;
+    try {
+      msg = JSON.parse(msgBuf.toString());
+    } catch {
+      return;
+    }
 
-        room = rooms.get(roomCode) || createRoom(roomCode.trim().toUpperCase(), playerCount || 4);
-        room.clients.add(ws);
+    if (msg.type === 'JOIN') {
+      const code = (msg.roomCode || '').toUpperCase();
+      const room = getRoom(code);
+      currentRoom = room;
+      room.clients.add(ws);
 
-        // naive assignment (improve later: track claimed seats)
-        playerIndex = (typeof asIndex === 'number') ? asIndex : room.engine.state.turnIndex;
+      // reset players with requested count
+      room.engine.setPlayerCount(msg.playerCount || 4);
 
-        const payload = {
-          roomCode,
-          you: playerIndex,
-          state: room.engine.state,
-          endIndex: room.engine.endIndex,
-          seq: room.seq
-        };
-        ws.send(JSON.stringify({ type: 'JOIN_OK', payload }));
-        return;
+      ws.send(
+        JSON.stringify({
+          type: 'JOIN_OK',
+          payload: { state: room.engine.state },
+        })
+      );
+      return;
+    }
+
+    if (!currentRoom) return;
+    const { engine, clients } = currentRoom;
+
+    if (msg.type === 'ROLL') {
+      await engine.takeTurn();
+      // broadcast bus events
+      engine.bus.on('*', (type, payload) => {
+        clients.forEach(c => {
+          if (c.readyState === WebSocket.OPEN) {
+            c.send(JSON.stringify({ type, payload }));
+          }
+        });
+      });
+      return;
+    }
+
+    if (msg.type === 'RESOLVE_CARD') {
+      engine.bus.emit('CARD_RESOLVE');
+      return;
+    }
+
+    if (msg.type === 'RESET') {
+      engine.reset();
+      clients.forEach(c => {
+        if (c.readyState === WebSocket.OPEN) {
+          c.send(
+            JSON.stringify({
+              type: 'TURN_BEGIN',
+              payload: {
+                playerId: engine.state.players[0].id,
+                index: 0,
+              },
+            })
+          );
+        }
+      });
+      return;
+    }
+
+    if (msg.type === 'RENAME') {
+      const { index, name } = msg;
+      if (
+        index >= 0 &&
+        index < engine.state.players.length &&
+        typeof name === 'string'
+      ) {
+        engine.state.players[index].name = name.trim();
+        clients.forEach(c => {
+          if (c.readyState === WebSocket.OPEN) {
+            c.send(
+              JSON.stringify({
+                type: 'PLAYER_RENAMED',
+                payload: { index, name: engine.state.players[index].name },
+              })
+            );
+          }
+        });
       }
-
-      case 'ROLL': {
-        if (!room) return;
-        if (room.phase !== 'TURN_BEGIN') return;
-        if (room.engine.state.turnIndex !== playerIndex) return;
-        room.engine.takeTurn();
-        return;
-      }
-
-      case 'RESOLVE_CARD': {
-        if (!room) return;
-        if (room.phase !== 'CARD_PENDING') return;
-        if (room.engine.state.turnIndex !== playerIndex) return;
-        room.engine.bus.emit('CARD_RESOLVE');
-        return;
-      }
-
-      case 'RENAME': {
-        if (!room) return;
-        const { index, name } = msg;
-        const i = Number(index);
-        if (!Number.isInteger(i)) return;
-        const safe = String(name || '').slice(0, 40);
-        if (!room.engine.state.players[i]) return;
-        room.engine.state.players[i].name = safe;
-
-        room.seq += 1;
-        const out = JSON.stringify({ type: 'PLAYER_RENAMED', payload: { index: i, name: safe }, seq: room.seq });
-        for (const c of room.clients) if (c.readyState === WebSocket.OPEN) c.send(out);
-        return;
-      }
-
-      case 'RESET': {
-        if (!room) return;
-        room.engine.reset();
-        room.phase = 'TURN_BEGIN';
-        return;
-      }
+      return;
     }
   });
 
   ws.on('close', () => {
-    if (room) room.clients.delete(ws);
+    if (currentRoom) {
+      currentRoom.clients.delete(ws);
+    }
   });
 });
 
-// Boot
-const PORT = Number(process.env.PORT || 8080);
+// --- Start ------------------------------------------------------------------
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-  console.log(`Legislate?! multiplayer server on :${PORT}  (WS path: /game)`);
+  console.log(`Legislate?! multiplayer server running on ${PORT}`);
 });
