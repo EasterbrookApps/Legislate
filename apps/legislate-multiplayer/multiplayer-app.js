@@ -1,24 +1,18 @@
 // multiplayer-app.js — thin socket client reusing stable UI (legislate-test)
 (function () {
   const $ = (id) => document.getElementById(id);
-  const log = (m) => {
-    const pre = $('dbg-log');
-    if (pre) pre.textContent += (typeof m === 'string' ? m : JSON.stringify(m)) + '\n';
-    console.log(m);
-  };
 
   // ---- CONFIG --------------------------------------------------------------
   // Assets base for board.json (used for token placement)
-  const base = '../legislate-test/assets/packs/uk-parliament';
-
+  const base = 'https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament';
   // Your Render WebSocket endpoint
   const wsUrl = 'wss://legislate.onrender.com/game';
 
   // ---- STATE ---------------------------------------------------------------
   let ws = null;
   let board = null;
-  let boardUI = null;            // renderer instance (fan-out, etc.)
-  let engineState = null;        // minimal mirror of server state after JOIN_OK
+  let boardUI = null;       // renderer instance (fan-out, etc.)
+  let engineState = null;   // minimal mirror of server state after JOIN_OK
 
   // ---- TOKENS --------------------------------------------------------------
   const tokensLayer = $('tokensLayer');
@@ -171,61 +165,78 @@
 
   // ---- CONNECT & JOIN ------------------------------------------------------
   async function connectAndJoin(roomCode, playerCount) {
-    // Load board (client needs only for token coordinates)
-    board = await fetch(`${base}/board.json`).then((r) => r.json());
+    try {
+      // Load board (client needs only for token coordinates)
+      const resp = await fetch(`${base}/board.json`, { cache: 'no-store' });
+      if (!resp.ok) throw new Error(`board.json ${resp.status}`);
+      board = await resp.json();
 
-    // Create board renderer now we have board
-    boardUI = (window.LegislateUI && window.LegislateUI.createBoardRenderer)
-      ? window.LegislateUI.createBoardRenderer({ board })
-      : { render: () => {} };
+      // Create board renderer now we have board
+      boardUI = (window.LegislateUI && window.LegislateUI.createBoardRenderer)
+        ? window.LegislateUI.createBoardRenderer({ board })
+        : { render: () => {} };
 
-    // Open WebSocket
-    ws = new WebSocket(wsUrl);
+      // Open WebSocket
+      ws = new WebSocket(wsUrl);
 
-    // Status indicators
-    ws.addEventListener('open', () => {
-      $('turnIndicator').textContent = 'Connected — joining room…';
-      try {
-        ws.send(JSON.stringify({
-          type: 'JOIN',
-          roomCode: (roomCode || '').trim().toUpperCase(),
-          playerCount: Number(playerCount) || 4
-        }));
-      } catch {}
-    });
+      // Status indicators
+      ws.addEventListener('open', () => {
+        $('turnIndicator').textContent = 'Connected — joining room…';
+        try {
+          ws.send(JSON.stringify({
+            type: 'JOIN',
+            roomCode: (roomCode || '').trim().toUpperCase(),
+            playerCount: Number(playerCount) || 4
+          }));
+        } catch {}
+      });
 
-    ws.addEventListener('error', () => {
-      $('turnIndicator').textContent = 'Connection error';
-    });
+      ws.addEventListener('error', () => {
+        $('turnIndicator').textContent = 'Connection error';
+        window.LegislateUI?.toast('WebSocket connection error', { kind: 'error' });
+      });
 
-    ws.addEventListener('close', () => {
-      $('turnIndicator').textContent = 'Disconnected';
-    });
+      ws.addEventListener('close', () => {
+        $('turnIndicator').textContent = 'Disconnected';
+      });
 
-    ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(ev.data);
+      ws.addEventListener('message', (ev) => {
+        const msg = JSON.parse(ev.data);
 
-      if (msg.type === 'JOIN_OK') {
-        engineState = msg.payload.state;
-        $('turnIndicator').textContent = `Joined room ${(roomCode || '').toUpperCase()}`;
+        // ---- DEBUG passthrough (server → page + console) ----
+        if (msg.type === 'DEBUG') {
+          const pre = document.getElementById('dbg-log');
+          if (pre) pre.textContent += msg.payload + '\n';
+          console.log('[DEBUG]', msg.payload);
+          return; // keep showing debug even before JOIN_OK
+        }
 
-        // Players UI
-        renderPlayers(engineState);
+        if (msg.type === 'JOIN_OK') {
+          engineState = msg.payload.state;
+          $('turnIndicator').textContent = `Joined room ${(roomCode || '').toUpperCase()}`;
 
-        // Initial token paint
-        engineState.players.forEach((pl) => {
-          const el = ensureToken(pl.id, pl.color);
-          positionToken(el, pl.position);
-        });
+          // Players UI
+          renderPlayers(engineState);
 
-        // First render
-        boardUI?.render(engineState.players);
-        return;
-      }
+          // Initial token paint
+          engineState.players.forEach((pl) => {
+            const el = ensureToken(pl.id, pl.color);
+            positionToken(el, pl.position);
+          });
 
-      if (!engineState) return; // ignore until joined
-      handleServerEvent(msg, engineState);
-    });
+          // First render
+          boardUI?.render(engineState.players);
+          return;
+        }
+
+        if (!engineState) return; // ignore non-debug, non-join until joined
+        handleServerEvent(msg, engineState);
+      });
+    } catch (err) {
+      $('turnIndicator').textContent = 'Failed to load board';
+      window.LegislateUI?.toast(`Could not load board.json: ${err.message}`, { kind: 'error' });
+      console.error(err);
+    }
   }
 
   // ---- UI HOOKS ------------------------------------------------------------
