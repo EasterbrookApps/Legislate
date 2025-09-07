@@ -1,4 +1,4 @@
-// multiplayer-app.js — presence-aware client for Legislate Multiplayer
+// multiplayer-app.js — presence-aware client + keep-alive for Legislate Multiplayer
 
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -79,7 +79,6 @@
         try { ws?.send(JSON.stringify({ type: 'RENAME', index: i, name: v })); } catch {}
       });
 
-      // Seat badge for me
       if (mySeat === i) {
         const badge = document.createElement('span');
         badge.textContent = ' (you)';
@@ -125,7 +124,7 @@
 
     if (type === 'MOVE_STEP') {
       const p = stateRef.players.find((x) => x.id === payload.playerId) || { color: '#000' };
-      if (!p.present) return; // ignore movement for non-present seats (shouldn’t happen, but safe)
+      if (!p.present) return;
       const el = ensureToken(payload.playerId, p.color);
       el.style.display = 'block';
       positionToken(el, payload.position);
@@ -252,6 +251,13 @@
       ws.addEventListener('message', (ev) => {
         const msg = JSON.parse(ev.data);
 
+        // Keep-alive: reply to server heartbeat silently
+        if (msg.type === 'PING') {
+          try { ws.send(JSON.stringify({ type: 'PONG' })); } catch {}
+          return;
+        }
+
+        // Debug stream (visible)
         if (msg.type === 'DEBUG') {
           const pre = document.getElementById('dbg-log');
           if (pre) pre.textContent += msg.payload + '\n';
@@ -266,7 +272,6 @@
             `Joined room ${(roomCode || '').toUpperCase()}${mySeat!=null ? ` — seat ${mySeat+1}` : ' — spectator'}`;
 
           renderPlayers(engineState);
-          // Initial tokens (present-only)
           engineState.players.forEach((pl) => {
             const el = ensureToken(pl.id, pl.color);
             if (pl.present) {
