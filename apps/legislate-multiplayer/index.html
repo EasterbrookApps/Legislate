@@ -3,23 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Legislate?! · Multiplayer</title>
-  <!-- Reuse stable styling -->
+  <title>Legislate?! Multiplayer</title>
   <link rel="stylesheet" href="../legislate-test/css/style.css?v=LG-1">
 </head>
 <body>
 
+  <!-- Header -->
   <header class="page-header">
-    <div class="brand">
-      <a href="../legislate-test/index.html" style="text-decoration:none;color:inherit;">Legislate?!</a>
-    </div>
+    <div class="brand">Legislate?!</div>
     <nav class="header-menu">
-      <a href="../legislate/index.html" class="menu-link">Home</a>
-      <a href="../legislate/about.html" class="menu-link">About</a>
-      <a href="../legislate/contact.html" class="menu-link">Contact Us</a>
+      <a href="../legislate-test/index.html">Home</a>
+      <a href="../about.html">About</a>
+      <a href="../contact.html">Contact Us</a>
     </nav>
   </header>
 
+  <!-- Control Bar -->
   <div class="control-bar">
     <div class="control-col control-col--actions">
       <div class="control-box">
@@ -28,47 +27,35 @@
           <button id="rollBtn" class="button">Roll</button>
           <button id="restartBtn" class="button button--secondary">Restart</button>
         </div>
+        <div style="margin-top:.5rem;">
+          <label for="roomCode">Room</label>
+          <input id="roomCode" placeholder="ABC123"
+                 style="padding:.4rem .6rem;border:1px solid var(--border);border-radius:.5rem;">
+          <button id="joinBtn" class="button">Join</button>
+        </div>
       </div>
     </div>
-
     <div class="control-col control-col--turn">
       <div class="control-box">
-        <div id="turnIndicator" class="turn">Enter a room code to create or join.</div>
+        <div id="turnIndicator" class="turn">Loading…</div>
       </div>
     </div>
-
     <div class="control-col control-col--players">
       <div class="control-box">
-        <label for="roomCode">Room</label>
-        <input id="roomCode" placeholder="ABC123"
-               style="padding:.4rem .6rem;border:1px solid var(--border);border-radius:.5rem;">
-        <button id="joinBtn" class="button">Join</button>
-
-        <label for="playerCount" style="margin-left:.5rem;">Players</label>
-        <select id="playerCount" aria-label="Number of players">
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4" selected>4</option>
-          <option value="5">5</option>
-          <option value="6">6</option>
-        </select>
-
         <section id="playersSection" class="players-section" aria-label="Players"></section>
       </div>
     </div>
   </div>
 
+  <!-- Main Content -->
   <main class="page-main">
     <div class="board-wrap">
       <img id="boardImg"
-           src="https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/board.png"
+           src="../legislate-test/assets/packs/uk-parliament/board.png"
            alt="UK Parliament board">
       <div id="tokensLayer" class="tokens-layer" aria-live="polite"></div>
     </div>
-
     <div id="modalRoot"></div>
-
-    <!-- Dice overlay (same as stable) -->
     <div id="diceOverlay" class="dice-overlay" hidden>
       <div class="dice-wrapper">
         <div id="dice" class="dice">
@@ -81,16 +68,41 @@
         </div>
       </div>
     </div>
-
-    <p class="attrib">© <span id="yr"></span> Legislate?!</p>
+    <p class="attrib" id="footerAttrib">
+      Created by Dan Easterbrook. Inspired by the “Legislate?!” board game created by Hayley Rogers. 
+      Utilises assets created by Terence Eden, licensed under the Open Government License.
+    </p>
   </main>
 
   <pre id="dbg-log"></pre>
 
-  <!-- Reuse stable UI primitives; DO NOT load engine.js here -->
+  <!-- Firebase SDK setup -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+    import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    const firebaseConfig = {
+      apiKey: "AlzaSyBCXekkFKqbW5_pOwcog9tUmxvmu33r_Q",
+      authDomain: "legislate-game.firebaseapp.com",
+      projectId: "legislate-game",
+      databaseURL: "https://legislate-game.firebaseio.com",
+      appId: "1:458226977279:web:63dc707ead4c78905dffca"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const rtdb = getDatabase(app);
+    const auth = getAuth(app);
+
+    await signInAnonymously(auth);
+    window.fb = { db, rtdb, auth };
+  </script>
+
+  <!-- Reuse stable UI -->
   <script src="../legislate-test/js/debug.js?v=LG-1"></script>
   <script src="../legislate-test/js/ui.js?v=LG-1"></script>
   <script src="./multiplayer-app.js?v=LG-1"></script>
-  <script>document.getElementById('yr').textContent = new Date().getFullYear();</script>
 </body>
 </html>
