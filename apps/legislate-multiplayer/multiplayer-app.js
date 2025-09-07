@@ -1,3 +1,9 @@
+// --- Firebase readiness guard (multiplayer-app.js) ---
+if (window.fbReady) {
+  await window.fbReady; // wait for Firebase init + anonymous auth
+}
+const { db, rtdb, auth } = window.fb || {};
+
 // multiplayer-app.js — presence-aware client + keep-alive for Legislate Multiplayer
 
 (function () {
@@ -7,15 +13,33 @@
   const base = 'https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament';
   const wsUrl = 'wss://legislate.onrender.com/game';
 
+  // ---- UI ELEMENTS ---------------------------------------------------------
+  const joinBtn = $('joinBtn');
+  const roomInput = $('roomCode');
+  const rollBtn = $('rollBtn');
+  const restartBtn = $('restartBtn');
+  const playerCountSel = $('playerCount');
+  const playersSection = $('playersSection');
+  const turnIndicator = $('turnIndicator');
+  const diceOverlay = $('diceOverlay');
+  const diceEl = $('dice');
+  const tokensLayer = $('tokensLayer');
+  const dbg = $('dbg-log');
+
+  const log = (msg) => {
+    if (!dbg) return;
+    dbg.textContent += (typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2)) + '\n';
+  };
+
   // ---- STATE ---------------------------------------------------------------
   let ws = null;
+  let roomCode = '';
   let board = null;
   let boardUI = null;
   let engineState = null;
   let mySeat = null;
 
   // ---- TOKENS --------------------------------------------------------------
-  const tokensLayer = $('tokensLayer');
   const tokenEls = new Map();
 
   function ensureToken(id, color) {
@@ -30,302 +54,298 @@
   }
 
   function positionToken(el, posIndex) {
-    const space = board?.spaces?.find((s) => s.index === posIndex);
+    const space = board.spaces.find((s) => s.index === posIndex);
     if (!space) return;
     el.style.left = space.x + '%';
     el.style.top = space.y + '%';
   }
 
-  function presentCount(state) {
-    return (state?.players || []).reduce((n,p)=>n + (p.present ? 1 : 0), 0);
+  // ---- DICE OVERLAY --------------------------------------------------------
+  let diceTimer = 0;
+  function showDiceRoll(value, ms = 900) {
+    if (!diceOverlay || !diceEl) return;
+    diceOverlay.hidden = false;
+    diceEl.className = 'dice rolling';
+    clearTimeout(diceTimer);
+    diceTimer = setTimeout(() => {
+      diceEl.className = 'dice show-' + (value || 1);
+      setTimeout(() => (diceOverlay.hidden = true), 250);
+    }, ms);
   }
 
-  function updateRollEnabled() {
-    const btn = $('rollBtn');
-    if (!btn || !engineState) return;
-    const onTurn = engineState.turnIndex;
-    const enough = presentCount(engineState) >= 2;
-    const mine = (mySeat != null && mySeat === onTurn && engineState.players[onTurn]?.present);
-    const enabled = enough && mine;
-    btn.disabled = !enabled;
-    btn.title = enabled ? '' :
-      (!enough ? 'Need at least 2 players joined' :
-       (mySeat == null ? 'You are a spectator' :
-        'Wait for your turn'));
+  // ---- TOAST ---------------------------------------------------------------
+  function toast(message, { kind = 'info', ttl = 2200 } = {}) {
+    if (window.LegislateUI?.toast) return window.LegislateUI.toast(message, { kind, ttl });
+    const rootId = 'toastRoot';
+    let root = document.getElementById(rootId);
+    if (!root) {
+      root = document.createElement('div');
+      root.id = rootId;
+      root.style.position = 'fixed';
+      root.style.right = '12px';
+      root.style.top = '12px';
+      root.style.zIndex = '2000';
+      root.style.display = 'flex';
+      root.style.flexDirection = 'column';
+      root.style.gap = '8px';
+      document.body.appendChild(root);
+    }
+    const el = document.createElement('div');
+    el.style.padding = '10px 12px';
+    el.style.background = kind === 'error' ? '#d4351c' : kind === 'success' ? '#00703c' : '#1d70b8';
+    el.style.color = '#fff';
+    el.style.borderRadius = '8px';
+    el.style.boxShadow = '0 6px 16px rgba(0,0,0,.15)';
+    el.style.fontWeight = '600';
+    el.style.maxWidth = '320px';
+    el.style.wordBreak = 'break-word';
+    el.textContent = message;
+    root.appendChild(el);
+    setTimeout(() => {
+      el.style.transition = 'opacity .25s ease, transform .25s ease';
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(-4px)';
+      setTimeout(() => el.remove(), 300);
+    }, ttl);
   }
 
-  // ---- PLAYERS LIST & TOKENS (presence-aware) ------------------------------
-  function renderPlayers(state) {
-    const root = $('playersSection');
-    if (!root) return;
-    root.innerHTML = '';
-    state.players.forEach((p, i) => {
+  // ---- LOAD BOARD ----------------------------------------------------------
+  async function loadBoard() {
+    const res = await fetch(`${base}/board.json`);
+    board = await res.json();
+    boardUI = window.LegislateUI?.createBoardRenderer?.({ board });
+  }
+
+  // ---- RENDER HELPERS ------------------------------------------------------
+  function renderPlayersPills(players) {
+    playersSection.innerHTML = '';
+    players.forEach((p, i) => {
       const pill = document.createElement('div');
       pill.className = 'player-pill';
 
       const dot = document.createElement('div');
       dot.className = 'player-dot';
       dot.style.background = p.color;
-      dot.style.opacity = p.present ? '1' : '.35';
 
       const name = document.createElement('span');
       name.className = 'player-name';
       name.contentEditable = 'true';
       name.textContent = p.name;
-      name.style.opacity = p.present ? '1' : '.6';
+
+      // send rename on blur (server echoes back authoritative name)
       name.addEventListener('blur', () => {
         const v = (name.textContent || '').trim();
         if (!v) return;
-        try { ws?.send(JSON.stringify({ type: 'RENAME', index: i, name: v })); } catch {}
+        send({ type: 'RENAME', index: i, name: v });
       });
-
-      if (mySeat === i) {
-        const badge = document.createElement('span');
-        badge.textContent = ' (you)';
-        badge.style.fontWeight = '600';
-        pill.appendChild(badge);
-      }
 
       pill.appendChild(dot);
       pill.appendChild(name);
-      root.appendChild(pill);
+      playersSection.appendChild(pill);
     });
-
-    // Tokens: only render for present players
-    (state.players || []).forEach((pl) => {
-      const el = ensureToken(pl.id, pl.color);
-      if (!pl.present) {
-        el.style.display = 'none';
-      } else {
-        el.style.display = 'block';
-        positionToken(el, pl.position);
-      }
-    });
-
-    boardUI?.render(state.players.filter(p => p.present));
-    updateRollEnabled();
   }
 
-  // ---- SERVER → UI EVENTS --------------------------------------------------
-  function handleServerEvent(msg, stateRef) {
-    const { type, payload } = msg;
+  function renderAllTokens(players) {
+    players.forEach((p) => {
+      const el = ensureToken(p.id || p.uid || p.name, p.color);
+      positionToken(el, p.position || 0);
+    });
+    // optional fan-out if UI provides it
+    boardUI?.render?.(players);
+  }
+
+  function updateRollEnabled() {
+    if (!engineState) {
+      rollBtn.disabled = true;
+      return;
+    }
+    const presentCount = (engineState.players || []).filter((p) => p.present).length;
+    const enough = presentCount >= 2;
+    const myTurn = engineState.turnIndex === mySeat;
+    rollBtn.disabled = !(enough && myTurn);
+  }
+
+  // ---- WEBSOCKET CLIENT ----------------------------------------------------
+  function connectAndJoin(code, desiredCount) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.close(); } catch {}
+    }
+    ws = new WebSocket(wsUrl);
+    ws.addEventListener('open', () => {
+      send({ type: 'JOIN', room: code, playerCount: Number(desiredCount) || 4 });
+    });
+    ws.addEventListener('message', (ev) => {
+      try {
+        const msg = JSON.parse(ev.data);
+        handleServerEvent(msg);
+      } catch (e) {
+        console.warn('WS parse error', e);
+      }
+    });
+    ws.addEventListener('close', () => {
+      toast('Disconnected from server. Reconnecting…', { kind: 'info' });
+      setTimeout(() => connectAndJoin(roomCode, playerCountSel.value), 1200);
+    });
+    ws.addEventListener('error', () => {
+      toast('Connection error', { kind: 'error' });
+    });
+  }
+
+  function send(obj) {
+    try {
+      ws?.send(JSON.stringify(obj));
+    } catch (e) {
+      console.warn('Send failed', e);
+    }
+  }
+
+  // ---- SERVER EVENTS -------------------------------------------------------
+  function handleServerEvent(msg) {
+    const { type } = msg;
+
+    if (type === 'JOIN_OK') {
+      const { state, seatIndex } = msg;
+      engineState = state;
+      mySeat = seatIndex;
+
+      renderPlayersPills(engineState.players);
+      renderAllTokens(engineState.players);
+
+      turnIndicator.textContent = `${engineState.players[engineState.turnIndex].name}'s turn`;
+      updateRollEnabled();
+      log('JOIN_OK');
+      return;
+    }
 
     if (type === 'TURN_BEGIN') {
-      const p = stateRef.players[payload.index];
-      $('turnIndicator').textContent = `${p.name}'s turn`;
-      renderPlayers(stateRef);
+      engineState.turnIndex = msg.index;
+      turnIndicator.textContent = `${engineState.players[engineState.turnIndex].name}'s turn`;
+      updateRollEnabled();
       return;
     }
 
     if (type === 'DICE_ROLL') {
-      window.LegislateUI.showDiceRoll(Number(payload.value) || 1);
+      engineState.lastRoll = msg.value;
+      showDiceRoll(msg.value, 900);
       return;
     }
 
     if (type === 'MOVE_STEP') {
-      const p = stateRef.players.find((x) => x.id === payload.playerId) || { color: '#000' };
-      if (!p.present) return;
-      const el = ensureToken(payload.playerId, p.color);
-      el.style.display = 'block';
-      positionToken(el, payload.position);
-      p.position = payload.position;
-      boardUI?.render(stateRef.players.filter(x => x.present));
+      const { playerId, position } = msg;
+      const p = engineState.players.find((x) => x.id === playerId);
+      if (p) p.position = position;
+      const el = ensureToken(playerId, p?.color);
+      positionToken(el, position);
+      boardUI?.render?.(engineState.players);
+      return;
+    }
+
+    if (type === 'LANDED') {
+      // purely informative in the client
       return;
     }
 
     if (type === 'CARD_DRAWN') {
-      (async () => {
-        await window.LegislateUI.waitForDice();
-        const modal = window.LegislateUI.createModal();
-        const DECK_LABELS = {
-          early: 'Early Stages',
-          commons: 'House of Commons',
-          implementation: 'Implementation',
-          lords: 'House of Lords',
-          pingpong: 'Ping Pong',
-        };
-
-        if (!payload.card) {
-          await modal.open({
-            title: 'No card',
-            body: `<p>The ${DECK_LABELS[payload.deck] || payload.deck} deck is empty.</p>`,
-          });
-          try { ws?.send(JSON.stringify({ type: 'RESOLVE_CARD' })); } catch {}
-          return;
-        }
-
-        await modal.open({
-          title: payload.card.title || (DECK_LABELS[payload.deck] || payload.deck),
-          body: `<p>${(payload.card.text || '').trim()}</p>`,
-        });
-        try { ws?.send(JSON.stringify({ type: 'RESOLVE_CARD' })); } catch {}
-      })();
+      const { deck, card } = msg;
+      // Show a modal: we rely on UI file’s modal
+      const modal = window.LegislateUI?.createModal?.();
+      if (modal) {
+        modal.open({
+          title: (card?.title || deck),
+          body: `<p>${(card?.text || '').trim()}</p>`,
+        }).then(() => send({ type: 'RESOLVE_CARD' }));
+      } else {
+        send({ type: 'RESOLVE_CARD' });
+      }
       return;
     }
 
     if (type === 'CARD_APPLIED') {
-      const p = stateRef.players.find((x) => x.id === payload.playerId);
-      if (p && p.present) {
-        p.position = payload.position ?? p.position;
-        const el = ensureToken(p.id, p.color);
-        el.style.display = 'block';
-        positionToken(el, p.position);
-        boardUI?.render(stateRef.players.filter(x => x.present));
-
-        if (payload.card && typeof payload.card.effect === 'string') {
-          const [effect] = payload.card.effect.split(':');
-          if (effect === 'extra_roll') window.LegislateUI.toast(`${p.name} gets an extra roll`, { kind: 'success' });
-          if (effect === 'miss_turn') window.LegislateUI.toast(`${p.name} will miss their next turn`, { kind: 'info' });
-        }
+      const { playerId, card } = msg;
+      // update position if included
+      if (typeof msg.position === 'number') {
+        const p = engineState.players.find((x) => x.id === playerId);
+        if (p) p.position = msg.position;
+        const el = ensureToken(playerId, p?.color);
+        positionToken(el, p?.position || 0);
       }
-      return;
-    }
+      boardUI?.render?.(engineState.players);
 
-    if (type === 'MISS_TURN') {
-      window.LegislateUI.toast(`${payload.name} misses a turn`, { kind: 'info' });
+      if (card && typeof card.effect === 'string') {
+        const [eff] = card.effect.split(':');
+        const p = engineState.players.find((x) => x.id === playerId);
+        if (eff === 'extra_roll') toast(`${p?.name || 'Player'} gets an extra roll`, { kind: 'success' });
+        if (eff === 'miss_turn') toast(`${p?.name || 'Player'} will miss their next turn`, { kind: 'info' });
+      }
       return;
     }
 
     if (type === 'EFFECT_GOTO') {
-      window.LegislateUI.toast(`Jump to ${payload.index}`, { kind: 'info', ttl: 1800 });
+      const { playerId, index } = msg;
+      const p = engineState.players.find((x) => x.id === playerId);
+      const el = ensureToken(playerId, p?.color);
+      positionToken(el, index);
+      boardUI?.render?.(engineState.players);
+      toast(`${p?.name || 'Player'} jumps to ${index}`, { kind: 'info', ttl: 1800 });
       return;
     }
 
     if (type === 'GAME_END') {
-      window.LegislateUI.toast(`${payload.name} reached the end!`, { kind: 'success', ttl: 2600 });
-      return;
-    }
-
-    if (type === 'PLAYER_RENAMED') {
-      stateRef.players[payload.index].name = payload.name;
-      renderPlayers(stateRef);
+      const { name } = msg;
+      toast(`${name} reached the end!`, { kind: 'success', ttl: 2600 });
       return;
     }
 
     if (type === 'PLAYER_PRESENT') {
-      stateRef.players[payload.index].present = true;
-      renderPlayers(stateRef);
+      const { index, present } = msg;
+      if (engineState.players[index]) engineState.players[index].present = present;
+      updateRollEnabled();
+      return;
+    }
+
+    if (type === 'PLAYER_RENAMED') {
+      const { index, name } = msg;
+      if (engineState.players[index]) engineState.players[index].name = name;
+      // refresh pills and turn indicator if needed
+      renderPlayersPills(engineState.players);
+      if (engineState.turnIndex === index) {
+        turnIndicator.textContent = `${name}'s turn`;
+      }
       return;
     }
 
     if (type === 'PLAYER_LEFT') {
-      stateRef.players[payload.index].present = false;
-      renderPlayers(stateRef);
+      // server drives presence; UI reflects on TURN_BEGIN gating
+      updateRollEnabled();
+      return;
+    }
+
+    if (type === 'PING') {
+      send({ type: 'PONG' });
       return;
     }
   }
 
-  // ---- CONNECT & JOIN ------------------------------------------------------
-  async function connectAndJoin(roomCode, playerCount) {
-    try {
-      const resp = await fetch(`${base}/board.json`, { cache: 'no-store' });
-      if (!resp.ok) throw new Error(`board.json ${resp.status}`);
-      board = await resp.json();
+  // ---- UI HANDLERS ---------------------------------------------------------
+  joinBtn.addEventListener('click', () => {
+    const code = (roomInput.value || '').trim().toUpperCase();
+    if (!code) return;
+    roomCode = code;
+    connectAndJoin(roomCode, playerCountSel.value);
+    toast(`Joining ${roomCode}…`, { kind: 'info', ttl: 1200 });
+  });
 
-      boardUI = (window.LegislateUI && window.LegislateUI.createBoardRenderer)
-        ? window.LegislateUI.createBoardRenderer({ board })
-        : { render: () => {} };
+  rollBtn.addEventListener('click', () => {
+    send({ type: 'ROLL' });
+  });
 
-      ws = new WebSocket(wsUrl);
+  restartBtn.addEventListener('click', () => {
+    send({ type: 'RESET' });
+  });
 
-      ws.addEventListener('open', () => {
-        $('turnIndicator').textContent = 'Connected — joining room…';
-        try {
-          ws.send(JSON.stringify({
-            type: 'JOIN',
-            roomCode: (roomCode || '').trim().toUpperCase(),
-            playerCount: Number(playerCount) || 4
-          }));
-        } catch {}
-      });
-
-      ws.addEventListener('error', () => {
-        $('turnIndicator').textContent = 'Connection error';
-        window.LegislateUI?.toast('WebSocket connection error', { kind: 'error' });
-      });
-
-      ws.addEventListener('close', () => {
-        $('turnIndicator').textContent = 'Disconnected';
-      });
-
-      ws.addEventListener('message', (ev) => {
-        const msg = JSON.parse(ev.data);
-
-        // Keep-alive: reply to server heartbeat silently
-        if (msg.type === 'PING') {
-          try { ws.send(JSON.stringify({ type: 'PONG' })); } catch {}
-          return;
-        }
-
-        // Debug stream (visible)
-        if (msg.type === 'DEBUG') {
-          const pre = document.getElementById('dbg-log');
-          if (pre) pre.textContent += msg.payload + '\n';
-          console.log('[DEBUG]', msg.payload);
-          return;
-        }
-
-        if (msg.type === 'JOIN_OK') {
-          engineState = msg.payload.state;
-          mySeat = msg.payload.seatIndex; // may be null if spectator
-          $('turnIndicator').textContent =
-            `Joined room ${(roomCode || '').toUpperCase()}${mySeat!=null ? ` — seat ${mySeat+1}` : ' — spectator'}`;
-
-          renderPlayers(engineState);
-          engineState.players.forEach((pl) => {
-            const el = ensureToken(pl.id, pl.color);
-            if (pl.present) {
-              el.style.display = 'block';
-              positionToken(el, pl.position);
-            } else {
-              el.style.display = 'none';
-            }
-          });
-          updateRollEnabled();
-          return;
-        }
-
-        if (!engineState) return;
-        handleServerEvent(msg, engineState);
-        updateRollEnabled();
-      });
-    } catch (err) {
-      $('turnIndicator').textContent = 'Failed to load board';
-      window.LegislateUI?.toast(`Could not load board.json: ${err.message}`, { kind: 'error' });
-      console.error(err);
-    }
-  }
-
-  // ---- UI HOOKS (robust) ---------------------------------------------------
-  const roomInput    = document.getElementById('roomCode');
-  const playerSelect = document.getElementById('playerCount');
-  const joinBtn      = document.getElementById('joinBtn');
-  const rollBtn      = document.getElementById('rollBtn');
-  const restartBtn   = document.getElementById('restartBtn');
-
-  if (joinBtn) {
-    joinBtn.addEventListener('click', () => {
-      const codeRaw = roomInput && typeof roomInput.value === 'string' ? roomInput.value : '';
-      const code = codeRaw.trim().toUpperCase();
-      if (!code) {
-        if (window.LegislateUI?.toast) window.LegislateUI.toast('Enter a room code', { kind: 'info' });
-        roomInput && roomInput.focus?.();
-        return;
-      }
-      const count = playerSelect && playerSelect.value ? playerSelect.value : 4;
-      connectAndJoin(code, count);
-    });
-  }
-
-  if (rollBtn) {
-    rollBtn.addEventListener('click', () => {
-      try { ws?.send(JSON.stringify({ type: 'ROLL' })); } catch {}
-    });
-  }
-
-  if (restartBtn) {
-    restartBtn.addEventListener('click', () => {
-      try { ws?.send(JSON.stringify({ type: 'RESET' })); } catch {}
-    });
-  }
+  // ---- BOOT ---------------------------------------------------------------
+  (async function boot() {
+    await loadBoard();
+    log('BOOT_OK');
+  })();
 })();
