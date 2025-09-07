@@ -27,21 +27,25 @@
           <button id="rollBtn" class="button">Roll</button>
           <button id="restartBtn" class="button button--secondary">Restart</button>
         </div>
-        <div style="margin-top:.5rem;">
-          <label for="roomCode">Room</label>
-          <input id="roomCode" placeholder="ABC123"
-                 style="padding:.4rem .6rem;border:1px solid var(--border);border-radius:.5rem;">
-          <button id="joinBtn" class="button">Join</button>
-        </div>
       </div>
     </div>
+
     <div class="control-col control-col--turn">
       <div class="control-box">
         <div id="turnIndicator" class="turn">Loading…</div>
       </div>
     </div>
+
     <div class="control-col control-col--players">
       <div class="control-box">
+        <label for="playerCount">Players</label>
+        <select id="playerCount" aria-label="Number of players">
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4" selected>4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
         <section id="playersSection" class="players-section" aria-label="Players"></section>
       </div>
     </div>
@@ -50,12 +54,19 @@
   <!-- Main Content -->
   <main class="page-main">
     <div class="board-wrap">
-      <img id="boardImg"
-           src="../legislate-test/assets/packs/uk-parliament/board.png"
-           alt="UK Parliament board">
+      <img id="boardImg" src="https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/board.png" alt="UK Parliament board">
       <div id="tokensLayer" class="tokens-layer" aria-live="polite"></div>
     </div>
+
+    <!-- Room join (multiplayer) -->
+    <div style="margin-top:1rem">
+      <label for="roomCode" style="font-weight:600">Room code</label>
+      <input id="roomCode" placeholder="e.g. ABC123" style="margin:0 .5rem .5rem 0; padding:.4rem .6rem; border:1px solid #d8dadd; border-radius:.4rem"/>
+      <button id="joinBtn" class="button button--primary">Join</button>
+    </div>
+
     <div id="modalRoot"></div>
+
     <div id="diceOverlay" class="dice-overlay" hidden>
       <div class="dice-wrapper">
         <div id="dice" class="dice">
@@ -68,6 +79,7 @@
         </div>
       </div>
     </div>
+
     <p class="attrib" id="footerAttrib">
       Created by Dan Easterbrook. Inspired by the “Legislate?!” board game created by Hayley Rogers. 
       Utilises assets created by Terence Eden, licensed under the Open Government License.
@@ -76,33 +88,42 @@
 
   <pre id="dbg-log"></pre>
 
-  <!-- Firebase SDK setup -->
+  <!-- Firebase SDK setup (module) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
     import { getFirestore } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-    import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
+    // TODO: replace with your exact project config from Firebase console
     const firebaseConfig = {
-      apiKey: "AlzaSyBCXekkFKqbW5_pOwcog9tUmxvmu33r_Q",
+      apiKey: "AIzaSyBCXekkFKqbW5_pOwcocg9tUmxvmu33r_Q",
       authDomain: "legislate-game.firebaseapp.com",
       projectId: "legislate-game",
-      databaseURL: "https://legislate-game.firebaseio.com",
       appId: "1:458226977279:web:63dc707ead4c78905dffca"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const rtdb = getDatabase(app);
     const auth = getAuth(app);
 
-    await signInAnonymously(auth);
-    window.fb = { db, rtdb, auth };
+    // Expose a readiness promise so the app can safely wait for Firebase
+    window.fbReady = (async () => {
+      await signInAnonymously(auth);
+      // ensure auth state is settled
+      await new Promise(res => onAuthStateChanged(auth, u => u && res(u)));
+      window.fb = { app, db, rtdb, auth };
+      return window.fb;
+    })();
   </script>
 
-  <!-- Reuse stable UI -->
+  <!-- Shared UI (non-module) -->
   <script src="../legislate-test/js/debug.js?v=LG-1"></script>
   <script src="../legislate-test/js/ui.js?v=LG-1"></script>
-  <script src="./multiplayer-app.js?v=LG-1"></script>
+
+  <!-- Start the multiplayer app ONLY after Firebase is ready -->
+  <script type="module">
+    await window.fbReady;                              // ✅ Firebase is definitely initialised & authed
+    import './multiplayer-app.js?v=LG-1';              // your app code (now free to use window.fb)
+  </script>
 </body>
 </html>
