@@ -1,4 +1,4 @@
-// multiplayer-app.js — thin socket client reusing stable UI (legislate-test)
+// multiplayer-app.js — presence-aware client for Legislate Multiplayer
 
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -12,6 +12,7 @@
   let board = null;
   let boardUI = null;
   let engineState = null;
+  let mySeat = null;
 
   // ---- TOKENS --------------------------------------------------------------
   const tokensLayer = $('tokensLayer');
@@ -35,7 +36,25 @@
     el.style.top = space.y + '%';
   }
 
-  // ---- PLAYERS LIST --------------------------------------------------------
+  function presentCount(state) {
+    return (state?.players || []).reduce((n,p)=>n + (p.present ? 1 : 0), 0);
+  }
+
+  function updateRollEnabled() {
+    const btn = $('rollBtn');
+    if (!btn || !engineState) return;
+    const onTurn = engineState.turnIndex;
+    const enough = presentCount(engineState) >= 2;
+    const mine = (mySeat != null && mySeat === onTurn && engineState.players[onTurn]?.present);
+    const enabled = enough && mine;
+    btn.disabled = !enabled;
+    btn.title = enabled ? '' :
+      (!enough ? 'Need at least 2 players joined' :
+       (mySeat == null ? 'You are a spectator' :
+        'Wait for your turn'));
+  }
+
+  // ---- PLAYERS LIST & TOKENS (presence-aware) ------------------------------
   function renderPlayers(state) {
     const root = $('playersSection');
     if (!root) return;
@@ -47,21 +66,45 @@
       const dot = document.createElement('div');
       dot.className = 'player-dot';
       dot.style.background = p.color;
+      dot.style.opacity = p.present ? '1' : '.35';
 
       const name = document.createElement('span');
       name.className = 'player-name';
       name.contentEditable = 'true';
       name.textContent = p.name;
+      name.style.opacity = p.present ? '1' : '.6';
       name.addEventListener('blur', () => {
         const v = (name.textContent || '').trim();
         if (!v) return;
         try { ws?.send(JSON.stringify({ type: 'RENAME', index: i, name: v })); } catch {}
       });
 
+      // Seat badge for me
+      if (mySeat === i) {
+        const badge = document.createElement('span');
+        badge.textContent = ' (you)';
+        badge.style.fontWeight = '600';
+        pill.appendChild(badge);
+      }
+
       pill.appendChild(dot);
       pill.appendChild(name);
       root.appendChild(pill);
     });
+
+    // Tokens: only render for present players
+    (state.players || []).forEach((pl) => {
+      const el = ensureToken(pl.id, pl.color);
+      if (!pl.present) {
+        el.style.display = 'none';
+      } else {
+        el.style.display = 'block';
+        positionToken(el, pl.position);
+      }
+    });
+
+    boardUI?.render(state.players.filter(p => p.present));
+    updateRollEnabled();
   }
 
   // ---- SERVER → UI EVENTS --------------------------------------------------
@@ -71,11 +114,7 @@
     if (type === 'TURN_BEGIN') {
       const p = stateRef.players[payload.index];
       $('turnIndicator').textContent = `${p.name}'s turn`;
-      stateRef.players.forEach((pl) => {
-        const el = ensureToken(pl.id, pl.color);
-        positionToken(el, pl.position);
-      });
-      boardUI?.render(stateRef.players);
+      renderPlayers(stateRef);
       return;
     }
 
@@ -86,10 +125,12 @@
 
     if (type === 'MOVE_STEP') {
       const p = stateRef.players.find((x) => x.id === payload.playerId) || { color: '#000' };
+      if (!p.present) return; // ignore movement for non-present seats (shouldn’t happen, but safe)
       const el = ensureToken(payload.playerId, p.color);
+      el.style.display = 'block';
       positionToken(el, payload.position);
-      if (p) p.position = payload.position;
-      boardUI?.render(stateRef.players);
+      p.position = payload.position;
+      boardUI?.render(stateRef.players.filter(x => x.present));
       return;
     }
 
@@ -125,11 +166,12 @@
 
     if (type === 'CARD_APPLIED') {
       const p = stateRef.players.find((x) => x.id === payload.playerId);
-      if (p) {
+      if (p && p.present) {
         p.position = payload.position ?? p.position;
         const el = ensureToken(p.id, p.color);
+        el.style.display = 'block';
         positionToken(el, p.position);
-        boardUI?.render(stateRef.players);
+        boardUI?.render(stateRef.players.filter(x => x.present));
 
         if (payload.card && typeof payload.card.effect === 'string') {
           const [effect] = payload.card.effect.split(':');
@@ -157,6 +199,18 @@
 
     if (type === 'PLAYER_RENAMED') {
       stateRef.players[payload.index].name = payload.name;
+      renderPlayers(stateRef);
+      return;
+    }
+
+    if (type === 'PLAYER_PRESENT') {
+      stateRef.players[payload.index].present = true;
+      renderPlayers(stateRef);
+      return;
+    }
+
+    if (type === 'PLAYER_LEFT') {
+      stateRef.players[payload.index].present = false;
       renderPlayers(stateRef);
       return;
     }
@@ -198,7 +252,6 @@
       ws.addEventListener('message', (ev) => {
         const msg = JSON.parse(ev.data);
 
-        // ---- DEBUG passthrough ----
         if (msg.type === 'DEBUG') {
           const pre = document.getElementById('dbg-log');
           if (pre) pre.textContent += msg.payload + '\n';
@@ -208,18 +261,28 @@
 
         if (msg.type === 'JOIN_OK') {
           engineState = msg.payload.state;
-          $('turnIndicator').textContent = `Joined room ${(roomCode || '').toUpperCase()}`;
+          mySeat = msg.payload.seatIndex; // may be null if spectator
+          $('turnIndicator').textContent =
+            `Joined room ${(roomCode || '').toUpperCase()}${mySeat!=null ? ` — seat ${mySeat+1}` : ' — spectator'}`;
+
           renderPlayers(engineState);
+          // Initial tokens (present-only)
           engineState.players.forEach((pl) => {
             const el = ensureToken(pl.id, pl.color);
-            positionToken(el, pl.position);
+            if (pl.present) {
+              el.style.display = 'block';
+              positionToken(el, pl.position);
+            } else {
+              el.style.display = 'none';
+            }
           });
-          boardUI?.render(engineState.players);
+          updateRollEnabled();
           return;
         }
 
         if (!engineState) return;
         handleServerEvent(msg, engineState);
+        updateRollEnabled();
       });
     } catch (err) {
       $('turnIndicator').textContent = 'Failed to load board';
