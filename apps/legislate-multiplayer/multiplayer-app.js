@@ -1,351 +1,405 @@
-// --- Firebase readiness guard (multiplayer-app.js) ---
-if (window.fbReady) {
-  await window.fbReady; // wait for Firebase init + anonymous auth
+// Firestore-only multiplayer client for Legislate?!
+
+// 0) Ensure Firebase is ready (index.html exposes window.fbReady + window.fb)
+if (window.fbReady) { await window.fbReady; }
+const { db, auth } = window.fb || {};
+const {
+  doc, setDoc, getDoc, updateDoc, onSnapshot, collection, getDocs,
+  serverTimestamp, runTransaction, arrayRemove, arrayUnion
+} = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+
+// ---------- DOM helpers ----------
+const $ = (id)=>document.getElementById(id);
+const joinBtn = $('joinBtn');
+const roomInput = $('roomCode');
+const rollBtn = $('rollBtn');
+const restartBtn = $('restartBtn');
+const playerCountSel = $('playerCount');
+const playersSection = $('playersSection');
+const turnIndicator = $('turnIndicator');
+const tokensLayer = $('tokensLayer');
+const diceOverlay = $('diceOverlay');
+const diceEl = $('dice');
+
+// UI helpers
+const toast = (m,o)=>window.LegislateUI?.toast?window.LegislateUI.toast(m,o):console.log('[toast]',m);
+const modal = window.LegislateUI?.createModal?.();
+let board = null;
+let boardUI = null;
+
+async function loadBoard() {
+  const url = "https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/board.json";
+  board = await fetch(url).then(r=>r.json());
+  boardUI = window.LegislateUI?.createBoardRenderer?.({ board });
 }
-const { db, rtdb, auth } = window.fb || {};
+function showDiceRoll(value, ms=900){
+  if(!diceOverlay||!diceEl) return;
+  diceOverlay.hidden=false;
+  diceEl.className='dice rolling';
+  setTimeout(()=>{ diceEl.className='dice show-'+(value||1); setTimeout(()=>diceOverlay.hidden=true,250); }, ms);
+}
 
-// multiplayer-app.js — presence-aware client + keep-alive for Legislate Multiplayer
+// ---------- State ----------
+let roomCode = "";
+let roomRef = null;
+let myUid = auth.currentUser.uid;
 
-(function () {
-  const $ = (id) => document.getElementById(id);
+let unsubRoom = null;
+let unsubPlayers = null;
+const fsPlayers = new Map(); // uid -> player data mirror
+let roomData = null;
 
-  // ---- CONFIG --------------------------------------------------------------
-  const base = 'https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament';
-  const wsUrl = 'wss://legislate.onrender.com/game';
+// ---------- Rendering ----------
+const tokenEls = new Map();
+function ensureToken(id, color){
+  if (tokenEls.has(id)) return tokenEls.get(id);
+  const el = document.createElement('div');
+  el.className='token';
+  el.dataset.id=id;
+  el.style.background=color||'#777';
+  tokensLayer.appendChild(el);
+  tokenEls.set(id, el);
+  return el;
+}
+function positionToken(el, posIndex){
+  const space = board.spaces.find(s=>s.index===posIndex);
+  if(!space) return;
+  el.style.left = space.x + '%';
+  el.style.top  = space.y + '%';
+}
+function renderPlayersPills(players){
+  playersSection.innerHTML='';
+  players.sort((a,b)=> (a.seatIndex||0)-(b.seatIndex||0)).forEach(p=>{
+    const pill = document.createElement('div');
+    pill.className='player-pill';
+    const dot=document.createElement('div'); dot.className='player-dot'; dot.style.background=p.color||'#777';
+    const name=document.createElement('span'); name.className='player-name'; name.contentEditable = (p.uid===myUid)+'';
+    name.textContent = p.name || 'Player';
+    name.addEventListener('input', ()=>{
+      if (p.uid!==myUid) return;
+      const v=(name.textContent||'').trim(); if(!v) return;
+      updateDoc(doc(db,'rooms',roomCode,'players',myUid),{ name:v, updatedAt:serverTimestamp() }).catch(()=>{});
+    });
+    pill.appendChild(dot); pill.appendChild(name); playersSection.appendChild(pill);
+  });
+}
+function renderTokens(){
+  const arr = Array.from(fsPlayers.values());
+  arr.forEach(p=>{
+    const el = ensureToken(p.uid, p.color);
+    positionToken(el, p.position||0);
+  });
+  boardUI?.render?.(arr); // fan-out
+}
+function updateTurnIndicator(){
+  if (!roomData) return;
+  // prefer by UID, fallback by seatIndex
+  const current = fsPlayers.get(roomData.currentTurnUid) ||
+    Array.from(fsPlayers.values()).find(p=>p.seatIndex === (roomData.turnIndex||0));
+  if (current) turnIndicator.textContent = `${current.name}'s turn`;
+}
+function updateRollEnabled(){
+  if (!roomData) { rollBtn.disabled=true; return; }
+  const present = Array.from(fsPlayers.values()).filter(p=>p.present).length >= 2;
+  const myTurn = roomData.currentTurnUid === myUid;
+  rollBtn.disabled = !(present && myTurn && !roomData.ended && !roomData.pendingCard);
+}
 
-  // ---- UI ELEMENTS ---------------------------------------------------------
-  const joinBtn = $('joinBtn');
-  const roomInput = $('roomCode');
-  const rollBtn = $('rollBtn');
-  const restartBtn = $('restartBtn');
-  const playerCountSel = $('playerCount');
-  const playersSection = $('playersSection');
-  const turnIndicator = $('turnIndicator');
-  const diceOverlay = $('diceOverlay');
-  const diceEl = $('dice');
-  const tokensLayer = $('tokensLayer');
-  const dbg = $('dbg-log');
+// ---------- Deck utilities ----------
+async function ensureRoomHasDecksAndEndIndex(){
+  await runTransaction(db, async (tx)=>{
+    const snap = await tx.get(roomRef);
+    if (!snap.exists()) throw new Error('room missing');
+    const data = snap.data();
+    if (data.decks && data.endIndex!=null) return;
 
-  const log = (msg) => {
-    if (!dbg) return;
-    dbg.textContent += (typeof msg === 'string' ? msg : JSON.stringify(msg, null, 2)) + '\n';
-  };
+    // load decks once from assets (client bootstrap)
+    const base = "https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/cards";
+    const [commons, early, lords, pingpong, implementation] = await Promise.all([
+      fetch(`${base}/commons.json`).then(r=>r.json()),
+      fetch(`${base}/early.json`).then(r=>r.json()),
+      fetch(`${base}/lords.json`).then(r=>r.json()),
+      fetch(`${base}/pingpong.json`).then(r=>r.json()),
+      fetch(`${base}/implementation.json`).then(r=>r.json()),
+    ]);
+    const endIndex = (board.spaces.slice().reverse().find(s=>s.stage==='end') || board.spaces[board.spaces.length-1]).index;
 
-  // ---- STATE ---------------------------------------------------------------
-  let ws = null;
-  let roomCode = '';
-  let board = null;
-  let boardUI = null;
-  let engineState = null;
-  let mySeat = null;
+    tx.update(roomRef, {
+      decks: { commons, early, lords, pingpong, implementation },
+      endIndex
+    });
+  });
+}
+function spaceFor(i){ return board.spaces.find(s=>s.index===i) || null; }
 
-  // ---- TOKENS --------------------------------------------------------------
-  const tokenEls = new Map();
+// ---------- Room join / presence ----------
+async function joinRoom(code, desiredCount=4){
+  roomCode = (code||'').trim().toUpperCase();
+  if (!roomCode) return;
+  roomRef = doc(db,'rooms',roomCode);
 
-  function ensureToken(id, color) {
-    if (tokenEls.has(id)) return tokenEls.get(id);
-    const el = document.createElement('div');
-    el.className = 'token';
-    el.dataset.id = id;
-    el.style.background = color || '#000';
-    tokensLayer.appendChild(el);
-    tokenEls.set(id, el);
-    return el;
+  // create room if missing (I become host & first player)
+  const roomSnap = await getDoc(roomRef);
+  if (!roomSnap.exists()){
+    await setDoc(roomRef,{
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      hostUid: myUid,
+      playerCount: Number(desiredCount)||4,
+      turnIndex: 0,
+      currentTurnUid: myUid,
+      lastRoll: 0,
+      pendingCard: null,
+      ended: false
+    });
   }
 
-  function positionToken(el, posIndex) {
-    const space = board.spaces.find((s) => s.index === posIndex);
-    if (!space) return;
-    el.style.left = space.x + '%';
-    el.style.top = space.y + '%';
-  }
+  // choose a free seat
+  const playersCol = collection(roomRef,'players');
+  const ps = await getDocs(playersCol);
+  const taken = new Set(); ps.forEach(d=> taken.add(d.data().seatIndex));
+  const total = (roomSnap.exists()? (roomSnap.data().playerCount||desiredCount) : desiredCount)|0;
+  let seatIndex = 0; while (taken.has(seatIndex) && seatIndex<total) seatIndex++;
 
-  // ---- DICE OVERLAY --------------------------------------------------------
-  let diceTimer = 0;
-  function showDiceRoll(value, ms = 900) {
-    if (!diceOverlay || !diceEl) return;
-    diceOverlay.hidden = false;
-    diceEl.className = 'dice rolling';
-    clearTimeout(diceTimer);
-    diceTimer = setTimeout(() => {
-      diceEl.className = 'dice show-' + (value || 1);
-      setTimeout(() => (diceOverlay.hidden = true), 250);
-    }, ms);
-  }
+  // upsert my player doc
+  const myRef = doc(db,'rooms',roomCode,'players',myUid);
+  await setDoc(myRef,{
+    uid: myUid,
+    seatIndex,
+    name: `Player ${seatIndex+1}`,
+    color: ["#d4351c","#1d70b8","#00703c","#6f72af","#b58840","#912b88"][seatIndex%6],
+    position: 0,
+    skip: 0,
+    extraRoll: false,
+    present: true,
+    updatedAt: serverTimestamp()
+  },{ merge:true });
 
-  // ---- TOAST ---------------------------------------------------------------
-  function toast(message, { kind = 'info', ttl = 2200 } = {}) {
-    if (window.LegislateUI?.toast) return window.LegislateUI.toast(message, { kind, ttl });
-    const rootId = 'toastRoot';
-    let root = document.getElementById(rootId);
-    if (!root) {
-      root = document.createElement('div');
-      root.id = rootId;
-      root.style.position = 'fixed';
-      root.style.right = '12px';
-      root.style.top = '12px';
-      root.style.zIndex = '2000';
-      root.style.display = 'flex';
-      root.style.flexDirection = 'column';
-      root.style.gap = '8px';
-      document.body.appendChild(root);
+  // mark away on unload
+  window.addEventListener('beforeunload', ()=> {
+    try { updateDoc(myRef,{ present:false, updatedAt:serverTimestamp() }); } catch {}
+  });
+
+  // listeners
+  unsubRoom?.(); unsubPlayers?.();
+
+  unsubRoom = onSnapshot(roomRef, (snap)=>{
+    roomData = snap.data();
+    updateTurnIndicator();
+    updateRollEnabled();
+  });
+
+  unsubPlayers = onSnapshot(collection(roomRef,'players'), (qs)=>{
+    fsPlayers.clear();
+    qs.forEach(d=>{ const p=d.data(); fsPlayers.set(p.uid, p); });
+    renderPlayersPills(Array.from(fsPlayers.values()));
+    renderTokens();
+    updateTurnIndicator();
+    updateRollEnabled();
+  });
+
+  // make sure decks & endIndex are in room doc
+  await ensureRoomHasDecksAndEndIndex();
+
+  toast(`Joined ${roomCode}`, { kind: 'success' });
+}
+
+// ---------- Turn / Roll / Card flow ----------
+function rng(){ return Math.floor(1 + Math.random()*6); }
+
+async function actRoll(){
+  // one authoritative transaction
+  await runTransaction(db, async (tx)=>{
+    const rs = await tx.get(roomRef);
+    if (!rs.exists()) throw new Error('room not found');
+    const R = rs.data();
+    if (R.ended) throw new Error('game ended');
+    if (R.pendingCard) throw new Error('resolve card first');
+    if (R.currentTurnUid !== myUid) throw new Error('not your turn');
+
+    const meRef = doc(db,'rooms',roomCode,'players',myUid);
+    const meSnap = await tx.get(meRef);
+    const me = meSnap.data();
+
+    const roll = rng();
+    let position = me.position + roll;
+    if (position < 0) position = 0;
+    if (position > R.endIndex) position = R.endIndex;
+
+    // base updates (dice + move)
+    tx.update(roomRef, { lastRoll: roll, updatedAt: serverTimestamp() });
+    tx.update(meRef, { position, updatedAt: serverTimestamp() });
+
+    // check end
+    if (position === R.endIndex){
+      tx.update(roomRef, { ended: true, updatedAt: serverTimestamp() });
+      return; // winner decided; stop here
     }
-    const el = document.createElement('div');
-    el.style.padding = '10px 12px';
-    el.style.background = kind === 'error' ? '#d4351c' : kind === 'success' ? '#00703c' : '#1d70b8';
-    el.style.color = '#fff';
-    el.style.borderRadius = '8px';
-    el.style.boxShadow = '0 6px 16px rgba(0,0,0,.15)';
-    el.style.fontWeight = '600';
-    el.style.maxWidth = '320px';
-    el.style.wordBreak = 'break-word';
-    el.textContent = message;
-    root.appendChild(el);
-    setTimeout(() => {
-      el.style.transition = 'opacity .25s ease, transform .25s ease';
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(-4px)';
-      setTimeout(() => el.remove(), 300);
-    }, ttl);
-  }
 
-  // ---- LOAD BOARD ----------------------------------------------------------
-  async function loadBoard() {
-    const res = await fetch(`${base}/board.json`);
-    board = await res.json();
-    boardUI = window.LegislateUI?.createBoardRenderer?.({ board });
-  }
+    // landed space → deck?
+    const space = spaceFor(position);
+    if (space && space.deck && space.deck !== 'none'){
+      // pop a card atomically
+      const decks = R.decks || {};
+      const deckArr = (decks[space.deck] || []).slice();
+      const card = deckArr.shift() || null;
 
-  // ---- RENDER HELPERS ------------------------------------------------------
-  function renderPlayersPills(players) {
-    playersSection.innerHTML = '';
-    players.forEach((p, i) => {
-      const pill = document.createElement('div');
-      pill.className = 'player-pill';
-
-      const dot = document.createElement('div');
-      dot.className = 'player-dot';
-      dot.style.background = p.color;
-
-      const name = document.createElement('span');
-      name.className = 'player-name';
-      name.contentEditable = 'true';
-      name.textContent = p.name;
-
-      // send rename on blur (server echoes back authoritative name)
-      name.addEventListener('blur', () => {
-        const v = (name.textContent || '').trim();
-        if (!v) return;
-        send({ type: 'RENAME', index: i, name: v });
+      tx.update(roomRef, {
+        decks: Object.assign({}, decks, { [space.deck]: deckArr }),
+        pendingCard: card ? { deck: space.deck, card } : null,
+        updatedAt: serverTimestamp()
       });
-
-      pill.appendChild(dot);
-      pill.appendChild(name);
-      playersSection.appendChild(pill);
-    });
-  }
-
-  function renderAllTokens(players) {
-    players.forEach((p) => {
-      const el = ensureToken(p.id || p.uid || p.name, p.color);
-      positionToken(el, p.position || 0);
-    });
-    // optional fan-out if UI provides it
-    boardUI?.render?.(players);
-  }
-
-  function updateRollEnabled() {
-    if (!engineState) {
-      rollBtn.disabled = true;
-      return;
-    }
-    const presentCount = (engineState.players || []).filter((p) => p.present).length;
-    const enough = presentCount >= 2;
-    const myTurn = engineState.turnIndex === mySeat;
-    rollBtn.disabled = !(enough && myTurn);
-  }
-
-  // ---- WEBSOCKET CLIENT ----------------------------------------------------
-  function connectAndJoin(code, desiredCount) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      try { ws.close(); } catch {}
-    }
-    ws = new WebSocket(wsUrl);
-    ws.addEventListener('open', () => {
-      send({ type: 'JOIN', room: code, playerCount: Number(desiredCount) || 4 });
-    });
-    ws.addEventListener('message', (ev) => {
-      try {
-        const msg = JSON.parse(ev.data);
-        handleServerEvent(msg);
-      } catch (e) {
-        console.warn('WS parse error', e);
-      }
-    });
-    ws.addEventListener('close', () => {
-      toast('Disconnected from server. Reconnecting…', { kind: 'info' });
-      setTimeout(() => connectAndJoin(roomCode, playerCountSel.value), 1200);
-    });
-    ws.addEventListener('error', () => {
-      toast('Connection error', { kind: 'error' });
-    });
-  }
-
-  function send(obj) {
-    try {
-      ws?.send(JSON.stringify(obj));
-    } catch (e) {
-      console.warn('Send failed', e);
-    }
-  }
-
-  // ---- SERVER EVENTS -------------------------------------------------------
-  function handleServerEvent(msg) {
-    const { type } = msg;
-
-    if (type === 'JOIN_OK') {
-      const { state, seatIndex } = msg;
-      engineState = state;
-      mySeat = seatIndex;
-
-      renderPlayersPills(engineState.players);
-      renderAllTokens(engineState.players);
-
-      turnIndicator.textContent = `${engineState.players[engineState.turnIndex].name}'s turn`;
-      updateRollEnabled();
-      log('JOIN_OK');
+      // UI will pick up pendingCard and open modal; apply happens in resolveCard()
       return;
     }
 
-    if (type === 'TURN_BEGIN') {
-      engineState.turnIndex = msg.index;
-      turnIndicator.textContent = `${engineState.players[engineState.turnIndex].name}'s turn`;
-      updateRollEnabled();
-      return;
-    }
-
-    if (type === 'DICE_ROLL') {
-      engineState.lastRoll = msg.value;
-      showDiceRoll(msg.value, 900);
-      return;
-    }
-
-    if (type === 'MOVE_STEP') {
-      const { playerId, position } = msg;
-      const p = engineState.players.find((x) => x.id === playerId);
-      if (p) p.position = position;
-      const el = ensureToken(playerId, p?.color);
-      positionToken(el, position);
-      boardUI?.render?.(engineState.players);
-      return;
-    }
-
-    if (type === 'LANDED') {
-      // purely informative in the client
-      return;
-    }
-
-    if (type === 'CARD_DRAWN') {
-      const { deck, card } = msg;
-      // Show a modal: we rely on UI file’s modal
-      const modal = window.LegislateUI?.createModal?.();
-      if (modal) {
-        modal.open({
-          title: (card?.title || deck),
-          body: `<p>${(card?.text || '').trim()}</p>`,
-        }).then(() => send({ type: 'RESOLVE_CARD' }));
-      } else {
-        send({ type: 'RESOLVE_CARD' });
-      }
-      return;
-    }
-
-    if (type === 'CARD_APPLIED') {
-      const { playerId, card } = msg;
-      // update position if included
-      if (typeof msg.position === 'number') {
-        const p = engineState.players.find((x) => x.id === playerId);
-        if (p) p.position = msg.position;
-        const el = ensureToken(playerId, p?.color);
-        positionToken(el, p?.position || 0);
-      }
-      boardUI?.render?.(engineState.players);
-
-      if (card && typeof card.effect === 'string') {
-        const [eff] = card.effect.split(':');
-        const p = engineState.players.find((x) => x.id === playerId);
-        if (eff === 'extra_roll') toast(`${p?.name || 'Player'} gets an extra roll`, { kind: 'success' });
-        if (eff === 'miss_turn') toast(`${p?.name || 'Player'} will miss their next turn`, { kind: 'info' });
-      }
-      return;
-    }
-
-    if (type === 'EFFECT_GOTO') {
-      const { playerId, index } = msg;
-      const p = engineState.players.find((x) => x.id === playerId);
-      const el = ensureToken(playerId, p?.color);
-      positionToken(el, index);
-      boardUI?.render?.(engineState.players);
-      toast(`${p?.name || 'Player'} jumps to ${index}`, { kind: 'info', ttl: 1800 });
-      return;
-    }
-
-    if (type === 'GAME_END') {
-      const { name } = msg;
-      toast(`${name} reached the end!`, { kind: 'success', ttl: 2600 });
-      return;
-    }
-
-    if (type === 'PLAYER_PRESENT') {
-      const { index, present } = msg;
-      if (engineState.players[index]) engineState.players[index].present = present;
-      updateRollEnabled();
-      return;
-    }
-
-    if (type === 'PLAYER_RENAMED') {
-      const { index, name } = msg;
-      if (engineState.players[index]) engineState.players[index].name = name;
-      // refresh pills and turn indicator if needed
-      renderPlayersPills(engineState.players);
-      if (engineState.turnIndex === index) {
-        turnIndicator.textContent = `${name}'s turn`;
-      }
-      return;
-    }
-
-    if (type === 'PLAYER_LEFT') {
-      // server drives presence; UI reflects on TURN_BEGIN gating
-      updateRollEnabled();
-      return;
-    }
-
-    if (type === 'PING') {
-      send({ type: 'PONG' });
-      return;
-    }
-  }
-
-  // ---- UI HANDLERS ---------------------------------------------------------
-  joinBtn.addEventListener('click', () => {
-    const code = (roomInput.value || '').trim().toUpperCase();
-    if (!code) return;
-    roomCode = code;
-    connectAndJoin(roomCode, playerCountSel.value);
-    toast(`Joining ${roomCode}…`, { kind: 'info', ttl: 1200 });
+    // no card → advance turn immediately
+    const order = Array.from(fsPlayers.values()).sort((a,b)=>a.seatIndex-b.seatIndex).map(p=>p.uid);
+    const idx = order.indexOf(myUid);
+    const nextUid = order[(idx+1)%order.length];
+    tx.update(roomRef, { currentTurnUid: nextUid, turnIndex: ((R.turnIndex||0)+1)%order.length, updatedAt: serverTimestamp() });
   });
 
-  rollBtn.addEventListener('click', () => {
-    send({ type: 'ROLL' });
-  });
+  // local UI: dice overlay
+  showDiceRoll((roomData && roomData.lastRoll) || 1, 900);
+}
 
-  restartBtn.addEventListener('click', () => {
-    send({ type: 'RESET' });
-  });
+async function resolveCard(){
+  // read current pendingCard, apply its effect for me
+  await runTransaction(db, async (tx)=>{
+    const rs = await tx.get(roomRef);
+    if (!rs.exists()) throw new Error('room not found');
+    const R = rs.data();
+    const pend = R.pendingCard || null;
+    if (!pend) return; // nothing to do
 
-  // ---- BOOT ---------------------------------------------------------------
-  (async function boot() {
-    await loadBoard();
-    log('BOOT_OK');
-  })();
+    const meRef = doc(db,'rooms',roomCode,'players',myUid);
+    const meSnap = await tx.get(meRef);
+    const me = meSnap.data();
+
+    // apply minimal supported effects: move:n, miss_turn, extra_roll, goto:i
+    const card = pend.card || {};
+    const eff = String(card.effect||'');
+    const [type, argRaw] = eff.split(':');
+    const arg = Number(argRaw||0);
+
+    let position = me.position;
+    let skip = me.skip || 0;
+    let extraRoll = me.extraRoll || false;
+
+    if (type === 'move'){
+      position = position + arg;
+    } else if (type === 'miss_turn'){
+      skip = (skip||0) + 1;
+    } else if (type === 'extra_roll'){
+      extraRoll = true;
+    } else if (type === 'goto'){
+      position = Math.max(0, Math.min(R.endIndex, arg));
+    }
+
+    if (position < 0) position = 0;
+    if (position > R.endIndex) position = R.endIndex;
+
+    tx.update(meRef, { position, skip, extraRoll, updatedAt: serverTimestamp() });
+
+    // end check after card
+    if (position === R.endIndex){
+      tx.update(roomRef, { pendingCard: null, ended: true, updatedAt: serverTimestamp() });
+      return;
+    }
+
+    // advance turn (respect extraRoll / skip)
+    const order = Array.from(fsPlayers.values()).sort((a,b)=>a.seatIndex-b.seatIndex).map(p=>p.uid);
+    const len = order.length;
+    let currIdx = order.indexOf(myUid);
+    let nextIdx = (currIdx + (extraRoll ? 0 : 1)) % len;
+
+    // consume skips while finding next eligible
+    // read all player docs we might skip (cheap: we already have fsPlayers mirror)
+    let guard = 0;
+    while (guard++ < len){
+      const uid = order[nextIdx];
+      const p = fsPlayers.get(uid);
+      if (p && p.skip > 0 && uid !== myUid){ // don't consume my own skip here
+        // consume 1 skip
+        const pref = doc(db,'rooms',roomCode,'players',uid);
+        const psnap = await tx.get(pref);
+        const pv = psnap.data(); const ns = Math.max(0, (pv.skip||0)-1);
+        tx.update(pref,{ skip: ns, updatedAt: serverTimestamp() });
+        nextIdx = (nextIdx + 1) % len;
+        continue;
+      }
+      break;
+    }
+
+    const nextUid = order[nextIdx];
+    const turnIndex = nextIdx;
+
+    tx.update(roomRef, {
+      pendingCard: null,
+      currentTurnUid: nextUid,
+      turnIndex,
+      updatedAt: serverTimestamp()
+    });
+
+    // clear my extraRoll flag if it was used
+    if (extraRoll){
+      tx.update(meRef, { extraRoll: false, updatedAt: serverTimestamp() });
+    }
+  });
+}
+
+// ---------- UI wiring ----------
+joinBtn.addEventListener('click', ()=>{
+  const code = (roomInput.value||'').trim().toUpperCase();
+  if (!code) return;
+  joinRoom(code, playerCountSel.value).catch(e=>{
+    console.error(e); toast(e.message||'Join failed',{kind:'error'});
+  });
+});
+
+rollBtn.addEventListener('click', ()=>{
+  actRoll().catch(e=>{
+    console.warn(e); toast(e.message||'Not your turn',{kind:'error'});
+  });
+});
+
+restartBtn.addEventListener('click', async ()=>{
+  if (!roomRef) return;
+  // host-only expected (enforced by rules)
+  await updateDoc(roomRef,{
+    ended:false, lastRoll:0, pendingCard:null, turnIndex:0, currentTurnUid: myUid, updatedAt: serverTimestamp()
+  }).catch(e=> toast(e.message||'Reset denied',{kind:'error'}));
+  // reset positions
+  const ps = await getDocs(collection(roomRef,'players'));
+  await Promise.all(ps.docs.map(d=> updateDoc(d.ref,{ position:0, skip:0, extraRoll:false, updatedAt: serverTimestamp() }).catch(()=>{})));
+});
+
+// Listen for a pendingCard to show modal automatically
+unsubRoom?.(); // (safety; will be set after join anyway)
+function watchPendingCard(){
+  unsubRoom = onSnapshot(roomRef,(snap)=>{
+    const R = snap.data(); if(!R) return;
+    roomData = R;
+    updateTurnIndicator(); updateRollEnabled();
+    if (R.pendingCard && modal){
+      const { deck, card } = R.pendingCard;
+      modal.open({
+        title: card?.title || deck,
+        body: `<p>${(card?.text||'').trim()}</p>`
+      }).then(()=> resolveCard().catch(e=>toast(e.message||'Resolve failed',{kind:'error'})));
+    }
+    if (R.ended){
+      const winner = Array.from(fsPlayers.values()).find(p=>p.position===R.endIndex);
+      if (winner) toast(`${winner.name} reached the end!`, { kind:'success', ttl:2600 });
+    }
+  });
+}
+
+// ---------- Boot ----------
+(async function boot(){
+  await loadBoard();
+  // if user typed a code earlier, allow quick enter with Enter key
+  roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
+  toast('Ready', { kind:'info', ttl: 900 });
 })();
