@@ -1,18 +1,17 @@
 // multiplayer-app.js — thin socket client reusing stable UI (legislate-test)
+
 (function () {
   const $ = (id) => document.getElementById(id);
 
   // ---- CONFIG --------------------------------------------------------------
-  // Assets base for board.json (used for token placement)
   const base = 'https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament';
-  // Your Render WebSocket endpoint
   const wsUrl = 'wss://legislate.onrender.com/game';
 
   // ---- STATE ---------------------------------------------------------------
   let ws = null;
   let board = null;
-  let boardUI = null;       // renderer instance (fan-out, etc.)
-  let engineState = null;   // minimal mirror of server state after JOIN_OK
+  let boardUI = null;
+  let engineState = null;
 
   // ---- TOKENS --------------------------------------------------------------
   const tokensLayer = $('tokensLayer');
@@ -36,7 +35,7 @@
     el.style.top = space.y + '%';
   }
 
-  // ---- PLAYERS LIST (rename → server) -------------------------------------
+  // ---- PLAYERS LIST --------------------------------------------------------
   function renderPlayers(state) {
     const root = $('playersSection');
     if (!root) return;
@@ -65,7 +64,7 @@
     });
   }
 
-  // ---- SERVER → UI EVENT MAP ----------------------------------------------
+  // ---- SERVER → UI EVENTS --------------------------------------------------
   function handleServerEvent(msg, stateRef) {
     const { type, payload } = msg;
 
@@ -89,7 +88,7 @@
       const p = stateRef.players.find((x) => x.id === payload.playerId) || { color: '#000' };
       const el = ensureToken(payload.playerId, p.color);
       positionToken(el, payload.position);
-      if (p) p.position = payload.position; // keep mirror in sync
+      if (p) p.position = payload.position;
       boardUI?.render(stateRef.players);
       return;
     }
@@ -166,20 +165,16 @@
   // ---- CONNECT & JOIN ------------------------------------------------------
   async function connectAndJoin(roomCode, playerCount) {
     try {
-      // Load board (client needs only for token coordinates)
       const resp = await fetch(`${base}/board.json`, { cache: 'no-store' });
       if (!resp.ok) throw new Error(`board.json ${resp.status}`);
       board = await resp.json();
 
-      // Create board renderer now we have board
       boardUI = (window.LegislateUI && window.LegislateUI.createBoardRenderer)
         ? window.LegislateUI.createBoardRenderer({ board })
         : { render: () => {} };
 
-      // Open WebSocket
       ws = new WebSocket(wsUrl);
 
-      // Status indicators
       ws.addEventListener('open', () => {
         $('turnIndicator').textContent = 'Connected — joining room…';
         try {
@@ -203,33 +198,27 @@
       ws.addEventListener('message', (ev) => {
         const msg = JSON.parse(ev.data);
 
-        // ---- DEBUG passthrough (server → page + console) ----
+        // ---- DEBUG passthrough ----
         if (msg.type === 'DEBUG') {
           const pre = document.getElementById('dbg-log');
           if (pre) pre.textContent += msg.payload + '\n';
           console.log('[DEBUG]', msg.payload);
-          return; // keep showing debug even before JOIN_OK
+          return;
         }
 
         if (msg.type === 'JOIN_OK') {
           engineState = msg.payload.state;
           $('turnIndicator').textContent = `Joined room ${(roomCode || '').toUpperCase()}`;
-
-          // Players UI
           renderPlayers(engineState);
-
-          // Initial token paint
           engineState.players.forEach((pl) => {
             const el = ensureToken(pl.id, pl.color);
             positionToken(el, pl.position);
           });
-
-          // First render
           boardUI?.render(engineState.players);
           return;
         }
 
-        if (!engineState) return; // ignore non-debug, non-join until joined
+        if (!engineState) return;
         handleServerEvent(msg, engineState);
       });
     } catch (err) {
@@ -239,22 +228,36 @@
     }
   }
 
-  // ---- UI HOOKS ------------------------------------------------------------
-  $('joinBtn').addEventListener('click', () => {
-    const code = ($('#roomCode').value || '').trim().toUpperCase();
-    if (!code) {
-      window.LegislateUI.toast('Enter a room code', { kind: 'info' });
-      $('#roomCode').focus();
-      return;
-    }
-    connectAndJoin(code, $('#playerCount').value);
-  });
+  // ---- UI HOOKS (robust) ---------------------------------------------------
+  const roomInput    = document.getElementById('roomCode');
+  const playerSelect = document.getElementById('playerCount');
+  const joinBtn      = document.getElementById('joinBtn');
+  const rollBtn      = document.getElementById('rollBtn');
+  const restartBtn   = document.getElementById('restartBtn');
 
-  $('rollBtn').addEventListener('click', () => {
-    try { ws?.send(JSON.stringify({ type: 'ROLL' })); } catch {}
-  });
+  if (joinBtn) {
+    joinBtn.addEventListener('click', () => {
+      const codeRaw = roomInput && typeof roomInput.value === 'string' ? roomInput.value : '';
+      const code = codeRaw.trim().toUpperCase();
+      if (!code) {
+        if (window.LegislateUI?.toast) window.LegislateUI.toast('Enter a room code', { kind: 'info' });
+        roomInput && roomInput.focus?.();
+        return;
+      }
+      const count = playerSelect && playerSelect.value ? playerSelect.value : 4;
+      connectAndJoin(code, count);
+    });
+  }
 
-  $('restartBtn').addEventListener('click', () => {
-    try { ws?.send(JSON.stringify({ type: 'RESET' })); } catch {}
-  });
+  if (rollBtn) {
+    rollBtn.addEventListener('click', () => {
+      try { ws?.send(JSON.stringify({ type: 'ROLL' })); } catch {}
+    });
+  }
+
+  if (restartBtn) {
+    restartBtn.addEventListener('click', () => {
+      try { ws?.send(JSON.stringify({ type: 'RESET' })); } catch {}
+    });
+  }
 })();
