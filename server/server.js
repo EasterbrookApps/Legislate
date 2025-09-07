@@ -1,4 +1,4 @@
-// server/server.js — multiplayer WS server for Legislate?! (seats + presence)
+// server/server.js — multiplayer WS server for Legislate?! (presence + keep-alive)
 
 require('dotenv').config();
 const http = require('http');
@@ -61,7 +61,6 @@ const { createEngine, makeRng } = sandbox.window.LegislateEngine;
 const rooms = new Map();
 
 function initPresenceFlags(state) {
-  // add stable 'present' flag if missing
   state.players.forEach(p => { if (typeof p.present !== 'boolean') p.present = false; });
 }
 
@@ -70,14 +69,15 @@ function getOrCreateRoom(code, playerCount = 4) {
 
   const rng = makeRng(Date.now() ^ Math.floor(Math.random() * 1e9));
   const engine = createEngine({ board, decks, rng, playerCount });
-
   initPresenceFlags(engine.state);
 
   const room = { engine, clients: new Set(), seats: new Map(), seq: 0 };
 
+  // Relay ALL engine events (sequenced)
   engine.bus.on('*', (type, payload) => {
     room.seq += 1;
     const msg = { type, payload, seq: room.seq };
+    // Do not log PING/PONG here (none emitted by engine anyway)
     debug(room, 'BUS', type, payload && payload.playerId ? `p=${payload.playerId}` : '');
     roomBroadcast(room, msg);
   });
@@ -99,7 +99,7 @@ function ensureTurnOnPresent(room) {
   if (countPresent(s) === 0) return;
   let guard = 0;
   while (!s.players[s.turnIndex].present && guard < s.players.length + 2) {
-    room.engine.endTurn(false); // advance until we’re on a present seat
+    room.engine.endTurn(false);
     guard++;
   }
 }
@@ -131,6 +131,9 @@ wss.on('connection', (ws, req) => {
   ws.on('message', async (buf) => {
     let msg; try { msg = JSON.parse(buf.toString()); } catch { return; }
 
+    // Ignore client PONGs (no logging)
+    if (msg.type === 'PONG') return;
+
     if (msg.type === 'JOIN') {
       const code = (msg.roomCode || '').trim().toUpperCase();
       const count = Number(msg.playerCount) || 4;
@@ -139,7 +142,7 @@ wss.on('connection', (ws, req) => {
       room = getOrCreateRoom(code, count);
       room.clients.add(ws);
 
-      // Resize seats if playerCount changed
+      // Resize if changed
       if (count !== room.engine.state.players.length) {
         room.engine.setPlayerCount(count);
         initPresenceFlags(room.engine.state);
@@ -148,8 +151,7 @@ wss.on('connection', (ws, req) => {
       // Assign seat
       let seat = nextFreeSeat(room.engine.state);
       if (seat === -1) {
-        // room full for now — join as spectator
-        seat = null;
+        seat = null; // spectator
         debug(room, 'SPECTATOR_JOIN', code);
       } else {
         room.engine.state.players[seat].present = true;
@@ -174,7 +176,6 @@ wss.on('connection', (ws, req) => {
     }
 
     if (!room) return;
-
     const { engine } = room;
 
     if (msg.type === 'ROLL') {
@@ -185,7 +186,7 @@ wss.on('connection', (ws, req) => {
       if (engine.state.turnIndex !== seat) { debug(room, 'ROLL_BLOCKED_NOT_TURN', `want=${seat}`, `turn=${engine.state.turnIndex}`); return; }
 
       debug(room, 'ROLL_OK', `seat=${seat}`);
-      await engine.takeTurn(); // bus relays
+      await engine.takeTurn();
       ensureTurnOnPresent(room);
       return;
     }
@@ -201,7 +202,6 @@ wss.on('connection', (ws, req) => {
       debug(room, 'RESET');
       engine.reset();
       initPresenceFlags(engine.state);
-      // Keep current present seats as-is (don’t auto-clear)
       for (const [client, idx] of room.seats.entries()) {
         if (engine.state.players[idx]) engine.state.players[idx].present = true;
       }
@@ -236,6 +236,20 @@ wss.on('connection', (ws, req) => {
     }
   });
 });
+
+// ------------------------------ Keep-Alive ----------------------------------
+
+// Broadcast a lightweight heartbeat every 30s so hosts don't idle-close sockets
+setInterval(() => {
+  for (const room of rooms.values()) {
+    for (const client of room.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        // No debug logging for PING
+        client.send(JSON.stringify({ type: 'PING' }));
+      }
+    }
+  }
+}, 30000);
 
 // ------------------------------ Boot ---------------------------------------
 
