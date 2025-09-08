@@ -1,11 +1,11 @@
-// Firestore-only multiplayer client for Legislate?!
+// multiplayer-app.js — Firestore-only, ES module
 
-// 0) Ensure Firebase is ready (index.html exposes window.fbReady + window.fb)
-if (window.fbReady) { await window.fbReady; }
+// 0) Ensure Firebase is ready
+await window.fbReady;
 const { db, auth } = window.fb || {};
 const {
-  doc, setDoc, getDoc, updateDoc, onSnapshot, collection, getDocs,
-  serverTimestamp, runTransaction, arrayRemove, arrayUnion
+  doc, setDoc, getDoc, updateDoc, onSnapshot,
+  collection, getDocs, serverTimestamp, runTransaction
 } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
 
 // ---------- DOM helpers ----------
@@ -78,7 +78,7 @@ function renderPlayersPills(players){
     name.addEventListener('input', ()=>{
       if (p.uid!==myUid) return;
       const v=(name.textContent||'').trim(); if(!v) return;
-      updateDoc(doc(db,'rooms',roomCode,'players',myUid),{ name:v, updatedAt:serverTimestamp() }).catch(()=>{});
+      updateDoc(doc(db,'rooms',roomCode,'players',myUid),{ name:v, updatedAt: serverTimestamp() }).catch(()=>{});
     });
     pill.appendChild(dot); pill.appendChild(name); playersSection.appendChild(pill);
   });
@@ -93,7 +93,6 @@ function renderTokens(){
 }
 function updateTurnIndicator(){
   if (!roomData) return;
-  // prefer by UID, fallback by seatIndex
   const current = fsPlayers.get(roomData.currentTurnUid) ||
     Array.from(fsPlayers.values()).find(p=>p.seatIndex === (roomData.turnIndex||0));
   if (current) turnIndicator.textContent = `${current.name}'s turn`;
@@ -107,28 +106,21 @@ function updateRollEnabled(){
 
 // ---------- Deck utilities ----------
 async function ensureRoomHasDecksAndEndIndex(){
-  await runTransaction(db, async (tx)=>{
-    const snap = await tx.get(roomRef);
-    if (!snap.exists()) throw new Error('room missing');
-    const data = snap.data();
-    if (data.decks && data.endIndex!=null) return;
+  const snap = await getDoc(roomRef);
+  const data = snap.data() || {};
+  if (data.decks && data.endIndex != null) return;
 
-    // load decks once from assets (client bootstrap)
-    const base = "https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/cards";
-    const [commons, early, lords, pingpong, implementation] = await Promise.all([
-      fetch(`${base}/commons.json`).then(r=>r.json()),
-      fetch(`${base}/early.json`).then(r=>r.json()),
-      fetch(`${base}/lords.json`).then(r=>r.json()),
-      fetch(`${base}/pingpong.json`).then(r=>r.json()),
-      fetch(`${base}/implementation.json`).then(r=>r.json()),
-    ]);
-    const endIndex = (board.spaces.slice().reverse().find(s=>s.stage==='end') || board.spaces[board.spaces.length-1]).index;
+  const base = "https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/cards";
+  const [commons, early, lords, pingpong, implementation] = await Promise.all([
+    fetch(`${base}/commons.json`).then(r=>r.json()),
+    fetch(`${base}/early.json`).then(r=>r.json()),
+    fetch(`${base}/lords.json`).then(r=>r.json()),
+    fetch(`${base}/pingpong.json`).then(r=>r.json()),
+    fetch(`${base}/implementation.json`).then(r=>r.json()),
+  ]);
+  const endIndex = (board.spaces.slice().reverse().find(s=>s.stage==='end') || board.spaces.at(-1)).index;
 
-    tx.update(roomRef, {
-      decks: { commons, early, lords, pingpong, implementation },
-      endIndex
-    });
-  });
+  await updateDoc(roomRef, { decks: { commons, early, lords, pingpong, implementation }, endIndex });
 }
 function spaceFor(i){ return board.spaces.find(s=>s.index===i) || null; }
 
@@ -138,7 +130,6 @@ async function joinRoom(code, desiredCount=4){
   if (!roomCode) return;
   roomRef = doc(db,'rooms',roomCode);
 
-  // create room if missing (I become host & first player)
   const roomSnap = await getDoc(roomRef);
   if (!roomSnap.exists()){
     await setDoc(roomRef,{
@@ -154,14 +145,12 @@ async function joinRoom(code, desiredCount=4){
     });
   }
 
-  // choose a free seat
   const playersCol = collection(roomRef,'players');
   const ps = await getDocs(playersCol);
   const taken = new Set(); ps.forEach(d=> taken.add(d.data().seatIndex));
   const total = (roomSnap.exists()? (roomSnap.data().playerCount||desiredCount) : desiredCount)|0;
   let seatIndex = 0; while (taken.has(seatIndex) && seatIndex<total) seatIndex++;
 
-  // upsert my player doc
   const myRef = doc(db,'rooms',roomCode,'players',myUid);
   await setDoc(myRef,{
     uid: myUid,
@@ -175,12 +164,10 @@ async function joinRoom(code, desiredCount=4){
     updatedAt: serverTimestamp()
   },{ merge:true });
 
-  // mark away on unload
   window.addEventListener('beforeunload', ()=> {
     try { updateDoc(myRef,{ present:false, updatedAt:serverTimestamp() }); } catch {}
   });
 
-  // listeners
   unsubRoom?.(); unsubPlayers?.();
 
   unsubRoom = onSnapshot(roomRef, (snap)=>{
@@ -198,9 +185,8 @@ async function joinRoom(code, desiredCount=4){
     updateRollEnabled();
   });
 
-  // make sure decks & endIndex are in room doc
   await ensureRoomHasDecksAndEndIndex();
-
+  watchPendingCard();
   toast(`Joined ${roomCode}`, { kind: 'success' });
 }
 
@@ -208,7 +194,6 @@ async function joinRoom(code, desiredCount=4){
 function rng(){ return Math.floor(1 + Math.random()*6); }
 
 async function actRoll(){
-  // one authoritative transaction
   await runTransaction(db, async (tx)=>{
     const rs = await tx.get(roomRef);
     if (!rs.exists()) throw new Error('room not found');
@@ -226,58 +211,47 @@ async function actRoll(){
     if (position < 0) position = 0;
     if (position > R.endIndex) position = R.endIndex;
 
-    // base updates (dice + move)
     tx.update(roomRef, { lastRoll: roll, updatedAt: serverTimestamp() });
     tx.update(meRef, { position, updatedAt: serverTimestamp() });
 
-    // check end
     if (position === R.endIndex){
       tx.update(roomRef, { ended: true, updatedAt: serverTimestamp() });
-      return; // winner decided; stop here
+      return;
     }
 
-    // landed space → deck?
     const space = spaceFor(position);
     if (space && space.deck && space.deck !== 'none'){
-      // pop a card atomically
       const decks = R.decks || {};
       const deckArr = (decks[space.deck] || []).slice();
       const card = deckArr.shift() || null;
-
       tx.update(roomRef, {
         decks: Object.assign({}, decks, { [space.deck]: deckArr }),
         pendingCard: card ? { deck: space.deck, card } : null,
         updatedAt: serverTimestamp()
       });
-      // UI will pick up pendingCard and open modal; apply happens in resolveCard()
       return;
     }
 
-    // no card → advance turn immediately
     const order = Array.from(fsPlayers.values()).sort((a,b)=>a.seatIndex-b.seatIndex).map(p=>p.uid);
     const idx = order.indexOf(myUid);
     const nextUid = order[(idx+1)%order.length];
     tx.update(roomRef, { currentTurnUid: nextUid, turnIndex: ((R.turnIndex||0)+1)%order.length, updatedAt: serverTimestamp() });
   });
-
-  // local UI: dice overlay
   showDiceRoll((roomData && roomData.lastRoll) || 1, 900);
 }
 
 async function resolveCard(){
-  // read current pendingCard, apply its effect for me
   await runTransaction(db, async (tx)=>{
     const rs = await tx.get(roomRef);
     if (!rs.exists()) throw new Error('room not found');
     const R = rs.data();
     const pend = R.pendingCard || null;
-    if (!pend) return; // nothing to do
+    if (!pend) return;
 
     const meRef = doc(db,'rooms',roomCode,'players',myUid);
     const meSnap = await tx.get(meRef);
     const me = meSnap.data();
 
-    // apply minimal supported effects: move:n, miss_turn, extra_roll, goto:i
     const card = pend.card || {};
     const eff = String(card.effect||'');
     const [type, argRaw] = eff.split(':');
@@ -287,41 +261,31 @@ async function resolveCard(){
     let skip = me.skip || 0;
     let extraRoll = me.extraRoll || false;
 
-    if (type === 'move'){
-      position = position + arg;
-    } else if (type === 'miss_turn'){
-      skip = (skip||0) + 1;
-    } else if (type === 'extra_roll'){
-      extraRoll = true;
-    } else if (type === 'goto'){
-      position = Math.max(0, Math.min(R.endIndex, arg));
-    }
+    if (type === 'move'){ position = position + arg; }
+    else if (type === 'miss_turn'){ skip = (skip||0) + 1; }
+    else if (type === 'extra_roll'){ extraRoll = true; }
+    else if (type === 'goto'){ position = Math.max(0, Math.min(R.endIndex, arg)); }
 
     if (position < 0) position = 0;
     if (position > R.endIndex) position = R.endIndex;
 
     tx.update(meRef, { position, skip, extraRoll, updatedAt: serverTimestamp() });
 
-    // end check after card
     if (position === R.endIndex){
       tx.update(roomRef, { pendingCard: null, ended: true, updatedAt: serverTimestamp() });
       return;
     }
 
-    // advance turn (respect extraRoll / skip)
     const order = Array.from(fsPlayers.values()).sort((a,b)=>a.seatIndex-b.seatIndex).map(p=>p.uid);
     const len = order.length;
     let currIdx = order.indexOf(myUid);
     let nextIdx = (currIdx + (extraRoll ? 0 : 1)) % len;
 
-    // consume skips while finding next eligible
-    // read all player docs we might skip (cheap: we already have fsPlayers mirror)
     let guard = 0;
     while (guard++ < len){
       const uid = order[nextIdx];
       const p = fsPlayers.get(uid);
-      if (p && p.skip > 0 && uid !== myUid){ // don't consume my own skip here
-        // consume 1 skip
+      if (p && p.skip > 0 && uid !== myUid){
         const pref = doc(db,'rooms',roomCode,'players',uid);
         const psnap = await tx.get(pref);
         const pv = psnap.data(); const ns = Math.max(0, (pv.skip||0)-1);
@@ -334,49 +298,17 @@ async function resolveCard(){
 
     const nextUid = order[nextIdx];
     const turnIndex = nextIdx;
-
     tx.update(roomRef, {
       pendingCard: null,
       currentTurnUid: nextUid,
       turnIndex,
       updatedAt: serverTimestamp()
     });
-
-    // clear my extraRoll flag if it was used
-    if (extraRoll){
-      tx.update(meRef, { extraRoll: false, updatedAt: serverTimestamp() });
-    }
+    if (extraRoll){ tx.update(meRef, { extraRoll: false, updatedAt: serverTimestamp() }); }
   });
 }
 
-// ---------- UI wiring ----------
-joinBtn.addEventListener('click', ()=>{
-  const code = (roomInput.value||'').trim().toUpperCase();
-  if (!code) return;
-  joinRoom(code, playerCountSel.value).catch(e=>{
-    console.error(e); toast(e.message||'Join failed',{kind:'error'});
-  });
-});
-
-rollBtn.addEventListener('click', ()=>{
-  actRoll().catch(e=>{
-    console.warn(e); toast(e.message||'Not your turn',{kind:'error'});
-  });
-});
-
-restartBtn.addEventListener('click', async ()=>{
-  if (!roomRef) return;
-  // host-only expected (enforced by rules)
-  await updateDoc(roomRef,{
-    ended:false, lastRoll:0, pendingCard:null, turnIndex:0, currentTurnUid: myUid, updatedAt: serverTimestamp()
-  }).catch(e=> toast(e.message||'Reset denied',{kind:'error'}));
-  // reset positions
-  const ps = await getDocs(collection(roomRef,'players'));
-  await Promise.all(ps.docs.map(d=> updateDoc(d.ref,{ position:0, skip:0, extraRoll:false, updatedAt: serverTimestamp() }).catch(()=>{})));
-});
-
-// Listen for a pendingCard to show modal automatically
-unsubRoom?.(); // (safety; will be set after join anyway)
+// ---------- Listeners ----------
 function watchPendingCard(){
   unsubRoom = onSnapshot(roomRef,(snap)=>{
     const R = snap.data(); if(!R) return;
@@ -396,10 +328,25 @@ function watchPendingCard(){
   });
 }
 
+// ---------- UI wiring ----------
+joinBtn.addEventListener('click', ()=>{
+  const code = (roomInput.value||'').trim().toUpperCase();
+  if (!code) return;
+  joinRoom(code, playerCountSel.value).catch(e=>{
+    console.error(e); toast(e.message||'Join failed',{kind:'error'});
+  });
+});
+rollBtn.addEventListener('click', ()=>{ actRoll().catch(e=> toast(e.message||'Not your turn',{kind:'error'})); });
+restartBtn.addEventListener('click', async ()=>{
+  if (!roomRef) return;
+  await updateDoc(roomRef,{
+    ended:false, lastRoll:0, pendingCard:null, turnIndex:0, currentTurnUid: myUid, updatedAt: serverTimestamp()
+  }).catch(e=> toast(e.message||'Reset denied',{kind:'error'}));
+  const ps = await getDocs(collection(roomRef,'players'));
+  await Promise.all(ps.docs.map(d=> updateDoc(d.ref,{ position:0, skip:0, extraRoll:false, updatedAt: serverTimestamp() }).catch(()=>{})));
+});
+
 // ---------- Boot ----------
-(async function boot(){
-  await loadBoard();
-  // if user typed a code earlier, allow quick enter with Enter key
-  roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
-  toast('Ready', { kind:'info', ttl: 900 });
-})();
+await loadBoard();
+roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
+toast('Ready', { kind:'info', ttl: 900 });
