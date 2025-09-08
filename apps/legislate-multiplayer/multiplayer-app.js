@@ -19,6 +19,7 @@ const playersSection = $('playersSection');
 const turnIndicator = $('turnIndicator');
 const tokensLayer = $('tokensLayer');
 const diceOverlay = $('diceOverlay');
+const boardImg = $('boardImg');
 const diceEl = $('dice');
 
 // UI helpers
@@ -37,6 +38,14 @@ function showDiceRoll(value, ms=900){
   diceOverlay.hidden=false;
   diceEl.className='dice rolling';
   setTimeout(()=>{ diceEl.className='dice show-'+(value||1); setTimeout(()=>diceOverlay.hidden=true,250); }, ms);
+}
+
+function ensureOverlayReady(){
+  if (!tokensLayer) return;
+  tokensLayer.style.position = 'absolute';
+  tokensLayer.style.inset = '0';        // cover the board
+  tokensLayer.style.zIndex = '10';      // put above the board
+  tokensLayer.style.pointerEvents = 'none'; // don’t block clicks
 }
 
 // ---------- State ----------
@@ -95,9 +104,20 @@ function renderPlayersPills(players){
   });
 }
 function renderTokens(){
-  if (!board) return; // ✅ no-op until board JSON is ready
+  if (!board) return;  // wait until board JSON is loaded
+  ensureOverlayReady();
+  // ✅ make sure the token layer matches the board image
+  if (boardImg) {
+    const w = boardImg.clientWidth;
+    const h = boardImg.clientHeight;
+    if (w && h && tokensLayer) {
+      tokensLayer.style.position = 'absolute';
+      tokensLayer.style.inset = '0';
+      tokensLayer.style.zIndex = '10';  // keep above the board
+    }
+  }
 
-  const arr = latestPlayersArray.length
+  const arr = latestPlayersArray?.length
     ? latestPlayersArray
     : Array.from(fsPlayers.values());
 
@@ -105,7 +125,8 @@ function renderTokens(){
     const el = ensureToken(p.uid, p.color);
     positionToken(el, p.position||0);
   });
-  boardUI?.render?.(arr); // fan-out
+
+  boardUI?.render?.(arr);  // fan-out offsets
 }
 function updateTurnIndicator(){
   if (!roomData) return;
