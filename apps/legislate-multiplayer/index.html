@@ -111,7 +111,7 @@
       await signInAnonymously(auth);
       // ensure auth state is settled
       await new Promise(res => onAuthStateChanged(auth, u => u && res(u)));
-      window.fb = { app, db, rtdb, auth };
+      window.fb = { app, db, auth };
       return window.fb;
     })();
   </script>
