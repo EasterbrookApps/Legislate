@@ -368,6 +368,18 @@ restartBtn.addEventListener('click', async ()=>{
 
 // ---------- Boot ----------
 await loadBoard();
-renderTokens(); // ✅ force a pass now that board exists
+
+// ✅ make sure tokens get drawn once the board image has loaded
+const boardImg = $('boardImg');
+if (boardImg) {
+  if (boardImg.complete) {
+    renderTokens();                 // image is already loaded
+  } else {
+    boardImg.addEventListener('load', () => {
+      renderTokens();               // run once when the picture finishes
+    }, { once: true });
+  }
+}
+
 roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
 toast('Ready', { kind:'info', ttl: 900 });
