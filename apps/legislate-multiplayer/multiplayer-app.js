@@ -49,6 +49,9 @@ let unsubPlayers = null;
 const fsPlayers = new Map(); // uid -> player data mirror
 let roomData = null;
 
+// ✅ cache latest players so we can re-render once board finishes loading
+let latestPlayersArray = [];
+
 // ---------- Rendering ----------
 const tokenEls = new Map();
 function ensureToken(id, color){
@@ -57,11 +60,13 @@ function ensureToken(id, color){
   el.className='token';
   el.dataset.id=id;
   el.style.background=color||'#777';
+  el.style.zIndex = '5';
   tokensLayer.appendChild(el);
   tokenEls.set(id, el);
   return el;
 }
 function positionToken(el, posIndex){
+  if (!board) return; // ✅ guard until board ready
   const space = board.spaces.find(s=>s.index===posIndex);
   if(!space) return;
   el.style.left = space.x + '%';
@@ -75,16 +80,27 @@ function renderPlayersPills(players){
     const dot=document.createElement('div'); dot.className='player-dot'; dot.style.background=p.color||'#777';
     const name=document.createElement('span'); name.className='player-name'; name.contentEditable = (p.uid===myUid)+'';
     name.textContent = p.name || 'Player';
-    name.addEventListener('input', ()=>{
+
+    // ✅ commit on blur/Enter (avoid snapshot fighting the caret)
+    const commit = () => {
       if (p.uid!==myUid) return;
-      const v=(name.textContent||'').trim(); if(!v) return;
+      const v=(name.textContent||'').trim();
+      if (!v || v === p.name) return;
       updateDoc(doc(db,'rooms',roomCode,'players',myUid),{ name:v, updatedAt: serverTimestamp() }).catch(()=>{});
-    });
+    };
+    name.addEventListener('blur', commit);
+    name.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); name.blur(); } });
+
     pill.appendChild(dot); pill.appendChild(name); playersSection.appendChild(pill);
   });
 }
 function renderTokens(){
-  const arr = Array.from(fsPlayers.values());
+  if (!board) return; // ✅ no-op until board JSON is ready
+
+  const arr = latestPlayersArray.length
+    ? latestPlayersArray
+    : Array.from(fsPlayers.values());
+
   arr.forEach(p=>{
     const el = ensureToken(p.uid, p.color);
     positionToken(el, p.position||0);
@@ -179,8 +195,12 @@ async function joinRoom(code, desiredCount=4){
   unsubPlayers = onSnapshot(collection(roomRef,'players'), (qs)=>{
     fsPlayers.clear();
     qs.forEach(d=>{ const p=d.data(); fsPlayers.set(p.uid, p); });
-    renderPlayersPills(Array.from(fsPlayers.values()));
-    renderTokens();
+
+    // ✅ keep a sorted copy for token renders even if board isn't ready yet
+    latestPlayersArray = Array.from(fsPlayers.values()).sort((a,b)=>a.seatIndex-b.seatIndex);
+
+    renderPlayersPills(latestPlayersArray);
+    renderTokens();                 // safe: no-op until board exists, then we call again after load
     updateTurnIndicator();
     updateRollEnabled();
   });
@@ -253,7 +273,7 @@ async function resolveCard(){
     const me = meSnap.data();
 
     const card = pend.card || {};
-    const eff = String(card.effect||'');
+    the eff = String(card.effect||'');
     const [type, argRaw] = eff.split(':');
     const arg = Number(argRaw||0);
 
@@ -348,5 +368,6 @@ restartBtn.addEventListener('click', async ()=>{
 
 // ---------- Boot ----------
 await loadBoard();
+renderTokens(); // ✅ force a pass now that board exists
 roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
 toast('Ready', { kind:'info', ttl: 900 });
