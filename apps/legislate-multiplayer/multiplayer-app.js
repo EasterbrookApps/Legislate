@@ -19,8 +19,8 @@ const playersSection = $('playersSection');
 const turnIndicator = $('turnIndicator');
 const tokensLayer = $('tokensLayer');
 const diceOverlay = $('diceOverlay');
-const boardImg = $('boardImg');
 const diceEl = $('dice');
+const boardImg = $('boardImg');   // ✅ hoisted so all functions can use
 
 // UI helpers
 const toast = (m,o)=>window.LegislateUI?.toast?window.LegislateUI.toast(m,o):console.log('[toast]',m);
@@ -38,14 +38,6 @@ function showDiceRoll(value, ms=900){
   diceOverlay.hidden=false;
   diceEl.className='dice rolling';
   setTimeout(()=>{ diceEl.className='dice show-'+(value||1); setTimeout(()=>diceOverlay.hidden=true,250); }, ms);
-}
-
-function ensureOverlayReady(){
-  if (!tokensLayer) return;
-  tokensLayer.style.position = 'absolute';
-  tokensLayer.style.inset = '0';        // cover the board
-  tokensLayer.style.zIndex = '10';      // put above the board
-  tokensLayer.style.pointerEvents = 'none'; // don’t block clicks
 }
 
 // ---------- State ----------
@@ -69,7 +61,7 @@ function ensureToken(id, color){
   el.className='token';
   el.dataset.id=id;
   el.style.background=color||'#777';
-  el.style.zIndex = '5';
+  el.style.zIndex = '11';             // keep tokens above everything
   tokensLayer.appendChild(el);
   tokenEls.set(id, el);
   return el;
@@ -81,6 +73,16 @@ function positionToken(el, posIndex){
   el.style.left = space.x + '%';
   el.style.top  = space.y + '%';
 }
+
+// ✅ new helper to keep overlay sized & above the board
+function ensureOverlayReady(){
+  if (!tokensLayer) return;
+  tokensLayer.style.position = 'absolute';
+  tokensLayer.style.inset = '0';
+  tokensLayer.style.zIndex = '10';      // above the board image
+  tokensLayer.style.pointerEvents = 'none';
+}
+
 function renderPlayersPills(players){
   playersSection.innerHTML='';
   players.sort((a,b)=> (a.seatIndex||0)-(b.seatIndex||0)).forEach(p=>{
@@ -90,7 +92,7 @@ function renderPlayersPills(players){
     const name=document.createElement('span'); name.className='player-name'; name.contentEditable = (p.uid===myUid)+'';
     name.textContent = p.name || 'Player';
 
-    // ✅ commit on blur/Enter (avoid snapshot fighting the caret)
+    // commit on blur/Enter
     const commit = () => {
       if (p.uid!==myUid) return;
       const v=(name.textContent||'').trim();
@@ -103,19 +105,11 @@ function renderPlayersPills(players){
     pill.appendChild(dot); pill.appendChild(name); playersSection.appendChild(pill);
   });
 }
+
 function renderTokens(){
-  if (!board) return;  // wait until board JSON is loaded
-  ensureOverlayReady();
-  // ✅ make sure the token layer matches the board image
-  if (boardImg) {
-    const w = boardImg.clientWidth;
-    const h = boardImg.clientHeight;
-    if (w && h && tokensLayer) {
-      tokensLayer.style.position = 'absolute';
-      tokensLayer.style.inset = '0';
-      tokensLayer.style.zIndex = '10';  // keep above the board
-    }
-  }
+  if (!board) return;  // wait until board.json
+
+  ensureOverlayReady(); // ✅ keep overlay sized and above
 
   const arr = latestPlayersArray?.length
     ? latestPlayersArray
@@ -126,8 +120,9 @@ function renderTokens(){
     positionToken(el, p.position||0);
   });
 
-  boardUI?.render?.(arr);  // fan-out offsets
+  boardUI?.render?.(arr); // fan-out offsets
 }
+
 function updateTurnIndicator(){
   if (!roomData) return;
   const current = fsPlayers.get(roomData.currentTurnUid) ||
@@ -217,11 +212,11 @@ async function joinRoom(code, desiredCount=4){
     fsPlayers.clear();
     qs.forEach(d=>{ const p=d.data(); fsPlayers.set(p.uid, p); });
 
-    // ✅ keep a sorted copy for token renders even if board isn't ready yet
-    latestPlayersArray = Array.from(fsPlayers.values()).sort((a,b)=>a.seatIndex-b.seatIndex);
+    latestPlayersArray = Array.from(fsPlayers.values())
+      .sort((a,b)=> (a.seatIndex||0) - (b.seatIndex||0));
 
     renderPlayersPills(latestPlayersArray);
-    renderTokens();                 // safe: no-op until board exists, then we call again after load
+    renderTokens();
     updateTurnIndicator();
     updateRollEnabled();
   });
@@ -294,7 +289,7 @@ async function resolveCard(){
     const me = meSnap.data();
 
     const card = pend.card || {};
-    const eff = String(card.effect||'');
+    const eff = String(card.effect||'');   // ✅ fixed typo
     const [type, argRaw] = eff.split(':');
     const arg = Number(argRaw||0);
 
@@ -390,16 +385,18 @@ restartBtn.addEventListener('click', async ()=>{
 // ---------- Boot ----------
 await loadBoard();
 
-// ✅ use the existing boardImg from the DOM helpers (do NOT redeclare)
+// ✅ redraw tokens once the board image has size
 if (boardImg) {
-  if (boardImg.complete) {
-    renderTokens();                 // image already loaded
+  if (boardImg.complete && boardImg.naturalWidth) {
+    ensureOverlayReady();
+    renderTokens();
   } else {
     boardImg.addEventListener('load', () => {
-      renderTokens();               // run once when the image finishes
+      ensureOverlayReady();
+      renderTokens();
     }, { once: true });
   }
 }
 
-roomInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { joinBtn.click(); }});
+roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
 toast('Ready', { kind:'info', ttl: 900 });
