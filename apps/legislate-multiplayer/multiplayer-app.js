@@ -390,17 +390,16 @@ restartBtn.addEventListener('click', async ()=>{
 // ---------- Boot ----------
 await loadBoard();
 
-// ✅ make sure tokens get drawn once the board image has loaded
-const boardImg = $('boardImg');
+// ✅ use the existing boardImg from the DOM helpers (do NOT redeclare)
 if (boardImg) {
   if (boardImg.complete) {
-    renderTokens();                 // image is already loaded
+    renderTokens();                 // image already loaded
   } else {
     boardImg.addEventListener('load', () => {
-      renderTokens();               // run once when the picture finishes
+      renderTokens();               // run once when the image finishes
     }, { once: true });
   }
 }
 
-roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
+roomInput.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { joinBtn.click(); }});
 toast('Ready', { kind:'info', ttl: 900 });
