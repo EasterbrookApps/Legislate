@@ -273,7 +273,7 @@ async function resolveCard(){
     const me = meSnap.data();
 
     const card = pend.card || {};
-    the eff = String(card.effect||'');
+    const eff = String(card.effect||'');
     const [type, argRaw] = eff.split(':');
     const arg = Number(argRaw||0);
 
