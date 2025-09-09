@@ -84,7 +84,16 @@ function positionToken(el, posIndex){
   if(!space){ dlog('SPACE_NOT_FOUND', { index: posIndex }); return; }
   el.style.left = space.x + '%';
   el.style.top  = space.y + '%';
-  dlog('TOKEN_STYLE', { id: el.dataset.id, left: el.style.left, top: el.style.top });
+
+  // ✅ log computed dimensions
+  const cs = getComputedStyle(el);
+  dlog('TOKEN_STYLE', { 
+    id: el.dataset.id, 
+    left: el.style.left, 
+    top: el.style.top,
+    width: cs.width, 
+    height: cs.height 
+  });
 }
 
 // ✅ new helper to keep overlay sized & above the board
