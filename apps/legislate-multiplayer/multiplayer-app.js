@@ -69,10 +69,20 @@ const tokenEls = new Map();
 function ensureToken(id, color){
   if (tokenEls.has(id)) return tokenEls.get(id);
   const el = document.createElement('div');
-  el.className='token';
-  el.dataset.id=id;
-  el.style.background=color||'#777';
-  el.style.zIndex = '11';             // keep tokens above everything
+  el.className = 'token';
+  el.dataset.id = id;
+
+  // inline styles so tokens work even if the stylesheet doesn't load
+  el.style.position = 'absolute';                 // <-- crucial
+  el.style.width = '20px';
+  el.style.height = '20px';
+  el.style.borderRadius = '50%';
+  el.style.transform = 'translate(-50%, -50%)';   // center on left/top
+  el.style.boxShadow = '0 1px 2px rgba(0,0,0,.2)';
+  el.style.outline = '1px solid rgba(0,0,0,.08)';
+  el.style.background = color || '#777';
+  el.style.zIndex = '11';
+
   tokensLayer.appendChild(el);
   tokenEls.set(id, el);
   dlog('TOKEN_CREATE', { id, color });
