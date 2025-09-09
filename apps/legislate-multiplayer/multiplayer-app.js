@@ -8,6 +8,16 @@ const {
   collection, getDocs, serverTimestamp, runTransaction
 } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
 
+// ---------- always-on debug logger ----------
+function dlog(msg, extra){
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  try {
+    console.log(line, extra ?? "");
+    const el = document.getElementById("dbg-log");
+    if (el) el.textContent += line + (extra ? " " + JSON.stringify(extra) : "") + "\n";
+  } catch {}
+}
+
 // ---------- DOM helpers ----------
 const $ = (id)=>document.getElementById(id);
 const joinBtn = $('joinBtn');
@@ -32,6 +42,7 @@ async function loadBoard() {
   const url = "https://easterbrookapps.github.io/Legislate/apps/legislate-test/assets/packs/uk-parliament/board.json";
   board = await fetch(url).then(r=>r.json());
   boardUI = window.LegislateUI?.createBoardRenderer?.({ board });
+  dlog('BOARD_JSON_LOADED', { spaces: board?.spaces?.length });
 }
 function showDiceRoll(value, ms=900){
   if(!diceOverlay||!diceEl) return;
@@ -64,14 +75,16 @@ function ensureToken(id, color){
   el.style.zIndex = '11';             // keep tokens above everything
   tokensLayer.appendChild(el);
   tokenEls.set(id, el);
+  dlog('TOKEN_CREATE', { id, color });
   return el;
 }
 function positionToken(el, posIndex){
   if (!board) return; // ✅ guard until board ready
   const space = board.spaces.find(s=>s.index===posIndex);
-  if(!space) return;
+  if(!space){ dlog('SPACE_NOT_FOUND', { index: posIndex }); return; }
   el.style.left = space.x + '%';
   el.style.top  = space.y + '%';
+  dlog('TOKEN_STYLE', { id: el.dataset.id, left: el.style.left, top: el.style.top });
 }
 
 // ✅ new helper to keep overlay sized & above the board
@@ -81,6 +94,10 @@ function ensureOverlayReady(){
   tokensLayer.style.inset = '0';
   tokensLayer.style.zIndex = '10';      // above the board image
   tokensLayer.style.pointerEvents = 'none';
+  dlog('OVERLAY_READY', {
+    z: getComputedStyle(tokensLayer).zIndex,
+    pos: getComputedStyle(tokensLayer).position
+  });
 }
 
 function renderPlayersPills(players){
@@ -97,17 +114,20 @@ function renderPlayersPills(players){
       if (p.uid!==myUid) return;
       const v=(name.textContent||'').trim();
       if (!v || v === p.name) return;
-      updateDoc(doc(db,'rooms',roomCode,'players',myUid),{ name:v, updatedAt: serverTimestamp() }).catch(()=>{});
+      updateDoc(doc(db,'rooms',roomCode,'players',myUid),{ name:v, updatedAt: serverTimestamp() })
+        .then(()=> dlog('NAME_COMMIT_OK', { uid: myUid, name: v }))
+        .catch((e)=> dlog('NAME_COMMIT_ERR', { msg: e?.message }));
     };
     name.addEventListener('blur', commit);
     name.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); name.blur(); } });
 
     pill.appendChild(dot); pill.appendChild(name); playersSection.appendChild(pill);
   });
+  dlog('PILLS_RENDERED', { count: players.length });
 }
 
 function renderTokens(){
-  if (!board) return;  // wait until board.json
+  if (!board) { dlog('RENDER_TOKENS:board_not_ready'); return; }  // wait until board.json
 
   ensureOverlayReady(); // ✅ keep overlay sized and above
 
@@ -115,12 +135,19 @@ function renderTokens(){
     ? latestPlayersArray
     : Array.from(fsPlayers.values());
 
+  dlog('RENDER_TOKENS:start', {
+    players: arr.length,
+    imgReady: !!(boardImg?.complete && boardImg?.naturalWidth)
+  });
+
   arr.forEach(p=>{
     const el = ensureToken(p.uid, p.color);
+    dlog('TOKEN_POS', { uid: p.uid, pos: p.position });
     positionToken(el, p.position||0);
   });
 
   boardUI?.render?.(arr); // fan-out offsets
+  dlog('RENDER_TOKENS:done');
 }
 
 function updateTurnIndicator(){
@@ -153,6 +180,7 @@ async function ensureRoomHasDecksAndEndIndex(){
   const endIndex = (board.spaces.slice().reverse().find(s=>s.stage==='end') || board.spaces.at(-1)).index;
 
   await updateDoc(roomRef, { decks: { commons, early, lords, pingpong, implementation }, endIndex });
+  dlog('DECKS_LOADED', { keys: Object.keys({ commons, early, lords, pingpong, implementation }).length, endIndex });
 }
 function spaceFor(i){ return board.spaces.find(s=>s.index===i) || null; }
 
@@ -160,6 +188,7 @@ function spaceFor(i){ return board.spaces.find(s=>s.index===i) || null; }
 async function joinRoom(code, desiredCount=4){
   roomCode = (code||'').trim().toUpperCase();
   if (!roomCode) return;
+  dlog('JOIN_ROOM', { code: roomCode, desiredCount });
   roomRef = doc(db,'rooms',roomCode);
 
   const roomSnap = await getDoc(roomRef);
@@ -175,6 +204,7 @@ async function joinRoom(code, desiredCount=4){
       pendingCard: null,
       ended: false
     });
+    dlog('ROOM_CREATED', { room: roomCode });
   }
 
   const playersCol = collection(roomRef,'players');
@@ -195,6 +225,7 @@ async function joinRoom(code, desiredCount=4){
     present: true,
     updatedAt: serverTimestamp()
   },{ merge:true });
+  dlog('PLAYER_UPSERTED', { uid: myUid, seatIndex });
 
   window.addEventListener('beforeunload', ()=> {
     try { updateDoc(myRef,{ present:false, updatedAt:serverTimestamp() }); } catch {}
@@ -204,9 +235,14 @@ async function joinRoom(code, desiredCount=4){
 
   unsubRoom = onSnapshot(roomRef, (snap)=>{
     roomData = snap.data();
+    dlog('ROOM_SNAPSHOT', {
+      ok: !!roomData, turnIndex: roomData?.turnIndex,
+      currentTurnUid: roomData?.currentTurnUid, ended: roomData?.ended,
+      pending: !!roomData?.pendingCard
+    });
     updateTurnIndicator();
     updateRollEnabled();
-  });
+  }, (err)=> dlog('ROOM_SNAPSHOT_ERR', { msg: err?.message }));
 
   unsubPlayers = onSnapshot(collection(roomRef,'players'), (qs)=>{
     fsPlayers.clear();
@@ -215,11 +251,17 @@ async function joinRoom(code, desiredCount=4){
     latestPlayersArray = Array.from(fsPlayers.values())
       .sort((a,b)=> (a.seatIndex||0) - (b.seatIndex||0));
 
+    dlog('PLAYERS_SNAPSHOT', {
+      count: latestPlayersArray.length,
+      uids: latestPlayersArray.map(p=>p.uid),
+      positions: latestPlayersArray.map(p=>({ uid:p.uid, pos:p.position }))
+    });
+
     renderPlayersPills(latestPlayersArray);
     renderTokens();
     updateTurnIndicator();
     updateRollEnabled();
-  });
+  }, (err)=> dlog('PLAYERS_SNAPSHOT_ERR', { msg: err?.message }));
 
   await ensureRoomHasDecksAndEndIndex();
   watchPendingCard();
@@ -230,6 +272,7 @@ async function joinRoom(code, desiredCount=4){
 function rng(){ return Math.floor(1 + Math.random()*6); }
 
 async function actRoll(){
+  dlog('ROLL_CLICK');
   await runTransaction(db, async (tx)=>{
     const rs = await tx.get(roomRef);
     if (!rs.exists()) throw new Error('room not found');
@@ -246,12 +289,14 @@ async function actRoll(){
     let position = me.position + roll;
     if (position < 0) position = 0;
     if (position > R.endIndex) position = R.endIndex;
+    dlog('ROLL_COMPUTE', { roll, to: position });
 
     tx.update(roomRef, { lastRoll: roll, updatedAt: serverTimestamp() });
     tx.update(meRef, { position, updatedAt: serverTimestamp() });
 
     if (position === R.endIndex){
       tx.update(roomRef, { ended: true, updatedAt: serverTimestamp() });
+      dlog('ENDGAME_BY_MOVE', { uid: myUid });
       return;
     }
 
@@ -272,6 +317,7 @@ async function actRoll(){
     const idx = order.indexOf(myUid);
     const nextUid = order[(idx+1)%order.length];
     tx.update(roomRef, { currentTurnUid: nextUid, turnIndex: ((R.turnIndex||0)+1)%order.length, updatedAt: serverTimestamp() });
+    dlog('TURN_ADVANCE', { nextUid, turnIndex: ((R.turnIndex||0)+1)%order.length });
   });
   showDiceRoll((roomData && roomData.lastRoll) || 1, 900);
 }
@@ -292,6 +338,7 @@ async function resolveCard(){
     const eff = String(card.effect||'');   // ✅ fixed typo
     const [type, argRaw] = eff.split(':');
     const arg = Number(argRaw||0);
+    dlog('CARD_EFFECT', { effect: eff, type, arg });
 
     let position = me.position;
     let skip = me.skip || 0;
@@ -309,6 +356,7 @@ async function resolveCard(){
 
     if (position === R.endIndex){
       tx.update(roomRef, { pendingCard: null, ended: true, updatedAt: serverTimestamp() });
+      dlog('ENDGAME_BY_CARD', { uid: myUid });
       return;
     }
 
@@ -341,6 +389,7 @@ async function resolveCard(){
       updatedAt: serverTimestamp()
     });
     if (extraRoll){ tx.update(meRef, { extraRoll: false, updatedAt: serverTimestamp() }); }
+    dlog('TURN_ADVANCE_AFTER_CARD', { nextUid, turnIndex, extraRoll });
   });
 }
 
@@ -352,16 +401,20 @@ function watchPendingCard(){
     updateTurnIndicator(); updateRollEnabled();
     if (R.pendingCard && modal){
       const { deck, card } = R.pendingCard;
+      dlog('MODAL_OPEN', { deck, title: card?.title });
       modal.open({
         title: card?.title || deck,
         body: `<p>${(card?.text||'').trim()}</p>`
-      }).then(()=> resolveCard().catch(e=>toast(e.message||'Resolve failed',{kind:'error'})));
+      }).then(()=>{
+        dlog('MODAL_OK_RESOLVE');
+        resolveCard().catch(e=>toast(e.message||'Resolve failed',{kind:'error'}));
+      });
     }
     if (R.ended){
       const winner = Array.from(fsPlayers.values()).find(p=>p.position===R.endIndex);
       if (winner) toast(`${winner.name} reached the end!`, { kind:'success', ttl:2600 });
     }
-  });
+  }, (err)=> dlog('ROOM_LISTENER_ERR', { msg: err?.message }));
 }
 
 // ---------- UI wiring ----------
@@ -380,18 +433,21 @@ restartBtn.addEventListener('click', async ()=>{
   }).catch(e=> toast(e.message||'Reset denied',{kind:'error'}));
   const ps = await getDocs(collection(roomRef,'players'));
   await Promise.all(ps.docs.map(d=> updateDoc(d.ref,{ position:0, skip:0, extraRoll:false, updatedAt: serverTimestamp() }).catch(()=>{})));
+  dlog('ROOM_RESET');
 });
 
 // ---------- Boot ----------
 await loadBoard();
-
-// ✅ redraw tokens once the board image has size
+dlog('BOOT: loadBoard() done');
 if (boardImg) {
+  dlog('BOARD_IMG_STATUS', { complete: !!boardImg.complete, nw: boardImg.naturalWidth||0 });
+  // ✅ redraw tokens once the board image has size
   if (boardImg.complete && boardImg.naturalWidth) {
     ensureOverlayReady();
     renderTokens();
   } else {
     boardImg.addEventListener('load', () => {
+      dlog('BOARD_IMG_READY: load event');
       ensureOverlayReady();
       renderTokens();
     }, { once: true });
@@ -400,3 +456,4 @@ if (boardImg) {
 
 roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
 toast('Ready', { kind:'info', ttl: 900 });
+dlog('BOOT_OK');
