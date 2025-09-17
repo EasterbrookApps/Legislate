@@ -11,12 +11,30 @@
   let lastRollSeqSeen = -1;
   let seenFirstState = false;
 
-  // Debug helper
+  // --- Debug helpers ---
+  function snapshotForLog(st){
+    if (!st) return st;
+    return {
+      turnIndex: st.turnIndex,
+      currentTurnUid: st.currentTurnUid,
+      lastRoll: st.lastRoll,
+      overlayRoll: st.overlayRoll || null,
+      overlayCard: st.overlayCard
+        ? { id: st.overlayCard.id || null, title: st.overlayCard.title || '', text: String(st.overlayCard.text||'').slice(0,140) }
+        : null,
+      players: Array.isArray(st.players) ? st.players.map(p => p && p.name) : []
+    };
+  }
+
   function mpLog(label, data){
     const pretty = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
     console.log("MP:", label, data);
     const dbg = document.getElementById("dbg-log");
     if (dbg) {
+      // Keep last ~20k chars to avoid huge DOM
+      if (dbg.textContent.length > 30000) {
+        dbg.textContent = dbg.textContent.slice(-20000);
+      }
       dbg.textContent += `\nMP: ${label}\n${pretty}\n`;
       dbg.scrollTop = dbg.scrollHeight;
     }
@@ -139,9 +157,7 @@
 
     updateRollEnabled(state);
 
-    // Everyone (host + guests) sees overlay dice + card
     maybeShowDice(state);
-
     seenFirstState = true;
   }
 
@@ -258,7 +274,7 @@
     let restartBtn = replaceWithClone($('restartBtn'));
 
     T.onState((st)=> {
-      mpLog("State sync", st);
+      mpLog("State sync", snapshotForLog(st));
       renderFromState(engine, st);
     });
 
