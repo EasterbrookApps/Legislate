@@ -5,17 +5,19 @@
 
   function deepClone(obj){ return JSON.parse(JSON.stringify(obj)); }
 
-  // Local UX caches
-  let lastRollSeen = null;
-  let lastCardKey  = null;
+  // --- UX caches / flags ---
   let myUid = null;
+  let lastCardKey = null;
 
-  // Roll button control (only enable on my turn)
+  // dice: animate when seq changes; ignore first state to prevent join-flash
+  let lastRollSeqSeen = -1;
+  let seenFirstState = false;
+
+  // Roll button gated by whose turn it is
   let rollBtnRef = null;
   function updateRollEnabled(state){
     if (!rollBtnRef) return;
     const curr = state && state.currentTurnUid;
-    // Enabled only if we know whose turn it is AND it's mine
     rollBtnRef.disabled = !(curr && myUid && curr === myUid);
   }
 
@@ -25,47 +27,51 @@
     const root = $('playersSection');
     if (!root) return;
 
-    const pills = Array.from(root.querySelectorAll('.player-pill'));
-    // If there are no pills yet (very early), do nothing; the app will render once.
+    // Expect pills like: <button class="player-pill"><span class="player-name">...</span></button>
+    const pills = Array.from(root.querySelectorAll('.player-pill, button, [data-player-pill]'));
     if (!pills.length) return;
 
     for (let i = 0; i < pills.length; i++) {
       const pill = pills[i];
-      const nameSpan = pill.querySelector('.player-name');
+      const nameSpan = pill.querySelector('.player-name, [data-name]');
 
       if (i < players.length) {
-        // Show & rename
         pill.style.display = '';
         if (nameSpan) {
           nameSpan.textContent = players[i]?.name || `Player ${i+1}`;
-          nameSpan.setAttribute('contenteditable', 'false');
+          nameSpan.setAttribute('contenteditable','false');
           nameSpan.title = 'Names are set in the lobby';
         }
-        // Make the whole pill read-only
         pill.style.pointerEvents = 'none';
         pill.tabIndex = -1;
       } else {
-        // Hide extra pills
         pill.style.display = 'none';
       }
     }
   }
 
-  // Dice for everyone
+  // Dice for everyone: animate when overlayRoll.seq changes
   function maybeShowDice(state){
-    const n = state && state.lastRoll;
-    if (n && n !== lastRollSeen) {
-      lastRollSeen = n;
-      if (window.LegislateUI?.animateDie) {
-        window.LegislateUI.animateDie(n, 900);
-      }
+    const r = state && state.overlayRoll;
+    if (!r || typeof r.seq !== 'number' || typeof r.value !== 'number') return;
+
+    if (!seenFirstState) {
+      // don’t animate the very first state we see (avoids flash on join)
+      lastRollSeqSeen = r.seq;
+      return;
+    }
+    if (r.seq === lastRollSeqSeen) return;
+
+    lastRollSeqSeen = r.seq;
+    if (window.LegislateUI?.animateDie) {
+      window.LegislateUI.animateDie(r.value, 900);
     }
   }
 
-  // Card modal for everyone; only current-turn player can dismiss
+  // Card modal: only current-turn player may dismiss
   let sharedModal = null;
   function maybeShowCard(state){
-    const oc = state && state.overlayCard; // we publish this from host
+    const oc = state && state.overlayCard;
     const key = oc ? (oc.id || oc.title || JSON.stringify(oc)).slice(0,100) : null;
 
     if (!oc) { lastCardKey = null; return; }
@@ -100,35 +106,37 @@
     engine.state.turnIndex  = (state.turnIndex ?? engine.state.turnIndex);
     engine.state.lastRoll   = (state.lastRoll ?? engine.state.lastRoll);
 
-    // Keep pills in sync with the authoritative state
     syncPlayersUI(engine, state);
 
-    // Turn UI + tokens
     const idx = engine.state.turnIndex || 0;
     engine.bus.emit('TURN_BEGIN', { index: idx, playerId: engine.state.players[idx]?.id });
 
     updateRollEnabled(state);
     maybeShowDice(state);
     maybeShowCard(state);
+
+    seenFirstState = true;
   }
 
-  // Host: attach mapping of seat -> uid and compute currentTurnUid
-  function computeOutState(engine, mapping, overlayCard){
+  // Host: attach seat→uid, currentTurnUid, overlayCard, overlayRoll
+  function computeOutState(engine, mapping, overlayCard, overlayRoll){
     const out = deepClone(engine.state);
     const turnIdx = out.turnIndex || 0;
     out.overlaySeatUids = mapping.overlaySeatUids || [];
     out.currentTurnUid  = out.overlaySeatUids[turnIdx] || null;
     out.overlayCard     = overlayCard || null;
+    out.overlayRoll     = overlayRoll || null; // {seq, value}
     return out;
   }
 
   async function hostLoop(engine){
     // seatIndex -> uid
     const map = { overlaySeatUids: [] };
+
     const hostUid = T.auth?.currentUser?.uid || null;
     if (hostUid) map.overlaySeatUids[0] = hostUid;
 
-    // Broadcast cards to all clients by listening to single-player events
+    // Broadcast cards via overlayCard
     let overlayCard = null;
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
       if (card) {
@@ -136,23 +144,33 @@
       } else {
         overlayCard = { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
       }
-      T.writeState(computeOutState(engine, map, overlayCard));
+      T.writeState(computeOutState(engine, map, overlayCard, lastOverlayRoll));
     });
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
-      T.writeState(computeOutState(engine, map, overlayCard));
+      T.writeState(computeOutState(engine, map, overlayCard, lastOverlayRoll));
     });
+
+    // Broadcast dice via overlayRoll.seq
+    let rollSeq = 0;
+    let lastOverlayRoll = null;
 
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
         await engine.takeTurn();
+        // After engine updated lastRoll, publish overlayRoll with incremented seq
+        rollSeq += 1;
+        lastOverlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
+        // reset roll sequence + clear overlays
+        rollSeq = 0;
+        lastOverlayRoll = null;
+        overlayCard = null;
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
-        // Place into first "Player N" slot; record uid mapping
         let seat = engine.state.players.findIndex(p => /^Player \d+$/i.test(p.name||''));
         if (seat === -1) seat = engine.state.players.findIndex(p => (p.name||'').toLowerCase() === wanted.toLowerCase());
         if (seat >= 0) {
@@ -164,11 +182,13 @@
         if (typeof engine.ackCard === 'function') engine.ackCard();
       }
 
-      await T.writeState(computeOutState(engine, map, overlayCard));
+      await T.writeState(computeOutState(engine, map, overlayCard, lastOverlayRoll));
     };
 
     // Initial publish
-    await T.writeState(computeOutState(engine, map, overlayCard));
+    await T.writeState(computeOutState(engine, map, overlayCard, lastOverlayRoll));
+
+    // Process events
     return T.onEvents(apply);
   }
 
@@ -178,7 +198,7 @@
 
     myUid = T.auth?.currentUser?.uid || null;
 
-    // Wait for engine (poll ~5s)
+    // Wait for engine (poll up to ~5s)
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = window.LegislateApp && window.LegislateApp.engine;
@@ -192,34 +212,26 @@
     const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
 
     // MP UI rules
-    const pc = $('playerCount');
-    if (pc) pc.style.display = 'none'; // count set in lobby
+    const pc = $('playerCount'); if (pc) pc.style.display = 'none';
 
-    // Keep players container visible but read-only
     const playersSection = $('playersSection');
     if (playersSection) {
       playersSection.addEventListener('beforeinput', e=>e.preventDefault(), true);
       playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
     }
 
-    // Kill SP handlers; rebind
-    function replaceWithClone(el){
-      if (!el) return el;
-      const c = el.cloneNode(true);
-      el.parentNode.replaceChild(c, el);
-      return c;
-    }
+    // Remove SP handlers; rebind for overlay
+    function replaceWithClone(el){ if (!el) return el; const c=el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    // Everyone mirrors authoritative state (and we sync pills every time)
+    // Everyone mirrors authoritative state
     T.onState((st)=> renderFromState(engine, st));
 
     if (T.mode === 'host') {
-      // === Apply lobby choices and trigger the real SP 'change' logic so tokens & pills rebuild ===
+      // Apply lobby selections (drive SP UI by firing change on the select)
       if (pc && hostCount) {
         pc.value = String(hostCount);
-        // This fires app.js' change handler: it calls engine.setPlayerCount, clears tokens, rebuilds pills.
         pc.dispatchEvent(new Event('change', { bubbles: true }));
       } else if (hostCount && typeof engine.setPlayerCount === 'function') {
         engine.setPlayerCount(hostCount);
@@ -228,29 +240,28 @@
         engine.state.players[0].name = myName;
       }
 
-      // Immediately align the current DOM pills to state (hide extras, set names, lock editing)
+      // Align pills immediately
       syncPlayersUI(engine, { players: engine.state.players });
 
-      // Host can roll only on *their* turn (also gated by updateRollEnabled) and can restart
+      // Host can restart; rolling still gated by currentTurnUid (same as guests)
       rollBtnRef?.addEventListener('click', (e)=>{
         e.preventDefault();
         if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
       });
       restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); T.sendEvent({ type: 'RESTART' }); });
 
-      // Start processing events & broadcasting card info/turn owner
+      // Start processing events / broadcasting overlays
       hostLoop(engine);
 
     } else {
-      // Guest announces their name once
+      // Guest announces name once
       if (myName) T.sendEvent({ type: 'SET_NAME', name: myName });
 
-      // Guests can only roll on their own turn
+      // Guests can only roll on their turn
       rollBtnRef?.addEventListener('click', (e)=>{
         e.preventDefault();
         if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
       });
-      // Guests cannot restart
       restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); /* no-op */ });
     }
   }
