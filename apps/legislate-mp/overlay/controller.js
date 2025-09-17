@@ -52,7 +52,7 @@
       if (i < players.length) {
         pill.style.display = '';
         if (nameSpan) {
-          nameSpan.textContent = players[i]?.name || `Player ${i+1}`;
+          nameSpan.textContent = players[i] && players[i].name ? players[i].name : `Player ${i+1}`;
           nameSpan.setAttribute('contenteditable','false');
           nameSpan.title = 'Names are set in the lobby';
         }
@@ -127,19 +127,19 @@
   function renderFromState(engine, state){
     if (!state) return;
     engine.state.players    = state.players  || engine.state.players;
-    engine.state.turnIndex  = (state.turnIndex ?? engine.state.turnIndex);
-    engine.state.lastRoll   = (state.lastRoll ?? engine.state.lastRoll);
+    engine.state.turnIndex  = (state.turnIndex !== undefined ? state.turnIndex : engine.state.turnIndex);
+    engine.state.lastRoll   = (state.lastRoll !== undefined ? state.lastRoll : engine.state.lastRoll);
 
     syncPlayersUI(engine, state);
 
     const idx = engine.state.turnIndex || 0;
-    engine.bus.emit('TURN_BEGIN', { index: idx, playerId: engine.state.players[idx]?.id });
+    engine.bus.emit('TURN_BEGIN', { index: idx, playerId: (engine.state.players[idx] && engine.state.players[idx].id) });
 
     updateRollEnabled(state);
     maybeShowDice(state);
     maybeShowCard(state);
 
-    // HUD update
+    // HUD update (small overlay box)
     try {
       const hudBox = document.getElementById('mp-hud');
       if (hudBox && state) {
@@ -210,20 +210,16 @@
     if (!window.LegislateUI || typeof window.LegislateUI.createModal !== 'function') return;
     const origCreate = window.LegislateUI.createModal;
     window.LegislateUI.createModal = function(){
-      origCreate && origCreate(); // keep engine happy
+      origCreate && origCreate(); // keep engine expectations
       return {
         open(opts){
-          // Build plain-text payload
           const title = String((opts && opts.title) || 'Card');
           const bodyHtml = (opts && opts.body) || '';
           const tmp = document.createElement('div'); tmp.innerHTML = bodyHtml;
           const text = (tmp.textContent || tmp.innerText || '').trim();
           const payload = { id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`, title, text };
           mpDbg('HOST_INTERCEPT_MODAL', payload);
-
-          if (typeof queueFn === 'function') queueFn(payload); // hand to host loop
-
-          // Return a promise that resolves only when ACK arrives
+          if (typeof queueFn === 'function') queueFn(payload);
           return new Promise((resolve)=> { if (typeof setResolverFn === 'function') setResolverFn(resolve); });
         }
       };
@@ -247,7 +243,6 @@
 
     let overlayCard = null;
     let overlayRoll = null;
-    let rollSeq = 0;
 
     // Queue card on draw (do NOT write yet; we write after dice wobble)
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
@@ -256,32 +251,12 @@
       mpDbg('HOST_CARD_QUEUED', queuedCard);
     });
 
-    // We do NOT clear overlayCard on CARD_RESOLVE; we clear on ACK (below)
+    // Do not clear on CARD_RESOLVE; we clear on ACK
     engine.bus.on('CARD_RESOLVE', ()=>{ mpDbg('HOST_CARD_RESOLVE_EVENT', {}); });
 
     const apply = async (ev) => {
-      if (ev.type === 'ROLL') {
-        await engine.takeTurn();
-
-        // 1) Publish dice immediately
-        rollSeq += 1;
-        overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
-        mpDbg('HOST_WRITE_DICE_NOW', overlayRoll);
-        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-
-        // 2) Publish card after dice wobble
-        if (queuedCard) {
-          mpDbg('HOST_SCHEDULE_CARD_PUBLISH', { delayMs: 2100, queuedCard });
-          setTimeout(async () => {
-            overlayCard = queuedCard;
-            mpDbg('HOST_WRITE_CARD_NOW', overlayCard);
-            await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-          }, 2100);
-        }
-
-      } else if (ev.type === 'RESTART') {
+      if (ev.type === 'RESTART') {
         engine.reset();
-        rollSeq = 0;
         overlayRoll = null;
         overlayCard = null;
         queuedCard = null;
@@ -301,15 +276,12 @@
 
       } else if (ev.type === 'ACK_CARD') {
         mpDbg('HOST_ACK_CARD_RCVD', { by: ev.by || null });
-        // Only active player is allowed to ACK
         const currUid = map.overlaySeatUids[engine.state.turnIndex] || null;
         if (!currUid || !ev.by || ev.by !== currUid) {
           mpDbg('HOST_ACK_IGNORED_NOT_TURN', { currUid, by: ev.by || null });
         } else {
-          // Resolve the host's intercepted modal promise, then advance engine
           if (typeof resolveCardPromise === 'function') { resolveCardPromise(true); resolveCardPromise = null; }
           if (typeof engine.ackCard === 'function') engine.ackCard();
-          // Clear the shared overlay card and queue
           overlayCard = null; queuedCard = null;
           await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         }
@@ -340,7 +312,7 @@
     }
     if (!engine) { console.warn('Engine not detected; overlay inactive.'); mpDbg('BOOT_FAIL', { message: 'Engine not detected' }); return; }
 
-    // Diagnostics HUD
+    // Diagnostics HUD box (top-left)
     try {
       let hud = document.getElementById('mp-hud');
       if (!hud) {
@@ -374,7 +346,7 @@
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    // State mirror → engine + UI
+    // Mirror authoritative state into engine + UI
     T.onState((st)=> { renderFromState(engine, st); });
 
     if (T.mode === 'host') {
@@ -382,6 +354,49 @@
       const setQueued = (p)=>{ queuedCard = p; };
       const setResolver = (fn)=>{ resolveCardPromise = fn; };
       installHostModalInterceptor(setQueued, setResolver);
+
+      // Force ALL rolls to go through MP broadcaster regardless of how SP triggers them
+      (function(){
+        if (!engine || engine._mpWrapped) return;
+        const spTakeTurn = engine.takeTurn.bind(engine);  // original SP method
+        let rollSeq = 0; // per-host-tab counter
+
+        engine.takeTurn = async function(){
+          // Run original logic (moves pieces, sets lastRoll, emits CARD_DRAWN)
+          await spTakeTurn();
+
+          // 1) Broadcast dice immediately
+          rollSeq += 1;
+          const overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
+          mpDbg('HOST_WRITE_DICE_NOW', overlayRoll);
+
+          const buildOut = (extra) => {
+            const out = JSON.parse(JSON.stringify(engine.state));
+            const turnIdx = out.turnIndex || 0;
+            out.overlaySeatUids = out.overlaySeatUids || [];    // maintained by overlay
+            out.currentTurnUid  = (out.overlaySeatUids && out.overlaySeatUids[turnIdx]) || null;
+            return Object.assign(out, extra || {});
+          };
+
+          await T.writeState(buildOut({ overlayRoll }));
+
+          // 2) After dice wobble, publish card if queued via modal interceptor
+          if (queuedCard) {
+            const toPublish = queuedCard; // snapshot
+            mpDbg('HOST_SCHEDULE_CARD_PUBLISH', { delayMs: 2100, queuedCard: toPublish });
+            setTimeout(async ()=>{
+              if (!queuedCard) return; // cleared already
+              mpDbg('HOST_WRITE_CARD_NOW', toPublish);
+              await T.writeState(buildOut({
+                overlayRoll: { seq: rollSeq, value: Number(engine.state.lastRoll || 0) },
+                overlayCard: toPublish
+              }));
+            }, 2100);
+          }
+        };
+
+        engine._mpWrapped = true;
+      })();
 
       // Apply lobby values
       if (pc && hostCount) { pc.value = String(hostCount); pc.dispatchEvent(new Event('change', { bubbles: true })); }
@@ -393,6 +408,7 @@
       rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{ e.preventDefault(); if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' }); });
       restartBtn && restartBtn.addEventListener('click', (e)=>{ e.preventDefault(); T.sendEvent({ type: 'RESTART' }); });
 
+      // Start authoritative loop (names, restart, ACK processing)
       hostLoop(engine);
 
     } else {
