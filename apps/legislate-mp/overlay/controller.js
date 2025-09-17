@@ -21,6 +21,46 @@
     rollBtnRef.disabled = !!curr && myUid && curr !== myUid;
   }
 
+  // --- Players UI sync (hide/show/rename/lock pills) ---
+  function syncPlayersUI(engine, state){
+    const players = (state && state.players) || engine.state.players || [];
+    const turnIdx = (state && state.turnIndex != null) ? state.turnIndex : (engine.state.turnIndex || 0);
+
+    const section = $('playersSection');
+    if (!section) return;
+
+    // Try to find pill-like elements inside the section
+    const pills = Array.from(section.querySelectorAll('button, .pill, [data-player-pill]'));
+    if (!pills.length) return;
+
+    // Ensure there are at least as many pill nodes as the DOM has (we won't create new ones here;
+    // we just hide extras if there are too many).
+    for (let i = 0; i < pills.length; i++) {
+      const pill = pills[i];
+
+      // Read-only: prevent clicks/edits
+      pill.style.pointerEvents = 'none';
+      pill.tabIndex = -1;
+
+      if (i < players.length) {
+        // Show and rename
+        const name = players[i]?.name || `Player ${i+1}`;
+        // If the pill has a label span, prefer that; otherwise overwrite text
+        const label = pill.querySelector('[data-name], .pill__label, .label');
+        if (label) label.textContent = name;
+        else pill.textContent = name;
+
+        pill.style.display = '';
+        // Toggle active style if your CSS supports it
+        pill.classList.toggle('is-active', i === turnIdx);
+      } else {
+        // Hide extra pills past player count
+        pill.style.display = 'none';
+        pill.classList.remove('is-active');
+      }
+    }
+  }
+
   // Dice for everyone
   function maybeShowDice(state){
     const n = state && state.lastRoll;
@@ -70,6 +110,10 @@
     engine.state.turnIndex  = (state.turnIndex ?? engine.state.turnIndex);
     engine.state.lastRoll   = (state.lastRoll ?? engine.state.lastRoll);
 
+    // Force the players container to reflect latest state (names, count, active)
+    syncPlayersUI(engine, state);
+
+    // Refresh other UI (turn banner, etc.)
     const idx = engine.state.turnIndex || 0;
     engine.bus.emit('TURN_BEGIN', { index: idx, playerId: engine.state.players[idx]?.id });
 
@@ -175,7 +219,7 @@
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    // Everyone mirrors authoritative state
+    // Everyone mirrors authoritative state (this also calls syncPlayersUI each time)
     T.onState((st)=> renderFromState(engine, st));
 
     if (T.mode === 'host') {
@@ -187,8 +231,8 @@
         engine.state.players[0].name = myName;
       }
 
-      // 🔧 Force UI refresh so players container shows correct count & names
-      // (fixes: "selected 2 but saw 4", and host name not shown in list)
+      // 🔧 Force immediate refresh so the pills show the right count & names
+      syncPlayersUI(engine, { players: engine.state.players, turnIndex: engine.state.turnIndex });
       engine.bus.emit('PLAYERS_CHANGED', { players: engine.state.players });
 
       // Host can only roll on *their* turn (button also gated by updateRollEnabled)
