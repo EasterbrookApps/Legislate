@@ -8,15 +8,13 @@
   <style>
     .lobby { max-width: 720px; margin: 4rem auto; padding: 2rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 18px rgba(0,0,0,.06); }
     .lobby h1 { margin-top: 0; }
-    .row { display: flex; gap: 1rem; align-items: center; }
-    .row + .row { margin-top: 1rem; }
+    .row { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
     .grow { flex: 1; }
     .button { padding: .8rem 1.2rem; border: 0; border-radius: 8px; background: #1d70b8; color: #fff; cursor: pointer; font-size: 1rem; }
     .button--secondary { background: #6f72af; }
     .input { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%; }
-    .note { color: #555; font-size: .95rem; }
-    .brand { font-weight: 700; letter-spacing: .4px; }
-    .error { color: #d4351c; min-height: 1.2em; margin-top: .3rem; }
+    .error { color: #d4351c; min-height: 1.2em; }
+    .brand { font-weight: 700; letter-spacing: .4px; margin-bottom: 1rem; }
   </style>
 </head>
 <body>
@@ -24,49 +22,56 @@
     <div class="brand">Legislate?!</div>
     <h1>Lobby</h1>
 
+    <!-- Host creates room -->
     <div class="row">
+      <input id="hostName" class="input grow" placeholder="Your name (host)" maxlength="24" aria-label="Host name">
+      <select id="hostCount" class="input" aria-label="Number of players">
+        <option value="2">2 players</option>
+        <option value="3">3 players</option>
+        <option value="4" selected>4 players</option>
+        <option value="5">5 players</option>
+        <option value="6">6 players</option>
+      </select>
       <button id="createBtn" class="button">Create Room</button>
-      <div class="note">You’ll be the host.</div>
     </div>
 
+    <!-- Guests join -->
     <div class="row">
-      <input id="roomInput" class="input grow" placeholder="Enter room code (e.g. ABCD)" maxlength="8" aria-label="Room code">
+      <input id="guestName" class="input grow" placeholder="Your name" maxlength="24" aria-label="Guest name">
+      <input id="roomInput" class="input" style="width:10rem" placeholder="Room code" maxlength="8" aria-label="Room code">
       <button id="joinBtn" class="button button--secondary">Join Room</button>
     </div>
     <div id="err" class="error"></div>
-
-    <p class="note" style="margin-top:1rem">
-      Tip: Share the room code with others. The host should open the room first.
-    </p>
   </div>
 
   <script>
-    function code4() {
-      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/1/0
-      let out = ''; for (let i=0;i<4;i++) out += alphabet[Math.floor(Math.random()*alphabet.length)];
-      return out;
+    function code4(){
+      const A='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let s=''; for(let i=0;i<4;i++) s+=A[Math.floor(Math.random()*A.length)];
+      return s;
     }
-    function setRoomAndGo(room, host) {
+    function go(room, host, name, count){
       sessionStorage.setItem('MP_ROOM', room.toUpperCase());
       sessionStorage.setItem('MP_HOST', host ? '1' : '0');
-      // Navigate to the multiplayer page (no query params needed)
+      if (name)  sessionStorage.setItem('MP_NAME', name.trim());
+      if (host && count) sessionStorage.setItem('MP_PLAYER_COUNT', String(count));
       window.location.href = './mp.html';
     }
-    document.getElementById('createBtn').addEventListener('click', () => {
-      const room = code4();
-      setRoomAndGo(room, true);
+
+    document.getElementById('createBtn').addEventListener('click', ()=>{
+      const name  = (document.getElementById('hostName').value || 'Host').trim();
+      const count = Number(document.getElementById('hostCount').value) || 4;
+      const room  = code4();
+      go(room, true, name, count);
     });
-    document.getElementById('joinBtn').addEventListener('click', () => {
-      const el = document.getElementById('roomInput');
-      const err = document.getElementById('err');
-      const v = (el.value || '').trim().toUpperCase();
-      if (!/^[A-Z0-9]{3,8}$/.test(v)) {
-        err.textContent = 'Please enter a valid room code (3–8 letters/numbers).';
-        el.focus();
-        return;
-      }
-      err.textContent = '';
-      setRoomAndGo(v, false);
+
+    document.getElementById('joinBtn').addEventListener('click', ()=>{
+      const name = (document.getElementById('guestName').value || 'Player').trim();
+      const room = (document.getElementById('roomInput').value || '').trim().toUpperCase();
+      const err  = document.getElementById('err');
+      if (!/^[A-Z0-9]{3,8}$/.test(room)) { err.textContent='Enter a valid room code (3–8 chars).'; return; }
+      err.textContent='';
+      go(room, false, name);
     });
   </script>
 </body>
