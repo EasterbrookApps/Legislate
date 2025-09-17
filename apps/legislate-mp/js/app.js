@@ -21,6 +21,9 @@
         decks: { commons, early, lords, pingpong, implementation },
         playerCount: Number($('playerCount').value) || 4
       });
+      
+      window.LegislateApp = window.LegislateApp || {};
+      window.LegislateApp.engine = engine;
 
       // Expose for debug.js
       window.engine = engine;
