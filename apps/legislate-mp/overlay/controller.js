@@ -232,7 +232,10 @@ function maybeShowDice(state){
     let restartBtn = replaceWithClone($('restartBtn'));
 
     // Everyone mirrors authoritative state
-    T.onState((st)=> renderFromState(engine, st));
+T.onState((st)=> {
+  console.log("[MP] State update:", st.overlayRoll, st);
+  renderFromState(engine, st);
+});
 
     if (T.mode === 'host') {
       // Apply lobby selections (drive SP UI by firing change on the select)
