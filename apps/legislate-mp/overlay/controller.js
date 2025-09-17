@@ -85,8 +85,6 @@
   let sharedModal = null;
   function maybeShowCard(state){
     const oc = state && state.overlayCard;
-    console.log('[MP client] maybeShowCard got:', oc);
-
     const key = oc ? (oc.id || oc.title || JSON.stringify(oc)).slice(0,100) : null;
     if (!oc) { lastCardKey = null; return; }
     if (key && key === lastCardKey) return;
@@ -114,23 +112,28 @@
   // --- Render state into engine + UI ---
   function renderFromState(engine, state){
     if (!state) return;
+
+    // sync engine core state (used by your existing UI)
     engine.state.players    = state.players  || engine.state.players;
     engine.state.turnIndex  = (state.turnIndex ?? engine.state.turnIndex);
     engine.state.lastRoll   = (state.lastRoll ?? engine.state.lastRoll);
 
+    // keep pills/names in sync
     syncPlayersUI(engine, state);
 
+    // refresh turn UI
     const idx = engine.state.turnIndex || 0;
     engine.bus.emit('TURN_BEGIN', { index: idx, playerId: engine.state.players[idx]?.id });
 
     updateRollEnabled(state);
-    maybeShowDice(state);
 
-    // FIX: always feed overlayCard from Firestore state
-    maybeShowCard({
-      overlayCard: state.overlayCard,
-      currentTurnUid: state.currentTurnUid
-    });
+    // ✅ Dice overlay only for guests (host already has native feedback)
+    if (T.mode !== 'host') {
+      maybeShowDice(state);
+    }
+
+    // ✅ Always pass full Firestore state to card renderer (fixes guests not seeing cards)
+    maybeShowCard(state);
 
     seenFirstState = true;
   }
@@ -155,19 +158,20 @@
     let overlayRoll = null;
     let rollSeq = 0;
 
+    // Track whether we're handling a roll so we can queue card publication
     let duringRoll = false;
     let queuedCard = null;
 
+    // Buffer cards during a roll; publish immediately otherwise
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
       const payload = card
         ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
         : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
 
       if (duringRoll) {
-        queuedCard = payload;
+        queuedCard = payload; // publish right after dice
       } else {
-        overlayCard = payload;
-        console.log('[MP host] publish CARD_DRAWN (immediate):', overlayCard);
+        overlayCard = payload; // publish now
         T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
       }
     });
@@ -175,7 +179,6 @@
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
       queuedCard = null;
-      console.log('[MP host] publish CARD_RESOLVE');
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
 
@@ -185,20 +188,20 @@
 
         await engine.takeTurn();
 
+        // Publish dice first
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
-        console.log('[MP host] publish DICE:', overlayRoll);
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
+        // Then publish queued card (if any)
         if (queuedCard) {
           overlayCard = queuedCard;
           queuedCard = null;
-          console.log('[MP host] publish CARD (after dice):', overlayCard);
           await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         }
 
         duringRoll = false;
-        return;
+        return; // avoid extra write that might reorder
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
@@ -219,14 +222,16 @@
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
-        console.log('[MP host] publish after ACK_CARD');
+        // re-publish to sync turnIndex/currentTurnUid for effects like "miss a turn"
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         return;
       }
 
+      // Generic sync write
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
+    // Initial publish
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
   }
@@ -237,6 +242,7 @@
 
     myUid = T.auth?.currentUser?.uid || null;
 
+    // Wait for engine (poll up to ~5s)
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = window.LegislateApp && window.LegislateApp.engine;
@@ -259,11 +265,13 @@
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
+    // Everyone mirrors authoritative state
     T.onState((st)=> {
       renderFromState(engine, st);
     });
 
     if (T.mode === 'host') {
+      // Apply lobby choices
       if (pc && hostCount) {
         pc.value = String(hostCount);
         pc.dispatchEvent(new Event('change', { bubbles: true }));
@@ -275,6 +283,7 @@
       }
       syncPlayersUI(engine, { players: engine.state.players });
 
+      // Host UI handlers
       rollBtnRef?.addEventListener('click', (e)=>{
         e.preventDefault();
         if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
