@@ -43,6 +43,7 @@ async function loadBoard() {
   board = await fetch(url).then(r=>r.json());
   boardUI = window.LegislateUI?.createBoardRenderer?.({ board });
   dlog('BOARD_JSON_LOADED', { spaces: board?.spaces?.length });
+  renderTokens();
 }
 function showDiceRoll(value, ms=900){
   if(!diceOverlay||!diceEl) return;
@@ -475,4 +476,7 @@ if (boardImg) {
 
 roomInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ joinBtn.click(); }});
 toast('Ready', { kind:'info', ttl: 900 });
+window.addEventListener('resize', () => {
+  try { ensureOverlayReady(); renderTokens(); } catch (e) { /* no-op */ }
+});
 dlog('BOOT_OK');
