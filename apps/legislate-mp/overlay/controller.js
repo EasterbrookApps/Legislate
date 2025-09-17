@@ -11,12 +11,16 @@
   let lastRollSeqSeen = -1;
   let seenFirstState = false;
 
-  // Roll button control (only enable on my turn)
+  // Roll button reference
   let rollBtnRef = null;
+
+  // Enable only if it's my turn AND no modal card is pending
   function updateRollEnabled(state){
     if (!rollBtnRef) return;
     const curr = state && state.currentTurnUid;
-    rollBtnRef.disabled = !(curr && myUid && curr === myUid);
+    const cardPending = !!(state && state.overlayCard);
+    const myTurn = !!(curr && myUid && curr === myUid);
+    rollBtnRef.disabled = !(myTurn && !cardPending);
   }
 
   // --- Players UI sync ---
@@ -26,6 +30,8 @@
     if (!root) return;
     const pills = Array.from(root.querySelectorAll('.player-pill, button, [data-player-pill]'));
     if (!pills.length) return;
+
+    const turnIdx = (state && typeof state.turnIndex === 'number') ? state.turnIndex : (engine.state.turnIndex || 0);
 
     for (let i = 0; i < pills.length; i++) {
       const pill = pills[i];
@@ -40,8 +46,10 @@
         }
         pill.style.pointerEvents = 'none';
         pill.tabIndex = -1;
+        pill.classList.toggle('is-active', i === turnIdx);
       } else {
         pill.style.display = 'none';
+        pill.classList.remove('is-active');
       }
     }
   }
@@ -59,7 +67,7 @@
     if (!r || typeof r.seq !== 'number' || typeof r.value !== 'number') return;
 
     if (!seenFirstState) {
-      lastRollSeqSeen = r.seq;
+      lastRollSeqSeen = r.seq; // don't flash on first sync
       return;
     }
     if (r.seq === lastRollSeqSeen) return;
@@ -92,6 +100,7 @@
 
     const title = String(oc.title || 'Card');
     const text  = String(oc.text  || '');
+
     const canDismiss = !!(myUid && state.currentTurnUid && (state.currentTurnUid === myUid));
 
     if (window.LegislateUI?.createModal) {
@@ -112,6 +121,7 @@
   // --- Render state into engine + UI ---
   function renderFromState(engine, state){
     if (!state) return;
+
     engine.state.players    = state.players  || engine.state.players;
     engine.state.turnIndex  = (state.turnIndex ?? engine.state.turnIndex);
     engine.state.lastRoll   = (state.lastRoll ?? engine.state.lastRoll);
@@ -123,6 +133,8 @@
 
     updateRollEnabled(state);
     maybeShowDice(state);
+    // IMPORTANT: show card AFTER dice handler has had a chance to run
+    // The order here is already dice first, then card:
     maybeShowCard(state);
 
     seenFirstState = true;
@@ -147,31 +159,59 @@
     let overlayCard = null;
     let overlayRoll = null;
     let rollSeq = 0;
+    let turnInProgress = false;   // used to queue card after dice
 
+    // Buffer for a card drawn during takeTurn; we publish it AFTER dice
+    let queuedCard = null;
+
+    // Listen to engine card events but DO NOT publish immediately during a roll
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      if (card) {
-        overlayCard = { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() };
+      const payload = card
+        ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
+        : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
+
+      if (turnInProgress) {
+        queuedCard = payload; // publish right after dice
       } else {
-        overlayCard = { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
+        overlayCard = payload;
+        T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
       }
-      T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
+
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
+      queuedCard = null;
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
 
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
-        await engine.takeTurn();
+        // guard against double-clicks locally until state returns
+        turnInProgress = true;
+
+        await engine.takeTurn(); // engine mutates state (turnIndex, lastRoll, etc.)
+
+        // 1) Publish dice first
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
+        await T.writeState(computeOutState(engine, map, overlayCard /* may be null */, overlayRoll));
+
+        // 2) Then, if a card was drawn during takeTurn, publish card AFTER dice
+        if (queuedCard) {
+          overlayCard = queuedCard;
+          queuedCard = null;
+          await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        }
+
+        turnInProgress = false;
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
         rollSeq = 0;
         overlayRoll = null;
         overlayCard = null;
+        queuedCard = null;
+        turnInProgress = false;
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
@@ -184,12 +224,18 @@
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
+        // engine.ackCard may advance turns (e.g., miss-a-turn). We publish the new state below.
+
       }
 
+      // Publish current state (includes any turnIndex changes like miss-a-turn)
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
+    // Initial publish
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+
+    // Process events
     return T.onEvents(apply);
   }
 
@@ -199,6 +245,7 @@
 
     myUid = T.auth?.currentUser?.uid || null;
 
+    // Wait for engine (poll up to ~5s)
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = window.LegislateApp && window.LegislateApp.engine;
@@ -210,6 +257,7 @@
     const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0,24);
     const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
 
+    // MP UI rules
     const pc = $('playerCount'); if (pc) pc.style.display = 'none';
     const playersSection = $('playersSection');
     if (playersSection) {
@@ -217,13 +265,19 @@
       playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
     }
 
+    // Remove SP handlers; rebind for overlay
     function replaceWithClone(el){ if (!el) return el; const c=el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    T.onState((st)=> renderFromState(engine, st));
+    // Everyone mirrors authoritative state
+    T.onState((st)=> {
+      // Debug if you need: console.log('[MP] State update:', st.overlayRoll, st.overlayCard, st);
+      renderFromState(engine, st);
+    });
 
     if (T.mode === 'host') {
+      // Apply lobby choices
       if (pc && hostCount) {
         pc.value = String(hostCount);
         pc.dispatchEvent(new Event('change', { bubbles: true }));
@@ -235,9 +289,12 @@
       }
       syncPlayersUI(engine, { players: engine.state.players });
 
+      // Roll: disable immediately to prevent double fire; state will re-enable appropriately
       rollBtnRef?.addEventListener('click', (e)=>{
         e.preventDefault();
-        if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
+        if (rollBtnRef.disabled) return;
+        rollBtnRef.disabled = true;
+        T.sendEvent({ type: 'ROLL' });
       });
       restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); T.sendEvent({ type: 'RESTART' }); });
 
@@ -248,9 +305,11 @@
 
       rollBtnRef?.addEventListener('click', (e)=>{
         e.preventDefault();
-        if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
+        if (rollBtnRef.disabled) return;
+        rollBtnRef.disabled = true;
+        T.sendEvent({ type: 'ROLL' });
       });
-      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); });
+      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); /* no-op */ });
     }
   }
 
