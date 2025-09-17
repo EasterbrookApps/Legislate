@@ -151,12 +151,8 @@
 
     updateRollEnabled(state);
 
-    // Everyone sees overlay dice; card arrives via later state (published by host)
+    // Everyone sees overlay dice; card shows when host publishes it after dice
     maybeShowDice(state);
-    // Don’t call maybeShowCard here; we show it when the host publishes it (after dice)
-
-    // However, if a card arrives in a later sync (as designed), this onState handler
-    // will run again and maybeShowCard(state) below will render it.
     if (state.overlayCard) maybeShowCard(state);
   }
 
@@ -171,7 +167,7 @@
     return out;
   }
 
-  async function hostLoop(engine){
+  async function hostLoop(engine, intercept){
     const map = { overlaySeatUids: [] };
     const hostUid = T.auth?.currentUser?.uid || null;
     if (hostUid) map.overlaySeatUids[0] = hostUid;
@@ -179,14 +175,18 @@
     let overlayCard = null;
     let overlayRoll = null;
     let rollSeq = 0;
-    let queuedCard = null;
 
-    // Queue card payload (we will publish it AFTER dice wobble finishes)
+    // Card captured via interceptor (see bootOverlay); store here:
+    let queuedCard = null;
+    intercept.setQueuedCard = (payload) => { queuedCard = payload; mpLog("Host queued card (intercepted)", payload); };
+
+    // Keep legacy safety: if engine does emit CARD_DRAWN, also queue it
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      queuedCard = card
+      const payload = card
         ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
         : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
-      mpLog("Host queued card", queuedCard);
+      queuedCard = payload;
+      mpLog("Host queued card (bus)", payload);
     });
 
     // Clear card overlay when resolved
@@ -199,7 +199,6 @@
 
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
-        // Run engine turn (updates lastRoll, movement, emits CARD_DRAWN if needed)
         await engine.takeTurn();
 
         // 1) Publish dice immediately
@@ -208,17 +207,16 @@
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         mpLog("Host wrote overlayRoll", overlayRoll);
 
-        // 2) Publish card AFTER dice wobble (~2s) if queued
+        // 2) Publish card after dice wobble
         if (queuedCard) {
           setTimeout(async ()=>{
             overlayCard = queuedCard;
             queuedCard = null;
             await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
             mpLog("Host wrote overlayCard (post-dice)", overlayCard);
-          }, 2100); // slightly >2s to ensure dice overlay has hidden everywhere
+          }, 2100);
         }
-
-        return; // avoid extra write that could reorder
+        return;
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
@@ -246,9 +244,46 @@
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
-    // Initial publish
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
+  }
+
+  // Helper: extract text from HTML snippets we intercept
+  function htmlToPlainText(html){
+    const tmp = document.createElement('div');
+    tmp.innerHTML = String(html || '');
+    return (tmp.textContent || tmp.innerText || '').trim();
+  }
+
+  // Host-side interceptor: capture SP modal requests and turn them into queued cards
+  function installHostCardInterceptor(intercept){
+    if (!window.LegislateUI || typeof window.LegislateUI.createModal !== 'function') return;
+
+    const originalCreateModal = window.LegislateUI.createModal;
+
+    window.LegislateUI.createModal = function(){
+      const real = originalCreateModal ? originalCreateModal() : null;
+
+      // Return a proxy with an open() that captures and suppresses SP modal
+      return {
+        open(opts){
+          // Extract details from SP modal call
+          const title = String(opts && opts.title || 'Card');
+          // Body may be HTML; convert to plain text for transport
+          const bodyHtml = opts && opts.body || '';
+          const text = htmlToPlainText(bodyHtml);
+
+          // Queue for overlay publication (handled in hostLoop)
+          const payload = { id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`, title, text };
+          if (typeof intercept.setQueuedCard === 'function') {
+            intercept.setQueuedCard(payload);
+          }
+
+          // Suppress local SP modal (overlay will show shared one later)
+          return Promise.resolve(true);
+        }
+      };
+    };
   }
 
   async function bootOverlay(){
@@ -266,22 +301,6 @@
     }
     if (!engine) { console.warn('Engine not detected; overlay inactive.'); return; }
 
-    // 🔕 Suppress single-player UI for dice & modal in MP
-    if (window.LegislateUI) {
-      // Dice: the SP app calls showDiceRoll() and waits for its Promise
-      if (typeof window.LegislateUI.showDiceRoll === 'function') {
-        window.LegislateUI.showDiceRoll = function(){ return Promise.resolve(); };
-      }
-      if (typeof window.LegislateUI.waitForDice === 'function') {
-        window.LegislateUI.waitForDice = function(){ return Promise.resolve(); };
-      }
-      // Cards: SP app calls createModal().open(); we replace it with a no-op modal
-      if (typeof window.LegislateUI.createModal === 'function') {
-        const noopModal = { open: () => Promise.resolve(true) };
-        window.LegislateUI.createModal = function(){ return noopModal; };
-      }
-    }
-
     const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0,24);
     const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
 
@@ -293,7 +312,7 @@
       playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
     }
 
-    // Replace SP handlers; rebind for overlay
+    // Remove SP handlers; rebind for overlay
     function replaceWithClone(el){ if (!el) return el; const c=el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
@@ -305,6 +324,10 @@
     });
 
     if (T.mode === 'host') {
+      // Intercept SP modal opens to capture cards for overlay
+      const intercept = {};
+      installHostCardInterceptor(intercept);
+
       // Apply lobby selections and trigger SP rebuild (players/tokens)
       if (pc && hostCount) {
         pc.value = String(hostCount);
@@ -324,7 +347,7 @@
       });
       restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); T.sendEvent({ type: 'RESTART' }); });
 
-      hostLoop(engine);
+      hostLoop(engine, intercept);
 
     } else {
       // Guest announces their chosen name once
