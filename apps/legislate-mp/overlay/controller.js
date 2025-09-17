@@ -9,7 +9,6 @@
   let myUid = null;
   let lastCardKey = null;
   let lastRollSeqSeen = -1;
-  let seenFirstState = false;
 
   // Roll button control (only enable on my turn)
   let rollBtnRef = null;
@@ -30,7 +29,6 @@
     for (let i = 0; i < pills.length; i++) {
       const pill = pills[i];
       const nameSpan = pill.querySelector('.player-name, [data-name]');
-
       if (i < players.length) {
         pill.style.display = '';
         if (nameSpan) {
@@ -46,7 +44,7 @@
     }
   }
 
-  // --- Dice helpers ---
+  // --- Dice helpers (overlay-driven ONLY) ---
   function setDiceFace(value){
     const dice = document.getElementById('dice');
     if (!dice) return;
@@ -57,11 +55,6 @@
   function maybeShowDice(state){
     const r = state && state.overlayRoll;
     if (!r || typeof r.seq !== 'number' || typeof r.value !== 'number') return;
-
-    if (!seenFirstState) {
-      lastRollSeqSeen = r.seq;
-      return;
-    }
     if (r.seq === lastRollSeqSeen) return;
     lastRollSeqSeen = r.seq;
 
@@ -70,9 +63,7 @@
       overlay.hidden = false;
       overlay.setAttribute('aria-hidden', 'false');
     }
-
     setDiceFace(r.value);
-
     setTimeout(()=>{
       if (overlay) {
         overlay.hidden = true;
@@ -81,7 +72,7 @@
     }, 2000);
   }
 
-  // --- Cards ---
+  // --- Cards (overlay-driven; only active player can dismiss) ---
   let sharedModal = null;
   function maybeShowCard(state){
     const oc = state && state.overlayCard;
@@ -109,9 +100,10 @@
     }
   }
 
-  // --- Render state into engine + UI ---
+  // --- Render Firestore state into engine + UI ---
   function renderFromState(engine, state){
     if (!state) return;
+
     engine.state.players    = state.players  || engine.state.players;
     engine.state.turnIndex  = (state.turnIndex ?? engine.state.turnIndex);
     engine.state.lastRoll   = (state.lastRoll ?? engine.state.lastRoll);
@@ -122,13 +114,13 @@
     engine.bus.emit('TURN_BEGIN', { index: idx, playerId: engine.state.players[idx]?.id });
 
     updateRollEnabled(state);
+
+    // Everyone (host + guests) sees overlay dice and overlay cards
     maybeShowDice(state);
     maybeShowCard(state);
-
-    seenFirstState = true;
   }
 
-  // --- Host compute out state ---
+  // --- Host compute out state (adds overlay fields) ---
   function computeOutState(engine, mapping, overlayCard, overlayRoll){
     const out = deepClone(engine.state);
     const turnIdx = out.turnIndex || 0;
@@ -148,38 +140,55 @@
     let overlayRoll = null;
     let rollSeq = 0;
 
-    // NEW: queue a card during the roll so dice can publish first
+    // Queue card during roll to ensure dice-first publishing
+    let duringRoll = false;
     let queuedCard = null;
 
-    // Queue on draw (don't publish immediately)
+    // 1) Card draw: queue if rolling; otherwise publish immediately
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      queuedCard = card
+      const payload = card
         ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
         : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
+
+      if (duringRoll) {
+        queuedCard = payload;           // publish right after dice
+      } else {
+        overlayCard = payload;          // publish now (non-roll trigger)
+        T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+      }
     });
 
-    // Clear overlay on resolve, and publish that change
+    // 2) Card resolve: clear overlay; publish that
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
       queuedCard = null;
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
 
+    // 3) Apply incoming player events
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
+        duringRoll = true;
+
+        // IMPORTANT: disable single-player dice locally; overlay will handle visuals for all
+        // (We did this globally below by monkey-patching LegislateUI.animateDie)
+
         await engine.takeTurn();
+
+        // Publish dice FIRST
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
-
-        // Publish dice first
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-        // Then publish queued card (if any)
+        // Then publish CARD (if queued by the roll)
         if (queuedCard) {
           overlayCard = queuedCard;
           queuedCard = null;
           await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         }
+
+        duringRoll = false;
+        return; // avoid any extra write that could reorder
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
@@ -187,6 +196,7 @@
         overlayRoll = null;
         overlayCard = null;
         queuedCard = null;
+        duringRoll = false;
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
@@ -199,11 +209,16 @@
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
+        // Republish to sync any turn changes (e.g. miss-a-turn)
+        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        return;
       }
 
+      // Generic sync
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
+    // Initial publish
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
   }
@@ -214,6 +229,7 @@
 
     myUid = T.auth?.currentUser?.uid || null;
 
+    // Wait for engine (poll up to ~5s)
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = window.LegislateApp && window.LegislateApp.engine;
@@ -222,9 +238,18 @@
     }
     if (!engine) { console.warn('Engine not detected; overlay inactive.'); return; }
 
+    // 🔕 Kill the single-player dice animation in MP so only overlay dice appears
+    if (window.LegislateUI && typeof window.LegislateUI.animateDie === 'function') {
+      if (!window.LegislateUI._mpSavedAnimateDie) {
+        window.LegislateUI._mpSavedAnimateDie = window.LegislateUI.animateDie;
+      }
+      window.LegislateUI.animateDie = function(){ /* MP: overlay drives dice */ };
+    }
+
     const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0,24);
     const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
 
+    // MP UI rules (hide SP controls and lock names)
     const pc = $('playerCount'); if (pc) pc.style.display = 'none';
     const playersSection = $('playersSection');
     if (playersSection) {
@@ -232,13 +257,16 @@
       playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
     }
 
+    // Remove SP handlers; rebind for overlay
     function replaceWithClone(el){ if (!el) return el; const c=el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    T.onState((st)=> renderFromState(engine, st));
+    // Everyone mirrors authoritative state (overlay renders dice + cards)
+    T.onState((st)=> { renderFromState(engine, st); });
 
     if (T.mode === 'host') {
+      // Apply lobby choices and trigger SP rebuild
       if (pc && hostCount) {
         pc.value = String(hostCount);
         pc.dispatchEvent(new Event('change', { bubbles: true }));
@@ -259,13 +287,17 @@
       hostLoop(engine);
 
     } else {
+      // Guest announces their chosen name once
       if (myName) T.sendEvent({ type: 'SET_NAME', name: myName });
 
+      // Guests can only roll on their turn (gated by updateRollEnabled)
       rollBtnRef?.addEventListener('click', (e)=>{
         e.preventDefault();
         if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
       });
-      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); });
+
+      // Guests cannot restart
+      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); /* no-op */ });
     }
   }
 
