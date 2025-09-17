@@ -147,35 +147,52 @@
     let overlayCard = null;
     let overlayRoll = null;
     let rollSeq = 0;
+
+    // NEW: track when we're inside a roll so we can queue cards
+    let duringRoll = false;
     let queuedCard = null;
 
-    // Buffer cards until after dice
+    // Buffer cards during a roll; publish immediately otherwise
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      queuedCard = card
+      const payload = card
         ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
         : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
+
+      if (duringRoll) {
+        // Will be published right after the dice update
+        queuedCard = payload;
+      } else {
+        // Card triggered outside a roll – publish immediately
+        overlayCard = payload;
+        T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+      }
     });
 
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
+      queuedCard = null;
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
 
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
+        duringRoll = true;
+
         await engine.takeTurn();
+
+        // 1) Publish dice first
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
-
-        // Publish dice first
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-        // Then publish card if queued
+        // 2) Then publish a queued card (if any)
         if (queuedCard) {
           overlayCard = queuedCard;
           queuedCard = null;
           await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         }
+
+        duringRoll = false;
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
@@ -183,6 +200,7 @@
         overlayRoll = null;
         overlayCard = null;
         queuedCard = null;
+        duringRoll = false;
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
@@ -195,11 +213,11 @@
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
-        // Republish to sync turnIndex changes (e.g. miss a turn)
+        // Ensure turn changes (e.g. miss-a-turn) are synced immediately
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
       }
 
-      // Default publish to keep everyone in sync
+      // Keep everyone in sync
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
