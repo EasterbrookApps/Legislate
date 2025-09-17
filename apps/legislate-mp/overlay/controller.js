@@ -148,22 +148,21 @@
     let overlayRoll = null;
     let rollSeq = 0;
 
-    // NEW: track when we're inside a roll so we can queue cards
+    // NEW: track strictly whether we're inside processing a ROLL
     let duringRoll = false;
     let queuedCard = null;
 
-    // Buffer cards during a roll; publish immediately otherwise
+    // Cards: queue during a roll, publish immediately otherwise
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
       const payload = card
         ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
         : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
 
       if (duringRoll) {
-        // Will be published right after the dice update
-        queuedCard = payload;
+        queuedCard = payload;               // publish right after dice
       } else {
-        // Card triggered outside a roll – publish immediately
-        overlayCard = payload;
+        overlayCard = payload;              // publish now
+        console.log('[MP host] publish CARD_DRAWN (immediate):', overlayCard);
         T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
       }
     });
@@ -171,6 +170,7 @@
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
       queuedCard = null;
+      console.log('[MP host] publish CARD_RESOLVE');
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
 
@@ -180,19 +180,22 @@
 
         await engine.takeTurn();
 
-        // 1) Publish dice first
+        // Publish dice first
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
+        console.log('[MP host] publish DICE:', overlayRoll);
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-        // 2) Then publish a queued card (if any)
+        // Then publish queued card (if any)
         if (queuedCard) {
           overlayCard = queuedCard;
           queuedCard = null;
+          console.log('[MP host] publish CARD (after dice):', overlayCard);
           await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         }
 
         duringRoll = false;
+        return; // prevent the generic write below from reordering anything
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
@@ -213,14 +216,17 @@
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
-        // Ensure turn changes (e.g. miss-a-turn) are synced immediately
+        // Re-publish so turnIndex/currentTurnUid reflect effects like "miss a turn"
+        console.log('[MP host] publish after ACK_CARD');
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        return; // we already wrote exactly what we need
       }
 
-      // Keep everyone in sync
+      // Generic sync write
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
+    // Initial publish
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
   }
@@ -231,6 +237,7 @@
 
     myUid = T.auth?.currentUser?.uid || null;
 
+    // Wait for engine (poll up to ~5s)
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = window.LegislateApp && window.LegislateApp.engine;
@@ -253,7 +260,12 @@
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    T.onState((st)=> renderFromState(engine, st));
+    // Log state on every client to see what's received
+    T.onState((st)=> {
+      // Uncomment for verbose debugging:
+      // console.log('[MP client] state:', { roll: st.overlayRoll, card: st.overlayCard, turn: st.turnIndex });
+      renderFromState(engine, st);
+    });
 
     if (T.mode === 'host') {
       if (pc && hostCount) {
