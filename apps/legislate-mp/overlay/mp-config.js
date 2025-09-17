@@ -1,7 +1,7 @@
   firebase: {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT",
-    appId: "YOUR_APP_ID",
+    apiKey: "AIzaSyAaT34wisvMkSOdJMaWlzsxwL_dUCFHejQ",
+    authDomain: "legislateboardgame.firebaseapp.com",
+    projectId: "legislateboardgame",
+    appId: "1:624315105777:web:0c0839ec74b1de442d4450",
   }
 };
