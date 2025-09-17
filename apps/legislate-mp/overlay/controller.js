@@ -85,6 +85,8 @@
   let sharedModal = null;
   function maybeShowCard(state){
     const oc = state && state.overlayCard;
+    console.log('[MP client] maybeShowCard got:', oc);
+
     const key = oc ? (oc.id || oc.title || JSON.stringify(oc)).slice(0,100) : null;
     if (!oc) { lastCardKey = null; return; }
     if (key && key === lastCardKey) return;
@@ -123,7 +125,12 @@
 
     updateRollEnabled(state);
     maybeShowDice(state);
-    maybeShowCard(state);
+
+    // FIX: always feed overlayCard from Firestore state
+    maybeShowCard({
+      overlayCard: state.overlayCard,
+      currentTurnUid: state.currentTurnUid
+    });
 
     seenFirstState = true;
   }
@@ -148,20 +155,18 @@
     let overlayRoll = null;
     let rollSeq = 0;
 
-    // NEW: track strictly whether we're inside processing a ROLL
     let duringRoll = false;
     let queuedCard = null;
 
-    // Cards: queue during a roll, publish immediately otherwise
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
       const payload = card
         ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
         : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
 
       if (duringRoll) {
-        queuedCard = payload;               // publish right after dice
+        queuedCard = payload;
       } else {
-        overlayCard = payload;              // publish now
+        overlayCard = payload;
         console.log('[MP host] publish CARD_DRAWN (immediate):', overlayCard);
         T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
       }
@@ -180,13 +185,11 @@
 
         await engine.takeTurn();
 
-        // Publish dice first
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
         console.log('[MP host] publish DICE:', overlayRoll);
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-        // Then publish queued card (if any)
         if (queuedCard) {
           overlayCard = queuedCard;
           queuedCard = null;
@@ -195,7 +198,7 @@
         }
 
         duringRoll = false;
-        return; // prevent the generic write below from reordering anything
+        return;
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
@@ -216,17 +219,14 @@
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
-        // Re-publish so turnIndex/currentTurnUid reflect effects like "miss a turn"
         console.log('[MP host] publish after ACK_CARD');
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-        return; // we already wrote exactly what we need
+        return;
       }
 
-      // Generic sync write
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
-    // Initial publish
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
   }
@@ -237,7 +237,6 @@
 
     myUid = T.auth?.currentUser?.uid || null;
 
-    // Wait for engine (poll up to ~5s)
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = window.LegislateApp && window.LegislateApp.engine;
@@ -260,10 +259,7 @@
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    // Log state on every client to see what's received
     T.onState((st)=> {
-      // Uncomment for verbose debugging:
-      // console.log('[MP client] state:', { roll: st.overlayRoll, card: st.overlayCard, turn: st.turnIndex });
       renderFromState(engine, st);
     });
 
