@@ -11,16 +11,14 @@
   let lastRollSeqSeen = -1;
   let seenFirstState = false;
 
-  // Shared card handling
+  // Shared card handling (host-side)
   let queuedCard = null;
   let resolveCardPromise = null;
 
-  // --- Always-on multiplayer diagnostics ---
+  // --- Always-on multiplayer diagnostics (console + #dbg-log) ---
   function mpDbg(ev, data){
     const stamp = new Date().toISOString();
-    const pretty = (data && typeof data === 'object')
-      ? JSON.stringify(data, null, 2)
-      : String(data ?? '');
+    const pretty = (data && typeof data === 'object') ? JSON.stringify(data, null, 2) : String(data ?? '');
     console.log(`[MP][${stamp}] ${ev}`, data);
     const dbg = document.getElementById('dbg-log');
     if (dbg) {
@@ -40,7 +38,7 @@
     mpDbg('ROLL_BTN_GATING', { myUid, currentTurnUid: curr, enabled });
   }
 
-  // --- Players UI sync ---
+  // --- Players UI sync (keep pills visible but locked) ---
   function syncPlayersUI(engine, state){
     const players = (state && state.players) || engine.state.players || [];
     const root = $('playersSection');
@@ -51,7 +49,6 @@
     for (let i = 0; i < pills.length; i++) {
       const pill = pills[i];
       const nameSpan = pill.querySelector('.player-name, [data-name]');
-
       if (i < players.length) {
         pill.style.display = '';
         if (nameSpan) {
@@ -67,7 +64,7 @@
     }
   }
 
-  // --- Dice helpers ---
+  // --- Dice helpers (shared overlay dice only) ---
   function setDiceFace(value){
     const dice = document.getElementById('dice');
     if (!dice) return;
@@ -80,30 +77,17 @@
     if (r) mpDbg('DICE_SHOW_ATTEMPT', r);
     if (!r || typeof r.seq !== 'number' || typeof r.value !== 'number') return;
 
-    if (!seenFirstState) {
-      lastRollSeqSeen = r.seq;
-      return;
-    }
+    if (!seenFirstState) { lastRollSeqSeen = r.seq; return; }
     if (r.seq === lastRollSeqSeen) return;
     lastRollSeqSeen = r.seq;
 
     const overlay = document.getElementById('diceOverlay');
-    if (overlay) {
-      overlay.hidden = false;
-      overlay.setAttribute('aria-hidden', 'false');
-    }
-
+    if (overlay) { overlay.hidden = false; overlay.setAttribute('aria-hidden', 'false'); }
     setDiceFace(r.value);
-
-    setTimeout(()=>{
-      if (overlay) {
-        overlay.hidden = true;
-        overlay.setAttribute('aria-hidden', 'true');
-      }
-    }, 2000);
+    setTimeout(()=>{ if (overlay) { overlay.hidden = true; overlay.setAttribute('aria-hidden', 'true'); } }, 2000);
   }
 
-  // --- Cards ---
+  // --- Cards (shared modal only) ---
   let sharedModal = null;
   function maybeShowCard(state){
     const oc = state && state.overlayCard;
@@ -118,7 +102,7 @@
     const canDismiss = !!(myUid && state.currentTurnUid && (state.currentTurnUid === myUid));
     mpDbg('CARD_CAN_DISMISS', { myUid, currentTurnUid: state.currentTurnUid, canDismiss });
 
-    if (window.LegislateUI?.createModal) {
+    if (window.LegislateUI && typeof window.LegislateUI.createModal === 'function') {
       if (!sharedModal) sharedModal = window.LegislateUI.createModal();
       sharedModal.open({
         title,
@@ -128,13 +112,13 @@
       }).then(() => {
         if (canDismiss) {
           mpDbg('CARD_ACK_SENT', { by: myUid });
-          T.sendEvent({ type: 'ACK_CARD' });
+          T.sendEvent({ type: 'ACK_CARD', by: myUid });
         }
       });
     } else {
       if (canDismiss && confirm(`${title}\n\n${text}\n\nPress OK to continue.`)) {
         mpDbg('CARD_ACK_SENT', { by: myUid });
-        T.sendEvent({ type: 'ACK_CARD' });
+        T.sendEvent({ type: 'ACK_CARD', by: myUid });
       }
     }
   }
@@ -195,14 +179,8 @@
           ? { id: diagState.overlayCard.id, title: diagState.overlayCard.title }
           : null
       });
-      try {
-        const res = await orig(diagState);
-        mpDbg('WRITE_STATE_OK', { ok: true });
-        return res;
-      } catch (e){
-        mpDbg('WRITE_STATE_FAIL', { message: e && e.message ? e.message : String(e) });
-        throw e;
-      }
+      try { const res = await orig(diagState); mpDbg('WRITE_STATE_OK', { ok: true }); return res; }
+      catch (e){ mpDbg('WRITE_STATE_FAIL', { message: e && e.message ? e.message : String(e) }); throw e; }
     };
     T._writeStateWrapped = true;
   })();
@@ -227,45 +205,71 @@
     T._onStateWrapped = true;
   })();
 
+  // --- Modal interception/suppression ---
+  function installHostModalInterceptor(queueFn, setResolverFn){
+    if (!window.LegislateUI || typeof window.LegislateUI.createModal !== 'function') return;
+    const origCreate = window.LegislateUI.createModal;
+    window.LegislateUI.createModal = function(){
+      origCreate && origCreate(); // keep engine happy
+      return {
+        open(opts){
+          // Build plain-text payload
+          const title = String((opts && opts.title) || 'Card');
+          const bodyHtml = (opts && opts.body) || '';
+          const tmp = document.createElement('div'); tmp.innerHTML = bodyHtml;
+          const text = (tmp.textContent || tmp.innerText || '').trim();
+          const payload = { id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`, title, text };
+          mpDbg('HOST_INTERCEPT_MODAL', payload);
+
+          if (typeof queueFn === 'function') queueFn(payload); // hand to host loop
+
+          // Return a promise that resolves only when ACK arrives
+          return new Promise((resolve)=> { if (typeof setResolverFn === 'function') setResolverFn(resolve); });
+        }
+      };
+    };
+  }
+
+  function installGuestModalSuppressor(){
+    if (!window.LegislateUI || typeof window.LegislateUI.createModal !== 'function') return;
+    const origCreate = window.LegislateUI.createModal;
+    window.LegislateUI.createModal = function(){
+      origCreate && origCreate();
+      return { open(){ mpDbg('GUEST_SUPPRESS_SP_MODAL', {}); return Promise.resolve(); } };
+    };
+  }
+
+  // --- Host loop (authoritative) ---
   async function hostLoop(engine){
     const map = { overlaySeatUids: [] };
-    const hostUid = T.auth?.currentUser?.uid || null;
+    const hostUid = T.auth && T.auth.currentUser ? T.auth.currentUser.uid : null;
     if (hostUid) map.overlaySeatUids[0] = hostUid;
 
     let overlayCard = null;
     let overlayRoll = null;
     let rollSeq = 0;
 
-    // Intercept cards: queue only (no immediate write)
+    // Queue card on draw (do NOT write yet; we write after dice wobble)
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      if (card) {
-        queuedCard = { id: card.id || `${deck}-${Date.now()}`, title: deck, text: (card.text||'').trim() };
-      } else {
-        queuedCard = { id: `none-${Date.now()}`, title: deck, text: `The ${deck} deck is empty.` };
-      }
+      if (card) queuedCard = { id: card.id || `${deck}-${Date.now()}`, title: deck, text: (card.text||'').trim() };
+      else queuedCard = { id: `none-${Date.now()}`, title: deck, text: `The ${deck} deck is empty.` };
       mpDbg('HOST_CARD_QUEUED', queuedCard);
     });
 
-    engine.bus.on('CARD_RESOLVE', ()=>{
-      mpDbg('HOST_CARD_RESOLVED_CLEARING', {});
-      overlayCard = null;
-      queuedCard = null;
-      resolveCardPromise = null;
-      T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-    });
+    // We do NOT clear overlayCard on CARD_RESOLVE; we clear on ACK (below)
+    engine.bus.on('CARD_RESOLVE', ()=>{ mpDbg('HOST_CARD_RESOLVE_EVENT', {}); });
 
     const apply = async (ev) => {
       if (ev.type === 'ROLL') {
-        // Run the engine turn; may queue a card via CARD_DRAWN
         await engine.takeTurn();
 
-        // 1) Broadcast dice immediately
+        // 1) Publish dice immediately
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
         mpDbg('HOST_WRITE_DICE_NOW', overlayRoll);
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-        // 2) After dice wobble, publish the card if one was queued
+        // 2) Publish card after dice wobble
         if (queuedCard) {
           mpDbg('HOST_SCHEDULE_CARD_PUBLISH', { delayMs: 2100, queuedCard });
           setTimeout(async () => {
@@ -286,27 +290,32 @@
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
-
         let seat = engine.state.players.findIndex(p => /^Player \d+$/i.test((p && p.name) || ''));
-        if (seat === -1) {
-          seat = engine.state.players.findIndex(p => ((p && p.name) || '').toLowerCase() === wanted.toLowerCase());
-        }
-
+        if (seat === -1) seat = engine.state.players.findIndex(p => ((p && p.name) || '').toLowerCase() === wanted.toLowerCase());
         if (seat >= 0) {
           engine.state.players[seat].name = wanted;
           map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
           mpDbg('HOST_SET_NAME', { seat, name: wanted, by: ev.by || null });
-
-          // Immediate write for names
           await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         }
 
       } else if (ev.type === 'ACK_CARD') {
-        mpDbg('HOST_ACK_CARD_RCVD', {});
-        if (typeof engine.ackCard === 'function') engine.ackCard();
+        mpDbg('HOST_ACK_CARD_RCVD', { by: ev.by || null });
+        // Only active player is allowed to ACK
+        const currUid = map.overlaySeatUids[engine.state.turnIndex] || null;
+        if (!currUid || !ev.by || ev.by !== currUid) {
+          mpDbg('HOST_ACK_IGNORED_NOT_TURN', { currUid, by: ev.by || null });
+        } else {
+          // Resolve the host's intercepted modal promise, then advance engine
+          if (typeof resolveCardPromise === 'function') { resolveCardPromise(true); resolveCardPromise = null; }
+          if (typeof engine.ackCard === 'function') engine.ackCard();
+          // Clear the shared overlay card and queue
+          overlayCard = null; queuedCard = null;
+          await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        }
       }
 
-      // Final write to ensure state consistency
+      // Final write to keep out state consistent
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
@@ -314,26 +323,22 @@
     return T.onEvents(apply);
   }
 
+  // --- Boot overlay ---
   async function bootOverlay(){
-    // 1) Initialise transport (Auth + Firestore). Bail if solo.
     await T.init();
     if (T.mode === 'solo') return;
 
     myUid = T.auth && T.auth.currentUser ? T.auth.currentUser.uid : null;
     mpDbg('BOOT_OK', { mode: T.mode, myUid });
 
-    // 2) Wait for the single-player engine to be ready (poll up to ~5s)
+    // Wait for engine
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = (window.LegislateApp && window.LegislateApp.engine) || null;
       if (engine) break;
       await new Promise(r => setTimeout(r, 200));
     }
-    if (!engine) {
-      console.warn('Engine not detected; overlay inactive.');
-      mpDbg('BOOT_FAIL', { message: 'Engine not detected' });
-      return;
-    }
+    if (!engine) { console.warn('Engine not detected; overlay inactive.'); mpDbg('BOOT_FAIL', { message: 'Engine not detected' }); return; }
 
     // Diagnostics HUD
     try {
@@ -347,21 +352,16 @@
       }
     } catch(e){}
 
-    // 3) In MP, disable SP dice animation (we show the shared overlay dice only)
+    // Disable SP dice animations (shared overlay only)
     if (window.LegislateUI) {
-      if (typeof window.LegislateUI.showDiceRoll === 'function') {
-        window.LegislateUI.showDiceRoll = function(){ return Promise.resolve(); };
-      }
-      if (typeof window.LegislateUI.waitForDice === 'function') {
-        window.LegislateUI.waitForDice = function(){ return Promise.resolve(); };
-      }
+      if (typeof window.LegislateUI.showDiceRoll === 'function') window.LegislateUI.showDiceRoll = function(){ return Promise.resolve(); };
+      if (typeof window.LegislateUI.waitForDice === 'function') window.LegislateUI.waitForDice = function(){ return Promise.resolve(); };
     }
 
-    // 4) Pull lobby selections
     const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0,24);
     const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
 
-    // 5) Lock SP controls (names edited in lobby; player count fixed)
+    // Lock SP controls
     const pc = $('playerCount'); if (pc) pc.style.display = 'none';
     const playersSection = $('playersSection');
     if (playersSection) {
@@ -369,62 +369,39 @@
       playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
     }
 
-    // Replace SP click handlers so overlay can gate rolls by turn owner
-    function replaceWithClone(el){
-      if (!el) return el;
-      const c = el.cloneNode(true);
-      el.parentNode.replaceChild(c, el);
-      return c;
-    }
+    // Replace SP button handlers
+    function replaceWithClone(el){ if (!el) return el; const c = el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    // 6) Mirror authoritative Firestore state into the local engine + UI
-    T.onState((st)=> {
-      // trimmed snapshot also goes to #dbg-log via mpDbg in wrapper
-      renderFromState(engine, st);
-    });
+    // State mirror → engine + UI
+    T.onState((st)=> { renderFromState(engine, st); });
 
-    // 7) Host vs Guest wiring
     if (T.mode === 'host') {
-      // Apply lobby player count to engine (triggers token render)
-      if (pc && hostCount) {
-        pc.value = String(hostCount);
-        pc.dispatchEvent(new Event('change', { bubbles: true }));
-      } else if (hostCount && typeof engine.setPlayerCount === 'function') {
-        engine.setPlayerCount(hostCount);
-      }
+      // Intercept SP modal so host never shows a local card; we’ll broadcast a shared one and wait for ACK
+      const setQueued = (p)=>{ queuedCard = p; };
+      const setResolver = (fn)=>{ resolveCardPromise = fn; };
+      installHostModalInterceptor(setQueued, setResolver);
 
-      // Apply host name to seat 0 (visual; ownership tracked by UIDs)
-      if (myName && engine.state.players[0]) {
-        engine.state.players[0].name = myName;
-      }
+      // Apply lobby values
+      if (pc && hostCount) { pc.value = String(hostCount); pc.dispatchEvent(new Event('change', { bubbles: true })); }
+      else if (hostCount && typeof engine.setPlayerCount === 'function') { engine.setPlayerCount(hostCount); }
+      if (myName && engine.state.players[0]) { engine.state.players[0].name = myName; }
       syncPlayersUI(engine, { players: engine.state.players });
 
-      // Buttons (only enabled on your turn by updateRollEnabled)
-      rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{
-        e.preventDefault();
-        if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
-      });
-      restartBtn && restartBtn.addEventListener('click', (e)=>{
-        e.preventDefault();
-        T.sendEvent({ type: 'RESTART' });
-      });
+      // Buttons (enabled only on your turn)
+      rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{ e.preventDefault(); if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' }); });
+      restartBtn && restartBtn.addEventListener('click', (e)=>{ e.preventDefault(); T.sendEvent({ type: 'RESTART' }); });
 
-      // Start the host event loop (handles dice → card order, names, etc.)
       hostLoop(engine);
 
     } else {
-      // Guest: announce name once; host will immediately write it to state
+      // Guests: suppress SP modals entirely; only shared overlay is shown
+      installGuestModalSuppressor();
+
       if (myName) T.sendEvent({ type: 'SET_NAME', name: myName, by: myUid });
 
-      // Guests can press Roll only on their turn
-      rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{
-        e.preventDefault();
-        if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
-      });
-
-      // Guests cannot restart
+      rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{ e.preventDefault(); if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' }); });
       restartBtn && restartBtn.addEventListener('click', (e)=>{ e.preventDefault(); });
     }
   }
