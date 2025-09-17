@@ -154,14 +154,12 @@
 
     // Intercept cards
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      if (card) {
-        overlayCard = { id: card.id || `${deck}-${Date.now()}`, title: deck, text: (card.text||'').trim() };
-      } else {
-        overlayCard = { id: `none-${Date.now()}`, title: deck, text: `The ${deck} deck is empty.` };
-      }
-      queuedCard = overlayCard;
-      T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-    });
+  if (card) {
+    queuedCard = { id: card.id || `${deck}-${Date.now()}`, title: deck, text: (card.text||'').trim() };
+  } else {
+    queuedCard = { id: `none-${Date.now()}`, title: deck, text: `The ${deck} deck is empty.` };
+  }
+});
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
       queuedCard = null;
@@ -169,42 +167,64 @@
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
 
-    const apply = async (ev)=>{
-      if (ev.type === 'ROLL') {
-        await engine.takeTurn();
-        rollSeq += 1;
-        overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
+    const apply = async (ev) => {
+  if (ev.type === 'ROLL') {
+    // Run the engine turn (updates lastRoll, movement, may queue a card via CARD_DRAWN handler)
+    await engine.takeTurn();
 
-      } else if (ev.type === 'RESTART') {
-        engine.reset();
-        rollSeq = 0;
-        overlayRoll = null;
-        overlayCard = null;
-        queuedCard = null;
-        resolveCardPromise = null;
+    // 1) Broadcast dice immediately to everyone
+    rollSeq += 1;
+    overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
+    await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-      } else if (ev.type === 'SET_NAME') {
-        const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
+    // 2) After dice wobble, publish the card if one was queued
+    if (queuedCard) {
+      setTimeout(async () => {
+        overlayCard = queuedCard;
+        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+      }, 2100);
+    }
 
-        let seat = engine.state.players.findIndex(p => /^Player \d+$/i.test((p && p.name) || ''));
-        if (seat === -1) {
-          seat = engine.state.players.findIndex(p => ((p && p.name) || '').toLowerCase() === wanted.toLowerCase());
-        }
+  } else if (ev.type === 'RESTART') {
+    // Clear everything and publish
+    engine.reset();
+    rollSeq = 0;
+    overlayRoll = null;
+    overlayCard = null;
+    queuedCard = null;
+    resolveCardPromise = null;
+    await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-        if (seat >= 0) {
-          engine.state.players[seat].name = wanted;
-          map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
+  } else if (ev.type === 'SET_NAME') {
+    const wanted = String(ev.name || '').trim().slice(0, 24) || 'Player';
 
-          // 🔥 immediate write for names
-          await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-        }
+    // Prefer the first "Player N" placeholder; else exact name match
+    let seat = engine.state.players.findIndex(function (p) {
+      return /^Player \d+$/i.test((p && p.name) || '');
+    });
+    if (seat === -1) {
+      seat = engine.state.players.findIndex(function (p) {
+        return (((p && p.name) || '').toLowerCase() === wanted.toLowerCase());
+      });
+    }
 
-      } else if (ev.type === 'ACK_CARD') {
-        if (typeof engine.ackCard === 'function') engine.ackCard();
-      }
+    if (seat >= 0) {
+      engine.state.players[seat].name = wanted;
+      // Track who owns this seat (for whose-turn gating)
+      map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
 
+      // Push immediately so guests see the name update at once
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-    };
+    }
+
+  } else if (ev.type === 'ACK_CARD') {
+    // Active player dismissed the shared modal → advance engine
+    if (typeof engine.ackCard === 'function') engine.ackCard();
+  }
+
+  // Final write to ensure any other fields are up-to-date
+  await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+};
 
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
