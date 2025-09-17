@@ -148,16 +148,20 @@
     let overlayRoll = null;
     let rollSeq = 0;
 
+    // NEW: queue a card during the roll so dice can publish first
+    let queuedCard = null;
+
+    // Queue on draw (don't publish immediately)
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      if (card) {
-        overlayCard = { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() };
-      } else {
-        overlayCard = { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
-      }
-      T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+      queuedCard = card
+        ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
+        : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
     });
+
+    // Clear overlay on resolve, and publish that change
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
+      queuedCard = null;
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     });
 
@@ -167,11 +171,22 @@
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
 
+        // Publish dice first
+        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+
+        // Then publish queued card (if any)
+        if (queuedCard) {
+          overlayCard = queuedCard;
+          queuedCard = null;
+          await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        }
+
       } else if (ev.type === 'RESTART') {
         engine.reset();
         rollSeq = 0;
         overlayRoll = null;
         overlayCard = null;
+        queuedCard = null;
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
