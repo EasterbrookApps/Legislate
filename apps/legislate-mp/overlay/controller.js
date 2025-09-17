@@ -51,22 +51,28 @@
   }
 
   // Dice for everyone: animate when overlayRoll.seq changes
-  function maybeShowDice(state){
-    const r = state && state.overlayRoll;
-    if (!r || typeof r.seq !== 'number' || typeof r.value !== 'number') return;
+function maybeShowDice(state){
+  const r = state && state.overlayRoll;
+  if (!r || typeof r.seq !== 'number' || typeof r.value !== 'number') return;
 
-    if (!seenFirstState) {
-      // don’t animate the very first state we see (avoids flash on join)
-      lastRollSeqSeen = r.seq;
-      return;
-    }
-    if (r.seq === lastRollSeqSeen) return;
-
+  if (!seenFirstState) {
     lastRollSeqSeen = r.seq;
-    if (window.LegislateUI?.animateDie) {
-      window.LegislateUI.animateDie(r.value, 900);
-    }
+    return;
   }
+  if (r.seq === lastRollSeqSeen) return;
+
+  lastRollSeqSeen = r.seq;
+
+  const overlay = document.getElementById('diceOverlay');
+  if (overlay) overlay.hidden = false;
+
+  if (window.LegislateUI?.animateDie) {
+    window.LegislateUI.animateDie(r.value, 900);
+  }
+
+  // Hide overlay again after 2s (matches SP feel)
+  setTimeout(()=>{ if (overlay) overlay.hidden = true; }, 2000);
+}
 
   // Card modal: only current-turn player may dismiss
   let sharedModal = null;
