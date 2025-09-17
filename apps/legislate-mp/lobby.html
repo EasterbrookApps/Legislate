@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Legislate?! — Lobby</title>
+  <link rel="stylesheet" href="./css/style.css?v=LG-1">
+  <style>
+    .lobby { max-width: 720px; margin: 4rem auto; padding: 2rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 18px rgba(0,0,0,.06); }
+    .lobby h1 { margin-top: 0; }
+    .row { display: flex; gap: 1rem; align-items: center; }
+    .row + .row { margin-top: 1rem; }
+    .grow { flex: 1; }
+    .button { padding: .8rem 1.2rem; border: 0; border-radius: 8px; background: #1d70b8; color: #fff; cursor: pointer; font-size: 1rem; }
+    .button--secondary { background: #6f72af; }
+    .input { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%; }
+    .note { color: #555; font-size: .95rem; }
+    .brand { font-weight: 700; letter-spacing: .4px; }
+    .error { color: #d4351c; min-height: 1.2em; margin-top: .3rem; }
+  </style>
+</head>
+<body>
+  <div class="lobby">
+    <div class="brand">Legislate?!</div>
+    <h1>Lobby</h1>
+
+    <div class="row">
+      <button id="createBtn" class="button">Create Room</button>
+      <div class="note">You’ll be the host.</div>
+    </div>
+
+    <div class="row">
+      <input id="roomInput" class="input grow" placeholder="Enter room code (e.g. ABCD)" maxlength="8" aria-label="Room code">
+      <button id="joinBtn" class="button button--secondary">Join Room</button>
+    </div>
+    <div id="err" class="error"></div>
+
+    <p class="note" style="margin-top:1rem">
+      Tip: Share the room code with others. The host should open the room first.
+    </p>
+  </div>
+
+  <script>
+    function code4() {
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no I/O/1/0
+      let out = ''; for (let i=0;i<4;i++) out += alphabet[Math.floor(Math.random()*alphabet.length)];
+      return out;
+    }
+    function setRoomAndGo(room, host) {
+      sessionStorage.setItem('MP_ROOM', room.toUpperCase());
+      sessionStorage.setItem('MP_HOST', host ? '1' : '0');
+      // Navigate to the multiplayer page (no query params needed)
+      window.location.href = './mp.html';
+    }
+    document.getElementById('createBtn').addEventListener('click', () => {
+      const room = code4();
+      setRoomAndGo(room, true);
+    });
+    document.getElementById('joinBtn').addEventListener('click', () => {
+      const el = document.getElementById('roomInput');
+      const err = document.getElementById('err');
+      const v = (el.value || '').trim().toUpperCase();
+      if (!/^[A-Z0-9]{3,8}$/.test(v)) {
+        err.textContent = 'Please enter a valid room code (3–8 letters/numbers).';
+        el.focus();
+        return;
+      }
+      err.textContent = '';
+      setRoomAndGo(v, false);
+    });
+  </script>
+</body>
+</html>
