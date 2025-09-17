@@ -8,41 +8,61 @@
   <style>
     .lobby { max-width: 720px; margin: 4rem auto; padding: 2rem; background: #fff; border-radius: 12px; box-shadow: 0 4px 18px rgba(0,0,0,.06); }
     .lobby h1 { margin-top: 0; }
-    .row { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; }
-    .grow { flex: 1; }
+    .row { display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; }
+    .grow { flex: 1 1 260px; }
     .button { padding: .8rem 1.2rem; border: 0; border-radius: 8px; background: #1d70b8; color: #fff; cursor: pointer; font-size: 1rem; }
     .button--secondary { background: #6f72af; }
-    .input { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%; }
+    .input, select { padding: .8rem 1rem; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; width: 100%; }
     .error { color: #d4351c; min-height: 1.2em; }
-    .brand { font-weight: 700; letter-spacing: .4px; margin-bottom: 1rem; }
   </style>
 </head>
 <body>
-  <div class="lobby">
-    <div class="brand">Legislate?!</div>
-    <h1>Lobby</h1>
 
-    <!-- Host creates room -->
-    <div class="row">
-      <input id="hostName" class="input grow" placeholder="Your name (host)" maxlength="24" aria-label="Host name">
-      <select id="hostCount" class="input" aria-label="Number of players">
-        <option value="2">2 players</option>
-        <option value="3">3 players</option>
-        <option value="4" selected>4 players</option>
-        <option value="5">5 players</option>
-        <option value="6">6 players</option>
-      </select>
-      <button id="createBtn" class="button">Create Room</button>
+  <!-- Header copied directly from mp.html -->
+  <header class="header">
+    <div class="header__inner">
+      <div class="header__brand">
+        <img src="./assets/logo.png" alt="Legislate Logo" class="header__logo">
+        <span class="header__title">Legislate?!</span>
+      </div>
+      <nav class="header__nav">
+        <a href="./lobby.html" class="header__link">Lobby</a>
+        <a href="./mp.html" class="header__link">Game</a>
+      </nav>
     </div>
+  </header>
 
-    <!-- Guests join -->
-    <div class="row">
-      <input id="guestName" class="input grow" placeholder="Your name" maxlength="24" aria-label="Guest name">
-      <input id="roomInput" class="input" style="width:10rem" placeholder="Room code" maxlength="8" aria-label="Room code">
-      <button id="joinBtn" class="button button--secondary">Join Room</button>
+  <!-- Lobby card -->
+  <main>
+    <div class="lobby">
+      <h1>Lobby</h1>
+
+      <!-- Host creates room -->
+      <div class="row">
+        <input id="hostName" class="input grow" placeholder="Your name (host)" maxlength="24"
+               aria-label="Host name" autocomplete="name" autocapitalize="words" inputmode="text">
+        <select id="hostCount" class="input" aria-label="Number of players">
+          <option value="2">2 players</option>
+          <option value="3">3 players</option>
+          <option value="4" selected>4 players</option>
+          <option value="5">5 players</option>
+          <option value="6">6 players</option>
+        </select>
+        <button id="createBtn" class="button">Create Room</button>
+      </div>
+
+      <!-- Guests join -->
+      <div class="row">
+        <input id="guestName" class="input grow" placeholder="Your name" maxlength="24"
+               aria-label="Guest name" autocomplete="name" autocapitalize="words" inputmode="text">
+        <input id="roomInput" class="input" style="width:10rem" placeholder="Room code" maxlength="8"
+               aria-label="Room code" autocapitalize="characters" inputmode="text">
+        <button id="joinBtn" class="button button--secondary">Join Room</button>
+      </div>
+
+      <div id="err" class="error"></div>
     </div>
-    <div id="err" class="error"></div>
-  </div>
+  </main>
 
   <script>
     function code4(){
@@ -51,22 +71,23 @@
       return s;
     }
     function go(room, host, name, count){
+      const safeName = (name || '').trim().slice(0,24) || (host ? 'Host' : 'Player');
       sessionStorage.setItem('MP_ROOM', room.toUpperCase());
       sessionStorage.setItem('MP_HOST', host ? '1' : '0');
-      if (name)  sessionStorage.setItem('MP_NAME', name.trim());
+      sessionStorage.setItem('MP_NAME', safeName);
       if (host && count) sessionStorage.setItem('MP_PLAYER_COUNT', String(count));
       window.location.href = './mp.html';
     }
 
     document.getElementById('createBtn').addEventListener('click', ()=>{
-      const name  = (document.getElementById('hostName').value || 'Host').trim();
+      const name  = document.getElementById('hostName').value;
       const count = Number(document.getElementById('hostCount').value) || 4;
       const room  = code4();
       go(room, true, name, count);
     });
 
     document.getElementById('joinBtn').addEventListener('click', ()=>{
-      const name = (document.getElementById('guestName').value || 'Player').trim();
+      const name = document.getElementById('guestName').value;
       const room = (document.getElementById('roomInput').value || '').trim().toUpperCase();
       const err  = document.getElementById('err');
       if (!/^[A-Z0-9]{3,8}$/.test(room)) { err.textContent='Enter a valid room code (3–8 chars).'; return; }
