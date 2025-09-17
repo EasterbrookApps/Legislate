@@ -9,6 +9,18 @@
   let myUid = null;
   let lastCardKey = null;
   let lastRollSeqSeen = -1;
+  let seenFirstState = false;
+
+  // Debug helper
+  function mpLog(label, data){
+    const pretty = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+    console.log("MP:", label, data);
+    const dbg = document.getElementById("dbg-log");
+    if (dbg) {
+      dbg.textContent += `\nMP: ${label}\n${pretty}\n`;
+      dbg.scrollTop = dbg.scrollHeight;
+    }
+  }
 
   // Roll button control (only enable on my turn)
   let rollBtnRef = null;
@@ -58,17 +70,22 @@
     if (r.seq === lastRollSeqSeen) return;
     lastRollSeqSeen = r.seq;
 
+    mpLog("Received overlayRoll", r);
+
     const overlay = document.getElementById('diceOverlay');
     if (overlay) {
       overlay.hidden = false;
       overlay.setAttribute('aria-hidden', 'false');
     }
     setDiceFace(r.value);
+
     setTimeout(()=>{
       if (overlay) {
         overlay.hidden = true;
         overlay.setAttribute('aria-hidden', 'true');
       }
+      // After dice hides, if card exists, show it
+      if (state.overlayCard) maybeShowCard(state);
     }, 2000);
   }
 
@@ -81,6 +98,8 @@
     if (key && key === lastCardKey) return;
     lastCardKey = key;
 
+    mpLog("Received overlayCard", oc);
+
     const title = String(oc.title || 'Card');
     const text  = String(oc.text  || '');
     const canDismiss = !!(myUid && state.currentTurnUid && (state.currentTurnUid === myUid));
@@ -92,10 +111,15 @@
         body: `<p>${text}</p>`,
         okText: canDismiss ? 'OK' : 'Waiting for player…',
         okDisabled: !canDismiss
-      }).then(() => { if (canDismiss) T.sendEvent({ type: 'ACK_CARD' }); });
+      }).then(() => {
+        if (canDismiss) {
+          // Brief pause before advancing turn
+          setTimeout(()=>{ T.sendEvent({ type: 'ACK_CARD' }); }, 1200);
+        }
+      });
     } else {
       if (canDismiss && confirm(`${title}\n\n${text}\n\nPress OK to continue.`)) {
-        T.sendEvent({ type: 'ACK_CARD' });
+        setTimeout(()=>{ T.sendEvent({ type: 'ACK_CARD' }); }, 1200);
       }
     }
   }
@@ -115,12 +139,13 @@
 
     updateRollEnabled(state);
 
-    // Everyone (host + guests) sees overlay dice and overlay cards
+    // Everyone (host + guests) sees overlay dice + card
     maybeShowDice(state);
-    maybeShowCard(state);
+
+    seenFirstState = true;
   }
 
-  // --- Host compute out state (adds overlay fields) ---
+  // --- Host compute out state ---
   function computeOutState(engine, mapping, overlayCard, overlayRoll){
     const out = deepClone(engine.state);
     const turnIdx = out.turnIndex || 0;
@@ -139,56 +164,35 @@
     let overlayCard = null;
     let overlayRoll = null;
     let rollSeq = 0;
-
-    // Queue card during roll to ensure dice-first publishing
-    let duringRoll = false;
     let queuedCard = null;
 
-    // 1) Card draw: queue if rolling; otherwise publish immediately
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      const payload = card
+      queuedCard = card
         ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
         : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
-
-      if (duringRoll) {
-        queuedCard = payload;           // publish right after dice
-      } else {
-        overlayCard = payload;          // publish now (non-roll trigger)
-        T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-      }
     });
 
-    // 2) Card resolve: clear overlay; publish that
     engine.bus.on('CARD_RESOLVE', ()=>{
       overlayCard = null;
       queuedCard = null;
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+      mpLog("Host cleared overlayCard", {});
     });
 
-    // 3) Apply incoming player events
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
-        duringRoll = true;
-
-        // IMPORTANT: disable single-player dice locally; overlay will handle visuals for all
-        // (We did this globally below by monkey-patching LegislateUI.animateDie)
-
         await engine.takeTurn();
-
-        // Publish dice FIRST
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
+        mpLog("Host wrote overlayRoll", overlayRoll);
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
 
-        // Then publish CARD (if queued by the roll)
         if (queuedCard) {
           overlayCard = queuedCard;
           queuedCard = null;
+          mpLog("Host wrote overlayCard", overlayCard);
           await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         }
-
-        duringRoll = false;
-        return; // avoid any extra write that could reorder
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
@@ -196,7 +200,6 @@
         overlayRoll = null;
         overlayCard = null;
         queuedCard = null;
-        duringRoll = false;
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
@@ -209,16 +212,14 @@
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
-        // Republish to sync any turn changes (e.g. miss-a-turn)
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        mpLog("Host processed ACK_CARD", {});
         return;
       }
 
-      // Generic sync
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     };
 
-    // Initial publish
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
   }
@@ -229,7 +230,6 @@
 
     myUid = T.auth?.currentUser?.uid || null;
 
-    // Wait for engine (poll up to ~5s)
     let engine = null;
     for (let i = 0; i < 25; i++) {
       engine = window.LegislateApp && window.LegislateApp.engine;
@@ -238,18 +238,14 @@
     }
     if (!engine) { console.warn('Engine not detected; overlay inactive.'); return; }
 
-    // 🔕 Kill the single-player dice animation in MP so only overlay dice appears
+    // Disable SP dice animation in MP
     if (window.LegislateUI && typeof window.LegislateUI.animateDie === 'function') {
-      if (!window.LegislateUI._mpSavedAnimateDie) {
-        window.LegislateUI._mpSavedAnimateDie = window.LegislateUI.animateDie;
-      }
-      window.LegislateUI.animateDie = function(){ /* MP: overlay drives dice */ };
+      window.LegislateUI.animateDie = function(){};
     }
 
     const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0,24);
     const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
 
-    // MP UI rules (hide SP controls and lock names)
     const pc = $('playerCount'); if (pc) pc.style.display = 'none';
     const playersSection = $('playersSection');
     if (playersSection) {
@@ -257,16 +253,16 @@
       playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
     }
 
-    // Remove SP handlers; rebind for overlay
     function replaceWithClone(el){ if (!el) return el; const c=el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
 
-    // Everyone mirrors authoritative state (overlay renders dice + cards)
-    T.onState((st)=> { renderFromState(engine, st); });
+    T.onState((st)=> {
+      mpLog("State sync", st);
+      renderFromState(engine, st);
+    });
 
     if (T.mode === 'host') {
-      // Apply lobby choices and trigger SP rebuild
       if (pc && hostCount) {
         pc.value = String(hostCount);
         pc.dispatchEvent(new Event('change', { bubbles: true }));
@@ -287,17 +283,13 @@
       hostLoop(engine);
 
     } else {
-      // Guest announces their chosen name once
       if (myName) T.sendEvent({ type: 'SET_NAME', name: myName });
 
-      // Guests can only roll on their turn (gated by updateRollEnabled)
       rollBtnRef?.addEventListener('click', (e)=>{
         e.preventDefault();
         if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
       });
-
-      // Guests cannot restart
-      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); /* no-op */ });
+      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); });
     }
   }
 
