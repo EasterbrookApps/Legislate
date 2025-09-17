@@ -151,7 +151,7 @@
 
     updateRollEnabled(state);
 
-    // Everyone sees overlay dice; card shows when host publishes it after dice
+    // Everyone sees overlay dice; card will appear when host publishes it
     maybeShowDice(state);
     if (state.overlayCard) maybeShowCard(state);
   }
@@ -176,23 +176,28 @@
     let overlayRoll = null;
     let rollSeq = 0;
 
-    // Card captured via interceptor (see bootOverlay); store here:
+    // Card captured via interceptor (see bootOverlay); store & resolve on ACK
     let queuedCard = null;
-    intercept.setQueuedCard = (payload) => { queuedCard = payload; mpLog("Host queued card (intercepted)", payload); };
+    let resolveCardPromise = null;
 
-    // Keep legacy safety: if engine does emit CARD_DRAWN, also queue it
+    intercept.setQueuedCard = (payload, resolver) => {
+      queuedCard = payload;
+      resolveCardPromise = resolver;
+      mpLog("Host queued card (intercepted)", payload);
+    };
+
+    // Safety: if engine also emits CARD_DRAWN, queue from there too (won't hurt)
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
       const payload = card
-        ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
-        : { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
+        ? { id: card.id || `${deck}-${Date.now()}`, title: deckLabel(deck), text: (card.text||'').trim() }
+        : { id: `none-${Date.now()}`, title: deckLabel(deck), text: `The ${deck} deck is empty.` };
       queuedCard = payload;
       mpLog("Host queued card (bus)", payload);
     });
 
-    // Clear card overlay when resolved
     engine.bus.on('CARD_RESOLVE', ()=>{
+      // Engine advanced after our promise resolved; clear overlay card now.
       overlayCard = null;
-      queuedCard = null;
       T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
       mpLog("Host cleared overlayCard", {});
     });
@@ -201,21 +206,29 @@
       if (ev.type === 'ROLL') {
         await engine.takeTurn();
 
-        // 1) Publish dice immediately
+        // 1) Publish dice immediately for everyone
         rollSeq += 1;
         overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
         await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
         mpLog("Host wrote overlayRoll", overlayRoll);
 
-        // 2) Publish card after dice wobble
+        // 2) Publish card after dice wobble if we have one queued
         if (queuedCard) {
           setTimeout(async ()=>{
             overlayCard = queuedCard;
-            queuedCard = null;
             await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
             mpLog("Host wrote overlayCard (post-dice)", overlayCard);
           }, 2100);
         }
+        return;
+
+      } else if (ev.type === 'ACK_CARD') {
+        // Active player dismissed shared modal → resolve the host's intercepted SP modal
+        if (typeof resolveCardPromise === 'function') {
+          resolveCardPromise(true);
+          resolveCardPromise = null;
+        }
+        // Let engine emit CARD_RESOLVE and advance; we'll clear overlay in that handler
         return;
 
       } else if (ev.type === 'RESTART') {
@@ -224,6 +237,9 @@
         overlayRoll = null;
         overlayCard = null;
         queuedCard = null;
+        resolveCardPromise = null;
+        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        return;
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
@@ -233,12 +249,6 @@
           engine.state.players[seat].name = wanted;
           map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
         }
-
-      } else if (ev.type === 'ACK_CARD') {
-        if (typeof engine.ackCard === 'function') engine.ackCard();
-        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-        mpLog("Host processed ACK_CARD", {});
-        return;
       }
 
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
@@ -246,6 +256,8 @@
 
     await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
     return T.onEvents(apply);
+
+    function deckLabel(deck){ return (deck && deck[0].toUpperCase() + deck.slice(1) + " Stages") || "Card"; }
   }
 
   // Helper: extract text from HTML snippets we intercept
@@ -255,7 +267,7 @@
     return (tmp.textContent || tmp.innerText || '').trim();
   }
 
-  // Host-side interceptor: capture SP modal requests and turn them into queued cards
+  // Host-side interceptor: capture SP modal requests and hold the engine until ACK
   function installHostCardInterceptor(intercept){
     if (!window.LegislateUI || typeof window.LegislateUI.createModal !== 'function') return;
 
@@ -264,23 +276,25 @@
     window.LegislateUI.createModal = function(){
       const real = originalCreateModal ? originalCreateModal() : null;
 
-      // Return a proxy with an open() that captures and suppresses SP modal
       return {
         open(opts){
-          // Extract details from SP modal call
+          // Build overlay payload from SP modal args
           const title = String(opts && opts.title || 'Card');
-          // Body may be HTML; convert to plain text for transport
           const bodyHtml = opts && opts.body || '';
           const text = htmlToPlainText(bodyHtml);
+          const payload = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+            title, text
+          };
 
-          // Queue for overlay publication (handled in hostLoop)
-          const payload = { id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`, title, text };
-          if (typeof intercept.setQueuedCard === 'function') {
-            intercept.setQueuedCard(payload);
-          }
-
-          // Suppress local SP modal (overlay will show shared one later)
-          return Promise.resolve(true);
+          // Return a Promise that we resolve only after overlay ACK
+          return new Promise((resolve)=>{
+            if (typeof intercept.setQueuedCard === 'function') {
+              intercept.setQueuedCard(payload, resolve);
+            } else {
+              resolve(true); // fallback
+            }
+          });
         }
       };
     };
@@ -312,7 +326,7 @@
       playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
     }
 
-    // Remove SP handlers; rebind for overlay
+    // Replace SP handlers; rebind for overlay
     function replaceWithClone(el){ if (!el) return el; const c=el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
     rollBtnRef     = replaceWithClone($('rollBtn'));
     let restartBtn = replaceWithClone($('restartBtn'));
@@ -324,7 +338,7 @@
     });
 
     if (T.mode === 'host') {
-      // Intercept SP modal opens to capture cards for overlay
+      // Intercept SP modal opens to capture cards and hold engine until ACK
       const intercept = {};
       installHostCardInterceptor(intercept);
 
