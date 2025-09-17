@@ -231,65 +231,125 @@
   }
 
   async function bootOverlay(){
-    await T.init();
-    if (T.mode === 'solo') return;
+  // 1) Initialise transport (Auth + Firestore). Bail if solo.
+  await T.init();
+  if (T.mode === 'solo') return;
 
-    myUid = T.auth?.currentUser?.uid || null;
+  myUid = T.auth && T.auth.currentUser ? T.auth.currentUser.uid : null;
 
-    let engine = null;
-    for (let i = 0; i < 25; i++) {
-      engine = window.LegislateApp && window.LegislateApp.engine;
-      if (engine) break;
-      await new Promise(r => setTimeout(r, 200));
+  // 2) Wait for the single-player engine to be ready (poll up to ~5s)
+  let engine = null;
+  for (let i = 0; i < 25; i++) {
+    engine = (window.LegislateApp && window.LegislateApp.engine) || null;
+    if (engine) break;
+    await new Promise(r => setTimeout(r, 200));
+  }
+  if (!engine) {
+    console.warn('Engine not detected; overlay inactive.');
+    return;
+  }
+
+  // 3) In MP, disable SP dice animation (we show the shared overlay dice only)
+  if (window.LegislateUI) {
+    if (typeof window.LegislateUI.showDiceRoll === 'function') {
+      window.LegislateUI.showDiceRoll = function(){ return Promise.resolve(); };
     }
-    if (!engine) { console.warn('Engine not detected; overlay inactive.'); return; }
-
-    const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0,24);
-    const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
-
-    const pc = $('playerCount'); if (pc) pc.style.display = 'none';
-    const playersSection = $('playersSection');
-    if (playersSection) {
-      playersSection.addEventListener('beforeinput', e=>e.preventDefault(), true);
-      playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
-    }
-
-    function replaceWithClone(el){ if (!el) return el; const c=el.cloneNode(true); el.parentNode.replaceChild(c, el); return c; }
-    rollBtnRef     = replaceWithClone($('rollBtn'));
-    let restartBtn = replaceWithClone($('restartBtn'));
-
-    T.onState((st)=> renderFromState(engine, st));
-
-    if (T.mode === 'host') {
-      if (pc && hostCount) {
-        pc.value = String(hostCount);
-        pc.dispatchEvent(new Event('change', { bubbles: true }));
-      } else if (hostCount && typeof engine.setPlayerCount === 'function') {
-        engine.setPlayerCount(hostCount);
-      }
-      if (myName && engine.state.players[0]) {
-        engine.state.players[0].name = myName;
-      }
-      syncPlayersUI(engine, { players: engine.state.players });
-
-      rollBtnRef?.addEventListener('click', (e)=>{
-        e.preventDefault();
-        if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
-      });
-      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); T.sendEvent({ type: 'RESTART' }); });
-
-      hostLoop(engine);
-
-    } else {
-      if (myName) T.sendEvent({ type: 'SET_NAME', name: myName });
-
-      rollBtnRef?.addEventListener('click', (e)=>{
-        e.preventDefault();
-        if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
-      });
-      restartBtn?.addEventListener('click', (e)=>{ e.preventDefault(); });
+    if (typeof window.LegislateUI.waitForDice === 'function') {
+      window.LegislateUI.waitForDice = function(){ return Promise.resolve(); };
     }
   }
+
+  // 4) Pull lobby selections
+  const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0,24);
+  const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
+
+  // 5) Lock SP controls (names edited in lobby; player count fixed)
+  const pc = $('playerCount'); if (pc) pc.style.display = 'none';
+  const playersSection = $('playersSection');
+  if (playersSection) {
+    playersSection.addEventListener('beforeinput', e=>e.preventDefault(), true);
+    playersSection.addEventListener('keydown',     e=>e.preventDefault(), true);
+  }
+
+  // Replace SP click handlers so overlay can gate rolls by turn owner
+  function replaceWithClone(el){
+    if (!el) return el;
+    const c = el.cloneNode(true);
+    el.parentNode.replaceChild(c, el);
+    return c;
+  }
+  rollBtnRef     = replaceWithClone($('rollBtn'));
+  let restartBtn = replaceWithClone($('restartBtn'));
+
+  // 6) Mirror authoritative Firestore state into the local engine + UI
+  T.onState((st)=> {
+    // Optional: trimmed debug
+    try {
+      const snap = {
+        turnIndex: st && st.turnIndex,
+        currentTurnUid: st && st.currentTurnUid,
+        lastRoll: st && st.lastRoll,
+        overlayRoll: st && st.overlayRoll,
+        overlayCard: st && st.overlayCard ? {
+          id: st.overlayCard.id || null,
+          title: st.overlayCard.title || '',
+          text: String(st.overlayCard.text || '').slice(0,140)
+        } : null,
+        players: Array.isArray(st && st.players) ? st.players.map(p => p && p.name) : []
+      };
+      const dbg = document.getElementById('dbg-log');
+      if (dbg) {
+        if (dbg.textContent.length > 30000) dbg.textContent = dbg.textContent.slice(-20000);
+        dbg.textContent += `\nMP: State sync\n${JSON.stringify(snap, null, 2)}\n`;
+        dbg.scrollTop = dbg.scrollHeight;
+      }
+    } catch(e){}
+    renderFromState(engine, st);
+  });
+
+  // 7) Host vs Guest wiring
+  if (T.mode === 'host') {
+    // Apply lobby player count to engine (triggers token render)
+    if (pc && hostCount) {
+      pc.value = String(hostCount);
+      pc.dispatchEvent(new Event('change', { bubbles: true }));
+    } else if (hostCount && typeof engine.setPlayerCount === 'function') {
+      engine.setPlayerCount(hostCount);
+    }
+
+    // Apply host name to seat 0 (purely visual; ownership is tracked by UIDs)
+    if (myName && engine.state.players[0]) {
+      engine.state.players[0].name = myName;
+    }
+    syncPlayersUI(engine, { players: engine.state.players });
+
+    // Buttons (only enabled on your turn by updateRollEnabled)
+    rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{
+      e.preventDefault();
+      if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
+    });
+    restartBtn && restartBtn.addEventListener('click', (e)=>{
+      e.preventDefault();
+      T.sendEvent({ type: 'RESTART' });
+    });
+
+    // Start the host event loop (handles dice → card publish order, names, etc.)
+    hostLoop(engine);
+
+  } else {
+    // Guest: announce name once; host will immediately write it to state
+    if (myName) T.sendEvent({ type: 'SET_NAME', name: myName });
+
+    // Guests can press Roll only on their turn
+    rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{
+      e.preventDefault();
+      if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' });
+    });
+
+    // Guests cannot restart
+    restartBtn && restartBtn.addEventListener('click', (e)=>{ e.preventDefault(); });
+  }
+}
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bootOverlay);
