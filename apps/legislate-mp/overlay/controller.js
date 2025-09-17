@@ -190,52 +190,42 @@
     });
 
     const apply = async (ev)=>{
-      if (ev.type === 'ROLL') {
-        await engine.takeTurn();
-        rollSeq += 1;
-        overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
-        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-        mpLog("Host wrote overlayRoll", overlayRoll);
+  if (ev.type === 'ROLL') {
+    await engine.takeTurn();
+    rollSeq += 1;
+    overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
 
-        if (queuedCard) {
-          setTimeout(async ()=>{
-            overlayCard = queuedCard;
-            await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-            mpLog("Host wrote overlayCard (post-dice)", overlayCard);
-          }, 2100);
-        }
+  } else if (ev.type === 'RESTART') {
+    engine.reset();
+    rollSeq = 0;
+    overlayRoll = null;
+    overlayCard = null;
 
-      } else if (ev.type === 'ACK_CARD') {
-        if (typeof resolveCardPromise === 'function') {
-          resolveCardPromise(true);
-          resolveCardPromise = null;
-        }
+  } else if (ev.type === 'SET_NAME') {
+    const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
 
-      } else if (ev.type === 'RESTART') {
-        engine.reset();
-        rollSeq = 0;
-        overlayRoll = null;
-        overlayCard = null;
-        queuedCard = null;
-        resolveCardPromise = null;
-        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+    // Try to find a “Player N” placeholder first, else exact name match
+    let seat = engine.state.players.findIndex(p => /^Player \d+$/i.test(p?.name || ''));
+    if (seat === -1) {
+      seat = engine.state.players.findIndex(p => (p?.name || '').toLowerCase() === wanted.toLowerCase());
+    }
 
-      } else if (ev.type === 'SET_NAME') {
-        const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
-        let seat = engine.state.players.findIndex(p => /^Player \d+$/i.test(p.name||''));
-        if (seat === -1) seat = engine.state.players.findIndex(p => (p.name||'').toLowerCase() === wanted.toLowerCase());
-        if (seat >= 0) {
-          engine.state.players[seat].name = wanted;
-          map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
-        }
-      }
+    if (seat >= 0) {
+      engine.state.players[seat].name = wanted;
+      // remember who owns this seat (for whose turn gating)
+      map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
 
+      // 🔥 push the change to Firestore immediately so guests update at once
       await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-    };
+    }
 
-    await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
-    return T.onEvents(apply);
+  } else if (ev.type === 'ACK_CARD') {
+    if (typeof engine.ackCard === 'function') engine.ackCard();
   }
+
+  // always push out latest state (harmless if already written above)
+  await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+};
 
   // --- Interceptor (patched) ---
   function htmlToPlainText(html){
