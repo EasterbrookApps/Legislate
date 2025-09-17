@@ -15,6 +15,9 @@
   let queuedCard = null;
   let resolveCardPromise = null;
 
+  // Latest authoritative state we received (used to preserve overlaySeatUids/currentTurnUid)
+  let lastPublishedState = null;
+
   // --- Always-on multiplayer diagnostics (console + #dbg-log) ---
   function mpDbg(ev, data){
     const stamp = new Date().toISOString();
@@ -190,6 +193,7 @@
     const orig = T.onState.bind(T);
     T.onState = function(handler){
       return orig(function(state){
+        lastPublishedState = state || null; // cache latest for wrapper writes
         mpDbg('STATE_RX', {
           turnIndex: state && state.turnIndex,
           currentTurnUid: state && state.currentTurnUid,
@@ -242,7 +246,6 @@
     if (hostUid) map.overlaySeatUids[0] = hostUid;
 
     let overlayCard = null;
-    let overlayRoll = null;
 
     // Queue card on draw (do NOT write yet; we write after dice wobble)
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
@@ -251,17 +254,20 @@
       mpDbg('HOST_CARD_QUEUED', queuedCard);
     });
 
-    // Do not clear on CARD_RESOLVE; we clear on ACK
+    // Do not clear on CARD_RESOLVE; we clear on ACK so everyone saw it
     engine.bus.on('CARD_RESOLVE', ()=>{ mpDbg('HOST_CARD_RESOLVE_EVENT', {}); });
 
     const apply = async (ev) => {
-      if (ev.type === 'RESTART') {
+      if (ev.type === 'ROLL') {
+        // Guest (or host via event) requested a roll.
+        // Our host-side engine.takeTurn wrapper will broadcast dice → then card.
+        await engine.takeTurn();
+
+      } else if (ev.type === 'RESTART') {
         engine.reset();
-        overlayRoll = null;
-        overlayCard = null;
         queuedCard = null;
         resolveCardPromise = null;
-        await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+        await T.writeState(computeOutState(engine, map, /*overlayCard*/null, /*overlayRoll*/null));
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
@@ -271,7 +277,7 @@
           engine.state.players[seat].name = wanted;
           map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
           mpDbg('HOST_SET_NAME', { seat, name: wanted, by: ev.by || null });
-          await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+          await T.writeState(computeOutState(engine, map, /*overlayCard*/null, /*overlayRoll*/(lastPublishedState && lastPublishedState.overlayRoll) || null));
         }
 
       } else if (ev.type === 'ACK_CARD') {
@@ -280,18 +286,17 @@
         if (!currUid || !ev.by || ev.by !== currUid) {
           mpDbg('HOST_ACK_IGNORED_NOT_TURN', { currUid, by: ev.by || null });
         } else {
+          // Resolve intercepted modal promise, advance engine, then clear shared card
           if (typeof resolveCardPromise === 'function') { resolveCardPromise(true); resolveCardPromise = null; }
           if (typeof engine.ackCard === 'function') engine.ackCard();
-          overlayCard = null; queuedCard = null;
-          await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+          queuedCard = null;
+          await T.writeState(computeOutState(engine, map, /*overlayCard*/null, /*overlayRoll*/(lastPublishedState && lastPublishedState.overlayRoll) || null));
         }
       }
-
-      // Final write to keep out state consistent
-      await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+      // Note: NO unconditional final write here, to avoid wiping overlayCard/overlayRoll
     };
 
-    await T.writeState(computeOutState(engine, map, overlayCard, overlayRoll));
+    await T.writeState(computeOutState(engine, map, /*overlayCard*/null, /*overlayRoll*/null));
     return T.onEvents(apply);
   }
 
@@ -355,32 +360,33 @@
       const setResolver = (fn)=>{ resolveCardPromise = fn; };
       installHostModalInterceptor(setQueued, setResolver);
 
-      // Force ALL rolls to go through MP broadcaster regardless of how SP triggers them
+      // Wrap ALL rolls in the host tab so every roll broadcasts dice → then card
       (function(){
         if (!engine || engine._mpWrapped) return;
         const spTakeTurn = engine.takeTurn.bind(engine);  // original SP method
         let rollSeq = 0; // per-host-tab counter
 
+        // Helper to carry forward overlay seat map/currentTurnUid
+        const getSeatUids = () => (lastPublishedState && Array.isArray(lastPublishedState.overlaySeatUids) ? lastPublishedState.overlaySeatUids : []);
+        const buildOut = (extra) => {
+          const out = JSON.parse(JSON.stringify(engine.state));
+          const turnIdx = out.turnIndex || 0;
+          out.overlaySeatUids = getSeatUids();
+          out.currentTurnUid  = out.overlaySeatUids[turnIdx] || null;
+          return Object.assign(out, extra || {});
+        };
+
         engine.takeTurn = async function(){
-          // Run original logic (moves pieces, sets lastRoll, emits CARD_DRAWN)
+          // Run original logic (moves pieces, sets lastRoll, may emit CARD_DRAWN)
           await spTakeTurn();
 
           // 1) Broadcast dice immediately
           rollSeq += 1;
           const overlayRoll = { seq: rollSeq, value: Number(engine.state.lastRoll || 0) };
           mpDbg('HOST_WRITE_DICE_NOW', overlayRoll);
-
-          const buildOut = (extra) => {
-            const out = JSON.parse(JSON.stringify(engine.state));
-            const turnIdx = out.turnIndex || 0;
-            out.overlaySeatUids = out.overlaySeatUids || [];    // maintained by overlay
-            out.currentTurnUid  = (out.overlaySeatUids && out.overlaySeatUids[turnIdx]) || null;
-            return Object.assign(out, extra || {});
-          };
-
           await T.writeState(buildOut({ overlayRoll }));
 
-          // 2) After dice wobble, publish card if queued via modal interceptor
+          // 2) After dice wobble, publish card if any was queued
           if (queuedCard) {
             const toPublish = queuedCard; // snapshot
             mpDbg('HOST_SCHEDULE_CARD_PUBLISH', { delayMs: 2100, queuedCard: toPublish });
@@ -404,11 +410,12 @@
       if (myName && engine.state.players[0]) { engine.state.players[0].name = myName; }
       syncPlayersUI(engine, { players: engine.state.players });
 
-      // Buttons (enabled only on your turn)
-      rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{ e.preventDefault(); if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' }); });
+      // Buttons
+      // Host: call engine directly; wrapper handles broadcasting
+      rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{ e.preventDefault(); if (!rollBtnRef.disabled) engine.takeTurn(); });
       restartBtn && restartBtn.addEventListener('click', (e)=>{ e.preventDefault(); T.sendEvent({ type: 'RESTART' }); });
 
-      // Start authoritative loop (names, restart, ACK processing)
+      // Start authoritative loop (names, restart, ACK processing + guest ROLL handling)
       hostLoop(engine);
 
     } else {
@@ -417,6 +424,7 @@
 
       if (myName) T.sendEvent({ type: 'SET_NAME', name: myName, by: myUid });
 
+      // Guests send roll event; host runs engine.takeTurn() and broadcasts
       rollBtnRef && rollBtnRef.addEventListener('click', (e)=>{ e.preventDefault(); if (!rollBtnRef.disabled) T.sendEvent({ type: 'ROLL' }); });
       restartBtn && restartBtn.addEventListener('click', (e)=>{ e.preventDefault(); });
     }
