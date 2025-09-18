@@ -1,97 +1,112 @@
-/* global firebase */
-(function () {
-  const MP  = (window.MP = window.MP || {});
-  const CFG = (window.MP_CONFIG = window.MP_CONFIG || {});
+(function(){
+  const q = (s)=>document.querySelector(s);
 
-  function nowTs() {
-    return (
-      (firebase.firestore &&
-        firebase.firestore.FieldValue &&
-        firebase.firestore.FieldValue.serverTimestamp &&
-        firebase.firestore.FieldValue.serverTimestamp()) || new Date()
-    );
+  function getParam(name){
+    const url = new URL(location.href);
+    return url.searchParams.get(name);
+  }
+  function truthy(v){ return v === '1' || v === 'true' || v === 'yes'; }
+
+  function readRoomFromStorage(){
+    try {
+      const room = sessionStorage.getItem('MP_ROOM');
+      const host = sessionStorage.getItem('MP_HOST');
+      return { room, host: truthy(host) };
+    } catch { return { room: null, host: false }; }
   }
 
-  const T = (MP.transport = {
-    app: null,
-    auth: null,
+  // Expose a tiny transport on window.MP
+  window.MP = window.MP || {};
+  window.MP.transport = {
+    mode: null, // 'solo' | 'host' | 'guest'
+    room: null,
     db: null,
-    mode: 'solo',   // 'host' | 'guest' | 'solo'
-    roomId: null,
+    auth: null,
 
-    roomDoc: null,
-    stateDoc: null,   // rooms/{roomId}/state
-    eventsCol: null,  // rooms/{roomId}/events
+    async init(){
+      // Prefer lobby-provided values (sessionStorage). Fall back to URL for dev.
+      const st = readRoomFromStorage();
+      const urlRoom = getParam('room');
+      const urlHost = truthy(getParam('host'));
 
-    // Init (anon auth). roomId + role read from sessionStorage (set by lobby)
-    async init () {
-      if (!firebase?.apps?.length) {
-        if (!CFG.firebase) throw new Error('Missing window.MP_CONFIG.firebase');
-        firebase.initializeApp(CFG.firebase);
+      const room = st.room || urlRoom;
+      const isHost = st.room ? st.host : urlHost;
+
+      this.mode = room ? (isHost ? 'host' : 'guest') : 'solo';
+      this.room = room;
+
+      // Show the banner if present
+      const banner = document.getElementById('roomBanner');
+      if (banner && room) {
+        banner.textContent = 'Room Code: ' + room;
+      } else if (banner) {
+        banner.textContent = 'Room: (not joined)';
       }
-      this.app  = firebase.app();
-      this.auth = firebase.auth();
-      this.db   = firebase.firestore();
 
-      if (!this.auth.currentUser) {
-        await this.auth.signInAnonymously();
+      if (this.mode === 'solo') return; // nothing else needed
+
+      // Ensure Firebase SDKs are available
+      if (!window.firebase || !window.firebase.initializeApp || !window.firebase.auth || !window.firebase.firestore) {
+        console.error('Firebase SDK not loaded. Include Firebase scripts before overlay.');
+        this.mode = 'solo';
+        return;
       }
 
-      const rid  = sessionStorage.getItem('MP_ROOM') || sessionStorage.getItem('MP_ROOM_ID');
-      const role = sessionStorage.getItem('MP_ROLE'); // 'host' | 'guest'
-      if (!rid) throw new Error('No room id in sessionStorage (MP_ROOM)');
+      // Get config: prefer overlay config, else global firebaseConfig
+      const cfg = (window.MP_CONFIG && window.MP_CONFIG.firebase) || window.firebaseConfig;
+      if (!cfg) {
+        console.warn('No Firebase config found; overlay will run in single-player mode.');
+        this.mode = 'solo';
+        return;
+      }
 
-      this.roomId  = rid;
-      this.mode    = role === 'host' ? 'host' : (role === 'guest' ? 'guest' : 'solo');
-      this.roomDoc = this.db.collection('rooms').doc(this.roomId);
+      try {
+        const app = window.firebase.apps && window.firebase.apps.length
+          ? window.firebase.app()
+          : window.firebase.initializeApp(cfg);
 
-      this.stateDoc = this.roomDoc.doc('state'); // single doc
-      this.eventsCol = this.roomDoc.collection('events');
+        this.db = window.firebase.firestore(app);
+        this.auth = window.firebase.auth(app);
 
-      return true;
-    },
-
-    // Host/Guests write merged game state (overlay bits included)
-    async writeState (partial) {
-      const base = { updatedAt: nowTs() };
-      await this.stateDoc.set(Object.assign(base, partial || {}), { merge: true });
-      return { ok: true };
-    },
-
-    // Everyone listens to main state
-    onState (handler) {
-      return this.stateDoc.onSnapshot(snap => {
-        if (!snap.exists) return;
-        try { handler(snap.data()); } catch (e) { console.error(e); }
-      });
-    },
-
-    // Guests → host events (roll, ack, set_name, restart)
-    async sendEvent (payload) {
-      const uid = this.auth.currentUser?.uid || null;
-      await this.eventsCol.add({ ...payload, by: uid, ts: nowTs() });
-    },
-
-    // Host consumes events FIFO and deletes them after handling
-    onEvents (handler) {
-      const q = this.eventsCol.orderBy('ts', 'asc').limit(200);
-      return q.onSnapshot(async (snap) => {
-        const batch = this.db.batch();
-        const work = [];
-        snap.docChanges().forEach(ch => {
-          if (ch.type !== 'added') return;
-          const doc = ch.doc;
-          const data = doc.data() || {};
-          work.push((async () => {
-            try { await handler(data); }
-            finally { batch.delete(doc.ref); }
-          })());
-        });
-        if (work.length) {
-          await Promise.all(work);
-          await batch.commit();
+        // Anonymous sign-in (needed for rules)
+        if (!this.auth.currentUser) {
+          await this.auth.signInAnonymously();
         }
+      } catch (err) {
+        console.error('Firebase init failed:', err);
+        this.mode = 'solo';
+      }
+    },
+
+    stateDoc(){ return this.db.collection('rooms').doc(this.room).collection('sync').doc('state'); },
+    eventsCol(){ return this.db.collection('rooms').doc(this.room).collection('events'); },
+
+    onState(fn){
+      if (this.mode === 'solo') return ()=>{};
+      const ref = this.stateDoc();
+      return ref.onSnapshot(snap=>{ if(snap.exists){ fn(snap.data()); } });
+    },
+
+    sendEvent(ev){
+      if (this.mode === 'solo') return;
+      const by = (this.auth && this.auth.currentUser && this.auth.currentUser.uid) || null;
+      return this.eventsCol().add(Object.assign({ ts: Date.now(), by }, ev));
+    },
+
+    onEvents(fn){
+      if (this.mode !== 'host') return ()=>{};
+      return this.eventsCol().orderBy('ts').onSnapshot(qs=>{
+        qs.docChanges().forEach(ch=>{
+          if (ch.type === 'added') fn(Object.assign({ id: ch.doc.id }, ch.doc.data()));
+        });
       });
+    },
+
+    writeState(state){
+      if (this.mode !== 'host') return;
+      const by = (this.auth && this.auth.currentUser && this.auth.currentUser.uid) || null;
+      const withHost = Object.assign({ hostUid: state.hostUid || by }, state);
+      return this.stateDoc().set(withHost);
     }
-  });
+  };
 })();
