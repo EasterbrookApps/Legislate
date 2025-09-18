@@ -167,6 +167,7 @@ engine.bus.on('CARD_DRAWN', ({ deck, card }) => {
       { currentTurnUid: map.overlaySeatUids[engine.state.turnIndex] }
     ));
   }, 2100);
+  
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
         const preTurnIdx = Number(engine.state.turnIndex || 0);
