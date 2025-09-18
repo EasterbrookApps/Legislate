@@ -137,10 +137,20 @@
     if (hostUid) map.overlaySeatUids[0] = hostUid;
 
     // Buffer cards
-    engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-  queuedCard = card
+    engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
+  const c = card
     ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
     : { id: `none-${Date.now()}`, title: deck || 'Card', text: 'No card.' };
+
+  queuedCard = c;
+
+  // Publish card immediately after dice wobble
+  setTimeout(async ()=>{
+    await T.writeState(Object.assign(
+      computeOutState(engine, map, queuedCard),
+      { currentTurnUid: map.overlaySeatUids[engine.state.turnIndex] }
+    ));
+  }, 2100);
 });
 
     const apply = async (ev)=>{
