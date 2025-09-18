@@ -237,7 +237,6 @@
       if (typeof window.LegislateUI.animateDie==='function') window.LegislateUI.animateDie=()=>Promise.resolve();
       if (typeof window.LegislateUI.showDiceRoll==='function') window.LegislateUI.showDiceRoll=()=>Promise.resolve();
       if (typeof window.LegislateUI.waitForDice==='function') window.LegislateUI.waitForDice=()=>Promise.resolve();
-      if (typeof window.LegislateUI.createModal==='function') window.LegislateUI.createModal=()=>({ open:()=>Promise.resolve() });
     }
 
     // Wait for engine
