@@ -158,15 +158,9 @@ engine.bus.on('CARD_DRAWN', ({ deck, card }) => {
     : { id: `none-${Date.now()}`, title: deck || 'Card', text: 'No card.' };
 });
 
-  queuedCard = c;
-
-  // Publish card immediately after dice wobble
-  setTimeout(async ()=>{
-    await T.writeState(Object.assign(
-      computeOutState(engine, map, queuedCard),
-      { currentTurnUid: map.overlaySeatUids[engine.state.turnIndex] }
-    ));
-  }, 2100);
+engine.bus.on('CARD_RESOLVE', () => {
+  queuedCard = null;
+});
   
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
