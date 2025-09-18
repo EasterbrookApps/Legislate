@@ -4,8 +4,14 @@
   const CFG = (window.MP_CONFIG = window.MP_CONFIG || {});
 
   // ---- Tiny helpers ---------------------------------------------------------
-  function nowTs() { return (firebase.firestore && firebase.firestore.FieldValue && firebase.firestore.FieldValue.serverTimestamp && firebase.firestore.FieldValue.serverTimestamp()) || new Date(); }
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+  function nowTs() {
+    return (
+      (firebase.firestore &&
+        firebase.firestore.FieldValue &&
+        firebase.firestore.FieldValue.serverTimestamp &&
+        firebase.firestore.FieldValue.serverTimestamp()) || new Date()
+    );
+  }
 
   // ---- Transport object -----------------------------------------------------
   const T = (MP.transport = {
@@ -67,11 +73,13 @@
       })) : [];
 
       const out = {
-        hostUid: uid, // who currently owns the room (doesn't imply authorization)
+        hostUid: uid, // who currently owns the room
         players,
         turnIndex: Number(engineState.turnIndex || 0),
         lastRoll: Number(engineState.lastRoll || 0),
         overlaySeatUids: Array.isArray(engineState.overlaySeatUids) ? engineState.overlaySeatUids : [],
+        // IMPORTANT: monotonic turn sequence for ordering overlay updates
+        turnSeq: Number(engineState.turnSeq || 0),
         updatedAt: nowTs(),
       };
 
@@ -111,7 +119,7 @@
 
     onEvents(handler) {
       // Host-only: listen for new events; process in order; delete after handle
-      const q = this.eventsCol.orderBy('ts', 'asc').limit(20);
+      const q = this.eventsCol.orderBy('ts', 'asc').limit(50);
       return q.onSnapshot(async (snap) => {
         const batch = this.db.batch();
         const work = [];
