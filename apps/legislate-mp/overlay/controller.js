@@ -75,34 +75,49 @@
     }
   }
 
-  // Card modal (shared only)
-  let sharedModal = null;
-  function maybeShowCard(state){
-    const oc  = state && state.overlayCard;
-    const key = oc ? (oc.id || oc.title || JSON.stringify(oc)).slice(0,100) : null;
+// Card modal (shared only)
+let sharedModal = null;
+function maybeShowCard(state){
+  const oc  = state && state.overlayCard;
+  const key = oc ? (oc.id || oc.title || JSON.stringify(oc)).slice(0,100) : null;
 
-    if (!oc) { lastCardKey = null; return; }
-    if (key && key === lastCardKey) return;
-    lastCardKey = key;
+  // If overlayCard is cleared, close any open modal for everyone
+  if (!oc) {
+    lastCardKey = null;
+    if (sharedModal) {
+      try {
+        if (typeof sharedModal.close === 'function') sharedModal.close();
+        else if (typeof sharedModal.hide === 'function') sharedModal.hide();
+        else if (typeof sharedModal.dismiss === 'function') sharedModal.dismiss();
+      } catch (_) {}
+    }
+    return;
+  }
 
-    const title = String(oc.title || 'Card');
-    const text  = String(oc.text  || '');
-    const canDismiss = !!(myUid && state.currentTurnUid && (state.currentTurnUid === myUid));
+  // Debounce duplicate opens for the same card
+  if (key && key === lastCardKey) return;
+  lastCardKey = key;
 
-    if (window.LegislateUI?.createModal) {
-      if (!sharedModal) sharedModal = window.LegislateUI.createModal();
-      sharedModal.open({
-        title,
-        body: `<p>${text}</p>`,
-        okText: canDismiss ? 'OK' : 'Waiting for player…',
-        okDisabled: !canDismiss
-      }).then(()=>{ if (canDismiss) T.sendEvent({ type: 'ACK_CARD' }); });
-    } else if (canDismiss) {
-      if (confirm(`${title}\n\n${text}\n\nPress OK to continue.`)) {
-        T.sendEvent({ type: 'ACK_CARD' });
-      }
+  const title = String(oc.title || 'Card');
+  const text  = String(oc.text  || '');
+  const canDismiss = !!(myUid && state.currentTurnUid && (state.currentTurnUid === myUid));
+
+  if (window.LegislateUI?.createModal) {
+    if (!sharedModal) sharedModal = window.LegislateUI.createModal();
+    sharedModal.open({
+      title,
+      body: `<p>${text}</p>`,
+      okText: canDismiss ? 'OK' : 'Waiting for player…',
+      okDisabled: !canDismiss
+    }).then(() => {
+      if (canDismiss) T.sendEvent({ type: 'ACK_CARD' });
+    });
+  } else if (canDismiss) {
+    if (confirm(`${title}\n\n${text}\n\nPress OK to continue.`)) {
+      T.sendEvent({ type: 'ACK_CARD' });
     }
   }
+}
 
   // Render state into engine + UI
   function renderFromState(engine, state){
@@ -136,11 +151,12 @@
     const hostUid = T.auth?.currentUser?.uid || null;
     if (hostUid) map.overlaySeatUids[0] = hostUid;
 
-    // Buffer cards
-    engine.bus.on('CARD_DRAWN', async ({ deck, card })=>{
-  const c = card
-    ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
+    // Buffer cards (do NOT write state from here)
+engine.bus.on('CARD_DRAWN', ({ deck, card }) => {
+  queuedCard = card
+    ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text || '').trim() }
     : { id: `none-${Date.now()}`, title: deck || 'Card', text: 'No card.' };
+});
 
   queuedCard = c;
 
