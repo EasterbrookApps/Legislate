@@ -6,34 +6,68 @@
   // ---------- Local caches ----------
   let myUid = null;
 
-  // Overlay state guards
-  let lastTurnIdSeen = -1;
+  // Overlay guards (authoritative is engine.turnSeq; these are client-side last-seen)
+  let lastTurnSeqSeen = -1;
   let lastRollSeqSeen = -1;
-  let lastCardIdSeen = null;
+  let lastCardIdSeen  = null;
 
-  // For host: queued card info + a resolver to unblock the engine’s modal
+  // Host-only: capture per-turn card and modal blocker
   let queuedCard = null;
   let resolveCardPromise = null;
 
+  // ---------- Helpers ----------
+  function hidePlayerCountAndLockPills(playersLen) {
+    const pc = $('playerCount');
+    if (pc) pc.style.display = 'none';
+
+    const root = $('playersSection');
+    if (!root) return;
+    const pills = Array.from(root.querySelectorAll('.player-pill, [data-player-pill]'));
+    pills.forEach((pill, i) => {
+      const nameSpan = pill.querySelector('.player-name, [data-name]');
+      if (i < playersLen) {
+        pill.style.display = '';
+        if (nameSpan) {
+          nameSpan.setAttribute('contenteditable', 'false');
+          nameSpan.title = 'Names are set in the lobby';
+        }
+        pill.style.pointerEvents = 'none';
+        pill.tabIndex = -1;
+      } else {
+        pill.style.display = 'none';
+      }
+    });
+  }
+
+  function disableLocalDiceEverywhere() {
+    if (window.LegislateUI) {
+      if (typeof window.LegislateUI.showDiceRoll === 'function') {
+        window.LegislateUI.showDiceRoll = function () { return Promise.resolve(); };
+      }
+      if (typeof window.LegislateUI.waitForDice === 'function') {
+        window.LegislateUI.waitForDice = function () { return Promise.resolve(); };
+      }
+      if (typeof window.LegislateUI.animateDie === 'function') {
+        window.LegislateUI.animateDie = function () { return Promise.resolve(); };
+      }
+    }
+  }
+
   // ---------- Dice UI (overlay-driven only) ----------
   function showSharedDice(value) {
-    // Prefer the app’s overlay dice, else fall back to legacy “animateDie”
     const overlay = document.getElementById('diceOverlay');
     const dice = document.getElementById('dice');
 
     if (overlay && dice) {
-      // CSS dice (single shared overlay)
       for (let i = 1; i <= 6; i++) dice.classList.remove('show-' + i);
       dice.classList.add('show-' + Math.max(1, Math.min(6, Number(value) || 1)));
       overlay.hidden = false;
       overlay.setAttribute('aria-hidden', 'false');
+      // Match CSS hide timing; 2000ms + margin so card always follows after
       setTimeout(() => {
         overlay.hidden = true;
         overlay.setAttribute('aria-hidden', 'true');
       }, 2000);
-    } else if (window.LegislateUI?.animateDie) {
-      // Fallback to single-player function but invoked from overlay only
-      window.LegislateUI.animateDie(Number(value) || 1, 900);
     }
   }
 
@@ -41,7 +75,7 @@
   let sharedModal = null;
   function showSharedCard(card, canDismiss) {
     const title = String(card.title || 'Card');
-    const text = String(card.text || '');
+    const text  = String(card.text  || '');
 
     if (window.LegislateUI?.createModal) {
       if (!sharedModal) sharedModal = window.LegislateUI.createModal();
@@ -68,64 +102,45 @@
     if (!app || !app.engine) return;
     const engine = app.engine;
 
-    // Players / turn / lastRoll
+    // Merge state
     if (Array.isArray(engineSnap.players)) {
-      // Merge fields we care about
       for (let i = 0; i < engineSnap.players.length; i++) {
-        const src = engineSnap.players[i];
         if (!engine.state.players[i]) continue;
-        engine.state.players[i].name = src.name;
+        const src = engineSnap.players[i];
+        engine.state.players[i].name     = src.name;
         engine.state.players[i].position = src.position;
-        engine.state.players[i].skipped = !!src.skipped;
+        engine.state.players[i].skipped  = !!src.skipped;
       }
     }
     if (typeof engineSnap.turnIndex === 'number') engine.state.turnIndex = engineSnap.turnIndex;
-    if (typeof engineSnap.lastRoll === 'number') engine.state.lastRoll = engineSnap.lastRoll;
+    if (typeof engineSnap.lastRoll  === 'number') engine.state.lastRoll  = engineSnap.lastRoll;
 
     // Emit turn begin so UI refreshes (turn indicator, tokens layer etc.)
     const idx = engine.state.turnIndex || 0;
     engine.bus.emit('TURN_BEGIN', { index: idx, playerId: engine.state.players[idx]?.id });
 
-    // Lock player editing in MP (names are from lobby/host)
-    const root = $('playersSection');
-    if (root) {
-      const pills = Array.from(root.querySelectorAll('.player-pill, [data-player-pill]'));
-      pills.forEach(pill => {
-        const nameSpan = pill.querySelector('.player-name, [data-name]');
-        if (nameSpan) {
-          nameSpan.setAttribute('contenteditable', 'false');
-          nameSpan.title = 'Names are set in the lobby';
-        }
-        pill.style.pointerEvents = 'none';
-        pill.tabIndex = -1;
-      });
-    }
+    // Lock UI to avoid edits; hide extra pills
+    hidePlayerCountAndLockPills(Array.isArray(engineSnap.players) ? engineSnap.players.length : 0);
 
-    // Disable the local roll button unless it's my turn (gated by overlay below too)
-    const currUid = Array.isArray(engineSnap.overlaySeatUids)
-      ? engineSnap.overlaySeatUids[engine.state.turnIndex] || null
-      : null;
-    const rollBtn = $('rollBtn');
-    if (rollBtn) rollBtn.disabled = !(myUid && currUid && myUid === currUid);
+    // NOTE: do NOT gate the Roll button here (avoid flicker). Gating is overlay-driven.
   }
 
   // ---------- Overlay rendering (dice + card + gating) ----------
   function applyOverlayToLocal(overlaySnap) {
-    // Ignore stale overlay updates (turnId and roll.seq guards)
-    const turnId = typeof overlaySnap.turnId === 'number' ? overlaySnap.turnId : 0;
-    if (turnId < lastTurnIdSeen) return;
-    if (turnId > lastTurnIdSeen) {
-      lastTurnIdSeen = turnId;
-      // reset per-turn trackers
-      lastCardIdSeen = null;
+    // Prefer authoritative turnSeq for ordering and gating
+    const turnSeq = typeof overlaySnap.turnSeq === 'number' ? overlaySnap.turnSeq : 0;
+    if (turnSeq < lastTurnSeqSeen) return;
+    if (turnSeq > lastTurnSeqSeen) {
+      lastTurnSeqSeen = turnSeq;
+      lastCardIdSeen = null; // new turn, reset card guard
     }
 
-    const phase = overlaySnap.phase || 'idle';
-    const roll = overlaySnap.roll || null;
-    const card = overlaySnap.card || null;
+    const phase   = overlaySnap.phase || 'idle';
+    const roll    = overlaySnap.roll || null;
+    const card    = overlaySnap.card || null;
     const currUid = overlaySnap.currentTurnUid || null;
 
-    // Gate Roll button here as well (authoritative, since overlay carries currentTurnUid)
+    // Authoritative gating: only the currentTurnUid can press Roll/OK
     const rollBtn = $('rollBtn');
     if (rollBtn) rollBtn.disabled = !(myUid && currUid && myUid === currUid);
 
@@ -148,61 +163,126 @@
 
   // ---------- Host-only orchestration ----------
   function installHostModalInterceptors(engine) {
-    // Suppress the single-player modal and hold a promise we resolve on ACK.
+    // Intercept SP modal on host to block engine until shared ACK.
     if (!window.LegislateUI || typeof window.LegislateUI.createModal !== 'function') return;
-    const orig = window.LegislateUI.createModal;
+    const originalFactory = window.LegislateUI.createModal;
     window.LegislateUI.createModal = function () {
-      orig && orig(); // satisfy any side-effects
+      // Do not call original factory here (avoid side-effects)
       return {
         open(opts) {
-          // Extract plain text from body HTML
+          // Extract plain text for shared modal
           const tmp = document.createElement('div');
           tmp.innerHTML = opts?.body || '';
           const text = (tmp.textContent || tmp.innerText || '').trim();
-          queuedCard = {
+          // Fill queuedCard if engine constructs the modal before CARD_DRAWN bus hook
+          queuedCard = queuedCard || {
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             title: String(opts?.title || 'Card'),
             text
           };
-          // Return a promise we resolve when the active player ACKs
-          return new Promise((resolve) => {
-            resolveCardPromise = resolve;
-          });
+          // Return a promise that we resolve on ACK (from the active player)
+          return new Promise((resolve) => { resolveCardPromise = resolve; });
         }
       };
     };
   }
 
-  function suppressGuestSPUI() {
-    // Guests: disable local SP modal entirely
-    if (window.LegislateUI && typeof window.LegislateUI.createModal === 'function') {
-      const orig = window.LegislateUI.createModal;
-      window.LegislateUI.createModal = function () {
-        orig && orig();
-        return { open() { return Promise.resolve(); } };
+  function attachHostCardBus(engine) {
+    // Authoritatively capture card content; clear on resolve
+    engine.bus.on('CARD_DRAWN', ({ deck, card }) => {
+      queuedCard = card ? {
+        id: card.id || `${deck}-${Date.now()}`,
+        title: card.title || deck,
+        text: (card.text || '').trim()
+      } : {
+        id: `none-${Date.now()}`,
+        title: deck || 'Card',
+        text: 'No card.'
       };
-    }
+    });
+    engine.bus.on('CARD_RESOLVE', () => {
+      queuedCard = null;
+      // resolveCardPromise is resolved via ACK path; do not auto-resolve here.
+    });
   }
 
-  function disableLocalDiceEverywhere() {
-    // Ensure only overlay-driven dice runs
-    if (window.LegislateUI) {
-      if (typeof window.LegislateUI.showDiceRoll === 'function') {
-        window.LegislateUI.showDiceRoll = function () { return Promise.resolve(); };
-      }
-      if (typeof window.LegislateUI.waitForDice === 'function') {
-        window.LegislateUI.waitForDice = function () { return Promise.resolve(); };
-      }
+  // Host-only: perform one turn and publish engine + overlay in the correct order.
+  let globalRollSeq = 0;
+  async function doRoll(engine) {
+    // Capture whose turn it is BEFORE we mutate engine (for gating the shared UI)
+    const preTurnIdx = Number(engine.state.turnIndex || 0);
+    const seatUids   = Array.isArray(engine.state.overlaySeatUids) ? engine.state.overlaySeatUids : [];
+    const activeUid  = seatUids[preTurnIdx] || null;
+
+    // Perform the turn (moves tokens, sets lastRoll, may trigger CARD_DRAWN + modal)
+    await engine.takeTurn();
+
+    // Increment authoritative turn sequence and publish engine snapshot
+    engine.state.turnSeq = Number(engine.state.turnSeq || 0) + 1;
+    await T.writeEngine(engine.state);
+
+    // Publish dice first for this turnSeq
+    globalRollSeq += 1;
+    await T.updateOverlay({
+      turnSeq: engine.state.turnSeq,
+      phase: 'dice',
+      roll: { value: Number(engine.state.lastRoll || 0), seq: globalRollSeq },
+      currentTurnUid: activeUid
+    });
+
+    // After dice wobble time, publish the card (or explicitly go idle if none)
+    await new Promise(r => setTimeout(r, 2100)); // dice overlay hides at ~2000ms
+    if (queuedCard) {
+      await T.updateOverlay({
+        turnSeq: engine.state.turnSeq,
+        phase: 'card',
+        card: queuedCard,
+        currentTurnUid: activeUid
+      });
+    } else {
+      await T.updateOverlay({
+        turnSeq: engine.state.turnSeq,
+        phase: 'idle',
+        // clear any prior card/roll from overlay; guards prevent replays anyway
+        card: firebase.firestore.FieldValue.delete(),
+        roll:  firebase.firestore.FieldValue.delete()
+      });
     }
   }
 
   async function hostFlow(engine) {
-    // Listen for guest events
+    attachHostCardBus(engine);
+    installHostModalInterceptors(engine);
+
+    // Host UI buttons
+    const rollBtn = $('rollBtn');
+    if (rollBtn) {
+      rollBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        if (rollBtn.disabled) return;
+        await doRoll(engine);
+      });
+    }
+    const restartBtn = $('restartBtn');
+    if (restartBtn) {
+      restartBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        engine.reset();
+        engine.state.turnSeq = Number(engine.state.turnSeq || 0); // don’t bump turnSeq on reset
+        await T.writeEngine(engine.state);
+        await T.updateOverlay({
+          phase: 'idle',
+          card: firebase.firestore.FieldValue.delete(),
+          roll: firebase.firestore.FieldValue.delete()
+        });
+      });
+    }
+
+    // Host processes guest events
     T.onEvents(async (ev) => {
       if (!ev || !ev.type) return;
 
       if (ev.type === 'SET_NAME') {
-        // Map name into first free placeholder; also store seat→uid in engine.state
         const wanted = String(ev.name || '').trim().slice(0, 24) || 'Player';
         let seat = engine.state.players.findIndex(p => /^Player \d+$/i.test((p && p.name) || ''));
         if (seat === -1) seat = engine.state.players.findIndex(p => (((p && p.name) || '').toLowerCase() === wanted.toLowerCase()));
@@ -219,87 +299,40 @@
       }
 
       else if (ev.type === 'ACK_CARD') {
-        // Only the active player's ACK is valid
+        // Validate active player
         const turnIdx = Number(engine.state.turnIndex || 0);
         const currUid = Array.isArray(engine.state.overlaySeatUids) ? engine.state.overlaySeatUids[turnIdx] || null : null;
         if (!currUid || !ev.by || ev.by !== currUid) return;
 
-        // Release the intercepted SP modal (so engine can apply the card effect)
-        if (typeof resolveCardPromise === 'function') { try { resolveCardPromise(true); } catch(e) {} finally { resolveCardPromise = null; } }
+        // Release the intercepted SP modal so engine applies the effect
+        if (typeof resolveCardPromise === 'function') {
+          try { resolveCardPromise(true); } catch(e) {}
+          resolveCardPromise = null;
+        }
         if (typeof engine.ackCard === 'function') engine.ackCard();
 
-        queuedCard = null;
-        // Engine state may have changed (e.g., move:-1, miss_turn)
+        // Engine state may change (move:-1, miss_turn, etc.)
         await T.writeEngine(engine.state);
-        // Clear overlay back to idle
-        await T.updateOverlay({ phase: 'idle', card: firebase.firestore.FieldValue.delete() });
+
+        // Clear overlay
+        await T.updateOverlay({
+          phase: 'idle',
+          card: firebase.firestore.FieldValue.delete(),
+          roll: firebase.firestore.FieldValue.delete()
+        });
       }
 
       else if (ev.type === 'RESTART') {
         engine.reset();
+        engine.state.turnSeq = Number(engine.state.turnSeq || 0);
         await T.writeEngine(engine.state);
-        await T.updateOverlay({ phase: 'idle', card: firebase.firestore.FieldValue.delete(), roll: firebase.firestore.FieldValue.delete() });
+        await T.updateOverlay({
+          phase: 'idle',
+          card: firebase.firestore.FieldValue.delete(),
+          roll: firebase.firestore.FieldValue.delete()
+        });
       }
     });
-
-    // Host UI buttons
-    const rollBtn = $('rollBtn');
-    if (rollBtn) {
-      rollBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        // Let overlay gating (currentTurnUid) control enablement
-        if (rollBtn.disabled) return;
-        await doRoll(engine);
-      });
-    }
-    const restartBtn = $('restartBtn');
-    if (restartBtn) {
-      restartBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        engine.reset();
-        await T.writeEngine(engine.state);
-        await T.updateOverlay({ phase: 'idle', card: firebase.firestore.FieldValue.delete(), roll: firebase.firestore.FieldValue.delete() });
-      });
-    }
-  }
-
-  // Host-only: perform one turn and publish engine + overlay in the correct order.
-  let globalRollSeq = 0;
-  async function doRoll(engine) {
-    // Run engine turn (moves tokens, sets lastRoll, and triggers SP modal open → intercepted to fill queuedCard)
-    await engine.takeTurn();
-
-    // Publish engine snapshot so tokens/turn/lastRoll are visible
-    await T.writeEngine(engine.state);
-
-    // Publish dice first
-    globalRollSeq += 1;
-    const turnId = (typeof lastTurnIdSeen === 'number' ? lastTurnIdSeen : 0) + 1;
-    const turnIdx = Number(engine.state.turnIndex || 0);
-    const seatUids = Array.isArray(engine.state.overlaySeatUids) ? engine.state.overlaySeatUids : [];
-    const currentTurnUid = seatUids[turnIdx] || null;
-
-    await T.updateOverlay({
-      turnId,
-      phase: 'dice',
-      roll: { value: Number(engine.state.lastRoll || 0), seq: globalRollSeq },
-      currentTurnUid
-    });
-
-    // If a card was queued by the intercepted SP modal, publish it after the dice wobble
-    if (queuedCard) {
-      await new Promise(r => setTimeout(r, 1200)); // ~ dice wobble length (+margin)
-      await T.updateOverlay({
-        turnId,
-        phase: 'card',
-        card: queuedCard,
-        currentTurnUid
-      });
-    } else {
-      // No card: return overlay to idle after a short delay so dice can finish
-      await new Promise(r => setTimeout(r, 200));
-      await T.updateOverlay({ phase: 'idle' });
-    }
   }
 
   // ---------- Boot ----------
@@ -308,6 +341,10 @@
     if (T.mode === 'solo') return;
 
     myUid = T.auth?.currentUser?.uid || null;
+
+    // Banner feedback
+    const banner = $('roomBanner');
+    if (banner && T.roomId) banner.textContent = `Room Code: ${T.roomId}`;
 
     // Wait for the single-player engine instance
     let engine = null;
@@ -321,26 +358,51 @@
       return;
     }
 
-    // Disable local SP dice everywhere (shared overlay dice only)
+    // Shared rules for MP UI
     disableLocalDiceEverywhere();
 
+    // Apply lobby selections on host so tokens/pills rebuild exactly once
     if (T.mode === 'host') {
-      // Host: suppress SP modal and hold promise; guests: pure no-op
-      installHostModalInterceptors(engine);
-      await T.writeEngine(engine.state); // ensure engine doc exists early
+      const myName    = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0, 24);
+      const hostCount = Number(sessionStorage.getItem('MP_PLAYER_COUNT') || 0);
 
-      // Apply lobby choices: player count/name are already handled elsewhere; we just ensure seat→uid is tracked as people join
-      // (Guests announce SET_NAME below; we map them when events arrive.)
+      // Apply player count by triggering the same SP path
+      const pc = $('playerCount');
+      if (pc && hostCount) {
+        pc.value = String(hostCount);
+        pc.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (hostCount && typeof engine.setPlayerCount === 'function') {
+        engine.setPlayerCount(hostCount);
+      }
 
+      // Seat 0 name visual
+      if (myName && engine.state.players[0]) {
+        engine.state.players[0].name = myName;
+      }
+
+      // Ensure overlaySeatUids exists and seat 0 is the host
+      engine.state.overlaySeatUids = engine.state.overlaySeatUids || [];
+      const hostUid = T.auth?.currentUser?.uid || null;
+      if (hostUid) engine.state.overlaySeatUids[0] = hostUid;
+
+      // Initialize turnSeq if absent
+      engine.state.turnSeq = Number(engine.state.turnSeq || 0);
+
+      // Publish initial engine snapshot so guests get a base state
+      await T.writeEngine(engine.state);
+
+      // Lock pills and hide extras
+      hidePlayerCountAndLockPills(engine.state.players.length);
+
+      // Start host loop
       await hostFlow(engine);
 
     } else {
-      // Guests: disable local SP modal completely
-      suppressGuestSPUI();
-
-      // Guests announce name once
+      // Guest: announce name once
       const myName = (sessionStorage.getItem('MP_NAME') || '').trim().slice(0, 24);
       if (myName) T.sendEvent({ type: 'SET_NAME', name: myName });
+
+      // Guest Roll button just sends a request; overlay will gate it
       const rollBtn = $('rollBtn');
       if (rollBtn) {
         rollBtn.addEventListener('click', (e) => {
@@ -349,20 +411,24 @@
         });
       }
       const restartBtn = $('restartBtn');
-      if (restartBtn) {
-        restartBtn.addEventListener('click', (e) => { e.preventDefault(); /* guests cannot restart */ });
-      }
+      if (restartBtn) restartBtn.addEventListener('click', (e) => { e.preventDefault(); });
+
+      // Pills/UI lock
+      hidePlayerCountAndLockPills(engine.state.players.length);
     }
 
     // Subscribe to engine (tokens, names, turn indicator)
     T.onEngine((snap) => {
-      // Mirror engine snapshot into the local SP engine and UI
+      // Initialize client-side guards with authoritative turnSeq if first time
+      if (typeof snap.turnSeq === 'number' && lastTurnSeqSeen < 0) {
+        lastTurnSeqSeen = snap.turnSeq;
+      }
       applyEngineToLocal(snap);
-      // Also render the "Players" pills lock + turn gating handled there
     });
 
     // Subscribe to overlay (dice + card + gating)
     T.onOverlay((snap) => {
+      // If overlay carries a newer turnSeq, it will naturally advance guards
       applyOverlayToLocal(snap);
     });
   }
