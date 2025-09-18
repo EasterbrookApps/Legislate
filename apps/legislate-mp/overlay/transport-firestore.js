@@ -16,15 +16,15 @@
     app: null,
     auth: null,
     db: null,
-    mode: 'solo', // 'host' | 'guest' | 'solo'
+    mode: 'solo',   // 'host' | 'guest' | 'solo'
     roomId: null,
 
     roomDoc: null,
-    engineDoc: null,   // rooms/{roomId}/s/engine
-    overlayDoc: null,  // rooms/{roomId}/s/overlay
-    eventsCol: null,   // rooms/{roomId}/events
+    stateDoc: null,   // rooms/{roomId}/state
+    eventsCol: null,  // rooms/{roomId}/events
 
-    async init() {
+    // Init (anon auth). roomId + role read from sessionStorage (set by lobby)
+    async init () {
       if (!firebase?.apps?.length) {
         if (!CFG.firebase) throw new Error('Missing window.MP_CONFIG.firebase');
         firebase.initializeApp(CFG.firebase);
@@ -40,66 +40,42 @@
       const rid  = sessionStorage.getItem('MP_ROOM') || sessionStorage.getItem('MP_ROOM_ID');
       const role = sessionStorage.getItem('MP_ROLE'); // 'host' | 'guest'
       if (!rid) throw new Error('No room id in sessionStorage (MP_ROOM)');
-      this.roomId = rid;
-      this.mode   = role === 'host' ? 'host' : (role === 'guest' ? 'guest' : 'solo');
 
-      this.roomDoc   = this.db.collection('rooms').doc(this.roomId);
-      const s        = this.roomDoc.collection('s');
-      this.engineDoc = s.doc('engine');
-      this.overlayDoc= s.doc('overlay');
+      this.roomId  = rid;
+      this.mode    = role === 'host' ? 'host' : (role === 'guest' ? 'guest' : 'solo');
+      this.roomDoc = this.db.collection('rooms').doc(this.roomId);
+
+      this.stateDoc = this.roomDoc.doc('state'); // single doc
       this.eventsCol = this.roomDoc.collection('events');
+
       return true;
     },
 
-    // Host writes authoritative board snapshot after takeTurn/ackCard/reset.
-    async writeEngine(engineState) {
-      const uid = this.auth.currentUser?.uid || null;
-      const players = Array.isArray(engineState.players)
-        ? engineState.players.map(p => ({
-            id: p.id, name: p.name, position: p.position, skipped: !!p.skipped
-          }))
-        : [];
-
-      const out = {
-        hostUid: uid,
-        players,
-        turnIndex: Number(engineState.turnIndex || 0),
-        lastRoll:  Number(engineState.lastRoll  || 0),
-        overlaySeatUids: Array.isArray(engineState.overlaySeatUids) ? engineState.overlaySeatUids : [],
-        // Monotonic sequence: incremented once per roll by host.
-        turnSeq: Number(engineState.turnSeq || 0),
-        updatedAt: nowTs()
-      };
-      await this.engineDoc.set(out, { merge: true });
+    // Host/Guests write merged game state (overlay bits included)
+    async writeState (partial) {
+      const base = { updatedAt: nowTs() };
+      await this.stateDoc.set(Object.assign(base, partial || {}), { merge: true });
+      return { ok: true };
     },
 
-    onEngine(handler) {
-      return this.engineDoc.onSnapshot(snap => {
+    // Everyone listens to main state
+    onState (handler) {
+      return this.stateDoc.onSnapshot(snap => {
         if (!snap.exists) return;
         try { handler(snap.data()); } catch (e) { console.error(e); }
       });
     },
 
-    async updateOverlay(partial) {
-      await this.overlayDoc.set({ updatedAt: nowTs(), ...(partial || {}) }, { merge: true });
-    },
-
-    onOverlay(handler) {
-      return this.overlayDoc.onSnapshot(snap => {
-        if (!snap.exists) return;
-        try { handler(snap.data()); } catch (e) { console.error(e); }
-      });
-    },
-
-    async sendEvent(payload) {
+    // Guests → host events (roll, ack, set_name, restart)
+    async sendEvent (payload) {
       const uid = this.auth.currentUser?.uid || null;
       await this.eventsCol.add({ ...payload, by: uid, ts: nowTs() });
     },
 
-    onEvents(handler) {
-      // Host consumes and deletes events in order.
+    // Host consumes events FIFO and deletes them after handling
+    onEvents (handler) {
       const q = this.eventsCol.orderBy('ts', 'asc').limit(200);
-      return q.onSnapshot(async snap => {
+      return q.onSnapshot(async (snap) => {
         const batch = this.db.batch();
         const work = [];
         snap.docChanges().forEach(ch => {
@@ -107,7 +83,8 @@
           const doc = ch.doc;
           const data = doc.data() || {};
           work.push((async () => {
-            try { await handler(data); } finally { batch.delete(doc.ref); }
+            try { await handler(data); }
+            finally { batch.delete(doc.ref); }
           })());
         });
         if (work.length) {
