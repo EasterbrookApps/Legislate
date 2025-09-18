@@ -138,11 +138,10 @@
 
     // Buffer cards
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
-      queuedCard = card
-        ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
-        : { id: `none-${Date.now()}`, title: deck || 'Card', text: 'No card.' };
-    });
-    engine.bus.on('CARD_RESOLVE', ()=>{ queuedCard = null; });
+  queuedCard = card
+    ? { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() }
+    : { id: `none-${Date.now()}`, title: deck || 'Card', text: 'No card.' };
+});
 
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
@@ -190,15 +189,28 @@
         }
 
       } else if (ev.type === 'ACK_CARD') {
-        if (typeof engine.ackCard==='function') engine.ackCard();
-        queuedCard = null;
-        await T.writeState(Object.assign(
-          computeOutState(engine, map, null),
-          { overlayCard: null }
-        ));
-      }
-    };
+  // Only the active player's ACK is valid
+  const turnIdx = Number(engine.state.turnIndex || 0);
+  const currUid = Array.isArray(map.overlaySeatUids)
+    ? map.overlaySeatUids[turnIdx] || null
+    : null;
+  if (!currUid || !ev.by || ev.by !== currUid) return;
 
+  // Apply the effect in the SP engine (positions/turn may change)
+  if (typeof engine.ackCard === 'function') {
+    engine.ackCard();
+  }
+
+  // Now it’s safe to clear the shared card
+  queuedCard = null;
+
+  // Publish a full state with overlayCard cleared (no partial overwrite)
+  await T.writeState(Object.assign(
+    computeOutState(engine, map, null),
+    { overlayCard: null }
+  ));
+}
+};
     await T.writeState(computeOutState(engine, map, null));
     return T.onEvents(apply);
   }
