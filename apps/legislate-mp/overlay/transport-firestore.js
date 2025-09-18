@@ -95,9 +95,18 @@
 
     onEvents(fn){
       if (this.mode !== 'host') return ()=>{};
-      return this.eventsCol().orderBy('ts').onSnapshot(qs=>{
-        qs.docChanges().forEach(ch=>{
-          if (ch.type === 'added') fn(Object.assign({ id: ch.doc.id }, ch.doc.data()));
+      const ref = this.eventsCol();
+      return ref.orderBy('ts').onSnapshot(qs=>{
+        qs.docChanges().forEach(async ch=>{
+          if (ch.type !== 'added') return;
+          const doc  = ch.doc;
+          const data = Object.assign({ id: doc.id }, doc.data());
+          try {
+            await fn(data);
+          } finally {
+            // ✅ delete processed event to avoid duplicates/backlog
+            doc.ref.delete().catch(()=>{});
+          }
         });
       });
     },
@@ -106,7 +115,8 @@
       if (this.mode !== 'host') return;
       const by = (this.auth && this.auth.currentUser && this.auth.currentUser.uid) || null;
       const withHost = Object.assign({ hostUid: state.hostUid || by }, state);
-      return this.stateDoc().set(withHost);
+      // ✅ merge so partial writes don’t clobber other fields
+      return this.stateDoc().set(withHost, { merge: true });
     }
   };
 })();
