@@ -10,6 +10,10 @@
   let lastCardKey  = null;
   let myUid = null;
 
+  // ⬇️ ADD: buffer + sequence for shared dice / card ordering
+  let queuedCard = null; // buffer a drawn card; publish after dice wobble
+  let rollSeq = 0;       // monotonically increasing dice sequence
+
   // Roll button control (only enable on my turn)
   let rollBtnRef = null;
   function updateRollEnabled(state){
@@ -51,14 +55,32 @@
     }
   }
 
-  // Dice for everyone
+  // Dice for everyone (shared overlay dice, ordered by seq)
+  let lastRollSeqSeen = -1;
   function maybeShowDice(state){
-    const n = state && state.lastRoll;
-    if (n && n !== lastRollSeen) {
-      lastRollSeen = n;
-      if (window.LegislateUI?.animateDie) {
-        window.LegislateUI.animateDie(n, 900);
-      }
+    const r = state && state.overlayRoll;
+    if (!r || typeof r.seq !== 'number' || typeof r.value !== 'number') return;
+    if (r.seq === lastRollSeqSeen) return;
+    lastRollSeqSeen = r.seq;
+
+    // Try the CSS overlay dice first
+    const overlay = document.getElementById('diceOverlay');
+    const dice = document.getElementById('dice');
+    if (overlay && dice) {
+      for (let i = 1; i <= 6; i++) dice.classList.remove('show-' + i);
+      dice.classList.add('show-' + Math.max(1, Math.min(6, Number(r.value) || 1)));
+      overlay.hidden = false;
+      overlay.setAttribute('aria-hidden', 'false');
+      setTimeout(() => {
+        overlay.hidden = true;
+        overlay.setAttribute('aria-hidden', 'true');
+      }, 2000);
+      return;
+    }
+
+    // Fallback to SP animateDie if overlay not present
+    if (window.LegislateUI?.animateDie) {
+      window.LegislateUI.animateDie(Number(r.value) || 1, 900);
     }
   }
 
@@ -128,27 +150,58 @@
     const hostUid = T.auth?.currentUser?.uid || null;
     if (hostUid) map.overlaySeatUids[0] = hostUid;
 
-    // Broadcast cards to all clients by listening to single-player events
-    let overlayCard = null;
+    // ⬇️ CHANGED: buffer the card; do not write in bus handlers
     engine.bus.on('CARD_DRAWN', ({ deck, card })=>{
       if (card) {
-        overlayCard = { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() };
+        queuedCard = { id: card.id || `${deck}-${Date.now()}`, title: card.title || deck, text: (card.text||'').trim() };
       } else {
-        overlayCard = { id: `none-${Date.now()}`, title: 'No card', text: `The ${deck} deck is empty.` };
+        queuedCard = { id: `none-${Date.now()}`, title: deck || 'Card', text: 'No card.' };
       }
-      T.writeState(computeOutState(engine, map, overlayCard));
     });
     engine.bus.on('CARD_RESOLVE', ()=>{
-      overlayCard = null;
-      T.writeState(computeOutState(engine, map, overlayCard));
+      queuedCard = null;
     });
 
     const apply = async (ev)=>{
       if (ev.type === 'ROLL') {
+        // Capture roller before engine mutates turnIndex
+        const preTurnIdx = Number(engine.state.turnIndex || 0);
+        const seatUids   = Array.isArray(engine.state.overlaySeatUids) ? engine.state.overlaySeatUids : (map.overlaySeatUids || []);
+        const rollerUid  = seatUids[preTurnIdx] || null;
+
         await engine.takeTurn();
+
+        // Broadcast shared dice first
+        rollSeq += 1;
+        await T.writeState(Object.assign(
+          computeOutState(engine, { overlaySeatUids: seatUids }, /*overlayCard*/ null),
+          {
+            overlayRoll: { seq: rollSeq, value: Number(engine.state.lastRoll || 0) },
+            currentTurnUid: rollerUid
+          }
+        ));
+
+        // After dice wobble, publish the card if we buffered one
+        setTimeout(async ()=>{
+          if (queuedCard) {
+            await T.writeState(Object.assign(
+              computeOutState(engine, { overlaySeatUids: seatUids }, queuedCard),
+              { currentTurnUid: rollerUid }
+            ));
+          } else {
+            // Ensure no stale card remains
+            await T.writeState({ overlayCard: null, currentTurnUid: rollerUid });
+          }
+        }, 2100);
 
       } else if (ev.type === 'RESTART') {
         engine.reset();
+        queuedCard = null;
+        rollSeq = 0;
+        await T.writeState(Object.assign(
+          computeOutState(engine, map, null),
+          { overlayCard: null, overlayRoll: null }
+        ));
 
       } else if (ev.type === 'SET_NAME') {
         const wanted = String(ev.name || '').trim().slice(0,24) || 'Player';
@@ -158,17 +211,25 @@
         if (seat >= 0) {
           engine.state.players[seat].name = wanted;
           map.overlaySeatUids[seat] = ev.by || map.overlaySeatUids[seat] || null;
+          await T.writeState(computeOutState(engine, map, queuedCard ? queuedCard : null));
         }
 
       } else if (ev.type === 'ACK_CARD') {
         if (typeof engine.ackCard === 'function') engine.ackCard();
+        queuedCard = null;
+        // Clear overlayCard after applying effect
+        await T.writeState(Object.assign(
+          computeOutState(engine, { overlaySeatUids: engine.state.overlaySeatUids || map.overlaySeatUids || [] }, null),
+          { overlayCard: null }
+        ));
       }
 
-      await T.writeState(computeOutState(engine, map, overlayCard));
+      // ⬇️ NOTE: removed the unconditional write here to avoid reordering
+      // await T.writeState(computeOutState(engine, map, queuedCard ? queuedCard : null));
     };
 
     // Initial publish
-    await T.writeState(computeOutState(engine, map, overlayCard));
+    await T.writeState(computeOutState(engine, map, null));
     return T.onEvents(apply);
   }
 
@@ -177,6 +238,19 @@
     if (T.mode === 'solo') return;
 
     myUid = T.auth?.currentUser?.uid || null;
+
+    // ⬇️ ADD: disable SP dice so we only show the shared overlay dice
+    if (window.LegislateUI) {
+      if (typeof window.LegislateUI.animateDie === 'function') {
+        window.LegislateUI.animateDie = function(){ return Promise.resolve(); };
+      }
+      if (typeof window.LegislateUI.showDiceRoll === 'function') {
+        window.LegislateUI.showDiceRoll = function(){ return Promise.resolve(); };
+      }
+      if (typeof window.LegislateUI.waitForDice === 'function') {
+        window.LegislateUI.waitForDice = function(){ return Promise.resolve(); };
+      }
+    }
 
     // Wait for engine (poll ~5s)
     let engine = null;
