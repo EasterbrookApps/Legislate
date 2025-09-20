@@ -3,93 +3,44 @@
   "departures": {
     "all": [
       {
-        "aimed_departure_time": "07:58",
-        "expected_departure_time": "On time",
-        "platform": "2",
-        "destination_name": "London Waterloo"
-      },
-      {
-        "aimed_departure_time": "08:05",
-        "expected_departure_time": "08:12",
-        "platform": "1",
-        "destination_name": "Windsor & Eton Riverside"
-      },
-      {
-        "aimed_departure_time": "08:12",
-        "expected_departure_time": "Cancelled",
-        "platform": "3",
-        "destination_name": "Guildford"
-      },
-      {
-        "aimed_departure_time": "08:18",
-        "expected_departure_time": "Delayed",
-        "platform": "2",
-        "destination_name": "London Waterloo"
-      },
-      {
-        "aimed_departure_time": "08:25",
-        "expected_departure_time": "On time",
-        "platform": null,
-        "destination_name": "Richmond"
-      },
-      {
-        "aimed_departure_time": "08:32",
-        "expected_departure_time": "",
-        "platform": "?",
-        "destination_name": "Hounslow"
-      },
-      {
-        "aimed_departure_time": "08:39",
-        "expected_departure_time": "08:41",
-        "platform": "4",
-        "destination_name": "Chessington South"
-      },
-      {
         "aimed_departure_time": "08:45",
         "expected_departure_time": "On time",
         "platform": "3",
-        "destination_name": "Waterloo"
+        "origin_name": "London Waterloo",
+        "destination_name": "Guildford",
+        "calling_at_codes": ["PUT", "CLJ", "VXH", "WAT", "SUR", "WOK", "GLD"]
       },
       {
         "aimed_departure_time": "08:52",
         "expected_departure_time": "08:58",
         "platform": "2",
-        "destination_name": "Weymouth"
-      },
-      {
-        "aimed_departure_time": "08:59",
-        "expected_departure_time": "On time",
-        "platform": "1",
-        "destination_name": "Clapham Junction"
+        "origin_name": "London Waterloo",
+        "destination_name": "Weymouth",
+        "calling_at_codes": ["PUT", "CLJ", "VXH", "WAT", "BRO", "SOU", "WEY"]
       },
       {
         "aimed_departure_time": "09:05",
         "expected_departure_time": "On time",
-        "platform": "2",
-        "destination_name": "Queenstown Road (Battersea)"
+        "platform": "1",
+        "origin_name": "Clapham Junction",
+        "destination_name": "Queenstown Road",
+        "calling_at_codes": ["CLJ", "QBR"]   // 🚫 No Waterloo
       },
       {
         "aimed_departure_time": "09:12",
         "expected_departure_time": "09:15",
-        "platform": "3",
-        "destination_name": "London Waterloo"
-      },
-      {
-        "aimed_departure_time": "09:19",
-        "expected_departure_time": "On time",
-        "platform": "1",
-        "destination_name": "Surbiton"
-      },
-      {
-        "aimed_departure_time": "09:26",
-        "expected_departure_time": "09:26",
         "platform": "2",
-        "destination_name": "Ealing Broadway"
+        "origin_name": "London Waterloo",
+        "destination_name": "Windsor & Eton Riverside",
+        "calling_at_codes": ["PUT", "CLJ", "VXH", "WAT", "RMD", "STW", "WNR"]
       },
       {
-        "aimed_departure_time": "09:33",
-        "expected_departure_time": "On time",
-        "platform": "3"
+        "aimed_departure_time": "09:20",
+        "expected_departure_time": "Cancelled",
+        "platform": "3",
+        "origin_name": "Surbiton",
+        "destination_name": "London Waterloo",
+        "calling_at_codes": ["SUR", "CLJ", "VXH", "WAT"]
       }
     ]
   }
