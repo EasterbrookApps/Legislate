@@ -1,0 +1,96 @@
+{
+  "station_name": "Putney",
+  "departures": {
+    "all": [
+      {
+        "aimed_departure_time": "07:58",
+        "expected_departure_time": "On time",
+        "platform": "2",
+        "destination_name": "London Waterloo"
+      },
+      {
+        "aimed_departure_time": "08:05",
+        "expected_departure_time": "08:12",
+        "platform": "1",
+        "destination_name": "Windsor & Eton Riverside"
+      },
+      {
+        "aimed_departure_time": "08:12",
+        "expected_departure_time": "Cancelled",
+        "platform": "3",
+        "destination_name": "Guildford"
+      },
+      {
+        "aimed_departure_time": "08:18",
+        "expected_departure_time": "Delayed",
+        "platform": "2",
+        "destination_name": "London Waterloo"
+      },
+      {
+        "aimed_departure_time": "08:25",
+        "expected_departure_time": "On time",
+        "platform": null,
+        "destination_name": "Richmond"
+      },
+      {
+        "aimed_departure_time": "08:32",
+        "expected_departure_time": "",
+        "platform": "?",
+        "destination_name": "Hounslow"
+      },
+      {
+        "aimed_departure_time": "08:39",
+        "expected_departure_time": "08:41",
+        "platform": "4",
+        "destination_name": "Chessington South"
+      },
+      {
+        "aimed_departure_time": "08:45",
+        "expected_departure_time": "On time",
+        "platform": "3",
+        "destination_name": "Waterloo"
+      },
+      {
+        "aimed_departure_time": "08:52",
+        "expected_departure_time": "08:58",
+        "platform": "2",
+        "destination_name": "Weymouth"
+      },
+      {
+        "aimed_departure_time": "08:59",
+        "expected_departure_time": "On time",
+        "platform": "1",
+        "destination_name": "Clapham Junction"
+      },
+      {
+        "aimed_departure_time": "09:05",
+        "expected_departure_time": "On time",
+        "platform": "2",
+        "destination_name": "Queenstown Road (Battersea)"
+      },
+      {
+        "aimed_departure_time": "09:12",
+        "expected_departure_time": "09:15",
+        "platform": "3",
+        "destination_name": "London Waterloo"
+      },
+      {
+        "aimed_departure_time": "09:19",
+        "expected_departure_time": "On time",
+        "platform": "1",
+        "destination_name": "Surbiton"
+      },
+      {
+        "aimed_departure_time": "09:26",
+        "expected_departure_time": "09:26",
+        "platform": "2",
+        "destination_name": "Ealing Broadway"
+      },
+      {
+        "aimed_departure_time": "09:33",
+        "expected_departure_time": "On time",
+        "platform": "3"
+      }
+    ]
+  }
+}
